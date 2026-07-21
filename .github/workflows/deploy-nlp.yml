@@ -134,15 +134,14 @@ jobs:
               --network host "$IMAGE_LC"
             docker image prune -f || true
 
-            echo "--- diagnostics: waiting 15s for the app to come up, then checking locally ---"
-            sleep 15
-            docker ps -a --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' | grep -i nlp-router || echo "container not listed"
-            echo "--- container logs (last 60 lines) ---"
-            docker logs nlp-router-dev --tail 60 2>&1 || true
-            echo "--- is anything listening on :5003 on the VM itself? ---"
-            (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true) | grep ':5003' || echo "nothing listening on :5003"
-            echo "--- curl from inside the VM itself ---"
-            curl -sv --max-time 5 http://127.0.0.1:5003/health 2>&1 || echo "local curl failed"
+            echo "--- diagnostics: does the exact same code run fine INSIDE this container? ---"
+            echo "--- (this exact CLI path already runs in a few seconds locally, so this isolates ---"
+            echo "---  whether it's a code/env issue in the container vs. just the API layer) ---"
+            timeout 120 docker exec nlp-router-dev python Model_1_Doctor_Dekho.py --demo 2>&1 | tail -40 || echo "CLI demo timed out or failed after 120s"
+            echo "--- container resource usage snapshot ---"
+            docker stats --no-stream nlp-router-dev || true
+            echo "--- container logs (last 40 lines) ---"
+            docker logs nlp-router-dev --tail 40 2>&1 || true
 
       - name: Health check
         run: |
