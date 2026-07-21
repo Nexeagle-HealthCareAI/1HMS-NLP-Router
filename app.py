@@ -5,7 +5,9 @@ Trains once at process startup from the bundled dataset and keeps the vectorizer
 classifier, and search index in memory for the process lifetime — no per-request
 retraining, no external calls, no secrets required.
 """
+import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from pydantic import BaseModel
@@ -17,51 +19,11 @@ from Model_1_Doctor_Dekho import (
     load_data,
     train_classifier,
 )
+from specialty_mapping import LABEL_TO_NEXEAGLE_SPECIALTY_ID
 
-# Maps our internal 32-class taxonomy to NexEagleWebsite's own `specialtyId` slugs
-# (src/data/patient.ts `specialties` array). NexEagleWebsite already distinguishes the
-# medical-vs-surgical siblings (neurology/neurosurgery, cardiology/cardiothoracicsurgery)
-# that the standalone router's MODEL_OUTPUT_MERGES collapses for single-label accuracy —
-# this service trains WITHOUT that collapse (see lifespan() below) and lets the existing
-# top-k candidate mechanism (classify_segment's build_candidates, margin 0.12) surface
-# both sibling specialties when genuinely ambiguous, instead of losing the distinction.
-LABEL_TO_NEXEAGLE_SPECIALTY_ID = {
-    "General Physician": "general",
-    "Paediatrician": "pediatrics",
-    "Cardiologist (Heart)": "cardiology",
-    "Dermatologist (Skin)": "dermatology",
-    "Orthopaedic Surgeon (Bone)": "orthopedics",
-    "Gynaecologist": "gynecology",
-    "Dentist": "dentistry",
-    "ENT Specialist": "ent",
-    "Ophthalmologist (Eye)": "ophthalmology",
-    "Neurologist": "neurology",
-    "Psychiatrist": "psychiatry",
-    "Urologist": "urology",
-    "Gastroenterologist": "gastroenterology",
-    "Endocrinologist (Hormones/Diabetes)": "endocrinology",
-    "Pulmonologist (Chest/Lungs)": "pulmonology",
-    "Nephrologist (Kidney)": "nephrology",
-    "Oncologist (Cancer)": "oncology",
-    "Rheumatologist": "rheumatology",
-    "Physiotherapist / Rehab": "physiotherapy",
-    "General Surgeon": "generalsurgery",
-    "Neurosurgeon": "neurosurgery",
-    "Plastic Surgeon": "plasticsurgery",
-    "Vascular Surgeon": "vascularsurgery",
-    "Cardiothoracic Surgeon": "cardiothoracicsurgery",
-    "Anaesthesiologist": "anesthesiology",
-    "Radiologist": "radiology",
-    "Pathologist": "pathology",
-    "Emergency Medicine Specialist": "emergencymedicine",
-    "Geriatrician": "geriatrics",
-    "Sports Medicine Specialist": "sportsmedicine",
-    # No distinct "surgical GI" id on NexEagleWebsite — its own "generalsurgery" blurb
-    # ("Hernia, gallbladder & general operations") is the closest real bucket.
-    "GI/Surgical Gastroenterologist": "generalsurgery",
-    # Not a human-medicine category on a doctor-booking site — no target, dropped.
-    "Veterinarian": None,
-}
+# Written only by data_pipeline/retrain_pipeline.py on a successful promotion — the live
+# service just reads it, never writes it.
+MODEL_META_PATH = Path(__file__).parent / "model_meta.json"
 
 _state: dict = {}
 
@@ -95,6 +57,15 @@ class RouteResponse(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok", "ready": bool(_state)}
+
+
+@app.get("/model-info")
+def model_info():
+    try:
+        with open(MODEL_META_PATH, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {"modelVersion": "unknown", "lastRetrainedAt": None, "validationMetrics": None}
 
 
 @app.post("/route-symptom", response_model=RouteResponse)
