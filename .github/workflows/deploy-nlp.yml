@@ -134,20 +134,11 @@ jobs:
               --network host "$IMAGE_LC"
             docker image prune -f || true
 
-            echo "--- diagnostics: does the exact same code run fine INSIDE this container? ---"
-            echo "--- (this exact CLI path already runs in a few seconds locally, so this isolates ---"
-            echo "---  whether it's a code/env issue in the container vs. just the API layer) ---"
-            timeout 120 docker exec nlp-router-dev python Model_1_Doctor_Dekho.py --demo 2>&1 | tail -40 || echo "CLI demo timed out or failed after 120s"
-            echo "--- container resource usage snapshot ---"
-            docker stats --no-stream nlp-router-dev || true
-            echo "--- container logs (last 40 lines) ---"
-            docker logs nlp-router-dev --tail 40 2>&1 || true
-
       - name: Health check
         run: |
           sleep 10
           for i in 1 2 3 4 5; do
-            S=$(curl -s -o /dev/null -w '%{http_code}' \
+            S=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
                 http://${{ secrets.DEV_SSH_HOST }}:5003/health 2>/dev/null || echo 000)
             echo "Attempt $i — HTTP $S"
             [ "$S" = "200" ] && echo "✅ NLP Router (dev) is up" && exit 0
@@ -196,7 +187,7 @@ jobs:
         run: |
           sleep 15
           for i in 1 2 3 4 5; do
-            S=$(curl -s -o /dev/null -w '%{http_code}' \
+            S=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
                 http://${{ secrets.PROD_SSH_HOST }}:5003/health 2>/dev/null || echo 000)
             echo "Attempt $i — HTTP $S"
             [ "$S" = "200" ] && echo "✅ NLP Router (prod) is up" && exit 0
