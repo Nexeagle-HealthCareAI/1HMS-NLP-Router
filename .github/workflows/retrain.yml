@@ -1,0 +1,70 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# EASYHMS NLP ROUTER — Retrain pipeline
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Runs data_pipeline/retrain_pipeline.py: fetches the current CMS-editable training set +
+# production feedback from CMSAPI, retrains a candidate model, evaluates it against the
+# frozen data_pipeline/validation_set.csv, and only commits+pushes (i.e. "promotes") if the
+# candidate doesn't regress vs. the currently-promoted model's recorded metrics. A push to
+# `develop` here re-triggers deploy-nlp.yml, so promotion = a normal redeploy, nothing extra
+# to build.
+#
+# Two triggers, one identical job: nightly cron (automatic) and workflow_dispatch (CMS's
+# "Retrain now" button, via CMSAPI calling this workflow through GitHub's REST API).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# SECRETS (Settings → Secrets → Actions):
+#   CMSAPI_BASE_URL      e.g. http://151.185.45.77:5002 (dev) — repo VARIABLE, not secret
+#   CMSAPI_SERVICE_KEY   shared service-auth key CMSAPI expects on these read endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: EasyHMS NLP Router — Retrain
+
+on:
+  schedule:
+    - cron: '0 20 * * *'  # ~01:30 IST, low-traffic window
+  workflow_dispatch:
+
+concurrency:
+  group: easyhms-nlp-retrain
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  retrain:
+    name: "Fetch, retrain, evaluate, promote-if-safe"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: develop
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      - name: Run retrain pipeline
+        working-directory: data_pipeline
+        env:
+          CMSAPI_BASE_URL: ${{ vars.CMSAPI_BASE_URL }}
+          CMSAPI_SERVICE_KEY: ${{ secrets.CMSAPI_SERVICE_KEY }}
+        run: |
+          python retrain_pipeline.py --cmsapi-url "$CMSAPI_BASE_URL" --service-key "$CMSAPI_SERVICE_KEY"
+
+      - name: Commit + push if promoted
+        run: |
+          git config user.name "easyhms-nlp-retrain-bot"
+          git config user.email "actions@github.com"
+          if git diff --quiet -- Hinglish_Symptoms_Reference_v2.csv model_meta.json; then
+            echo "No promotion this run — nothing to commit."
+          else
+            git add Hinglish_Symptoms_Reference_v2.csv model_meta.json
+            git commit -m "Auto-retrain: promote new model $(date -u +%Y-%m-%d)"
+            git push origin HEAD:develop
+            echo "Promoted and pushed — deploy-nlp.yml will redeploy dev automatically."
+          fi

@@ -1,0 +1,11 @@
+{
+  "modelVersion": "2026-07-22-baseline",
+  "lastRetrainedAt": null,
+  "trainingRowCount": 1013,
+  "validationRowCount": 1518,
+  "validationMetrics": {
+    "top1Accuracy": 0.8933,
+    "topKAccuracy": 0.9295,
+    "confidentlyWrongRate": 0.052
+  }
+}

@@ -181,7 +181,11 @@ def load_data(path: Path, apply_output_merges: bool = True):
     return texts, labels
 
 
-def train_classifier(texts, labels):
+def train_classifier(texts, labels, sample_weight=None):
+    """sample_weight: optional per-row weight (same length as texts/labels). Used by the
+    retrain pipeline to trust explicit production corrections more than silent accepts,
+    without needing two different training calls — plain CLI/API use leaves this None,
+    which is equivalent to every row weighing 1.0 (unweighted, today's behavior)."""
     # Combine char n-grams (catch typos/spelling variants) with word
     # n-grams (catch word-order / phrase-level patterns). Blending both
     # usually beats either alone.
@@ -209,7 +213,8 @@ def train_classifier(texts, labels):
 
     try:
         cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-        scores = cross_val_score(clf, X_vec, labels, cv=cv)
+        fit_params = {"sample_weight": sample_weight} if sample_weight is not None else None
+        scores = cross_val_score(clf, X_vec, labels, cv=cv, params=fit_params)
         print(
             f"{n_splits}-fold cross-validation accuracy: "
             f"{scores.mean():.2f} (+/- {scores.std():.2f})\n"
@@ -220,7 +225,8 @@ def train_classifier(texts, labels):
         # K-fold so we still get SOME estimate.
         try:
             cv = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-            scores = cross_val_score(clf, X_vec, labels, cv=cv)
+            fit_params = {"sample_weight": sample_weight} if sample_weight is not None else None
+            scores = cross_val_score(clf, X_vec, labels, cv=cv, fit_params=fit_params)
             print(
                 f"Warning: one or more classes have too few examples for "
                 f"stratified CV; used plain {n_splits}-fold CV instead "
@@ -236,7 +242,7 @@ def train_classifier(texts, labels):
 
     # Fit the final model on ALL the data (not just one fold) so it has
     # the most information available for real predictions.
-    clf.fit(X_vec, labels)
+    clf.fit(X_vec, labels, sample_weight=sample_weight)
 
     return vectorizer, clf
 
