@@ -28,6 +28,14 @@ MODEL_META_PATH = Path(__file__).parent / "model_meta.json"
 _state: dict = {}
 
 
+def _read_model_version() -> str | None:
+    try:
+        with open(MODEL_META_PATH, encoding="utf-8") as f:
+            return json.load(f).get("modelVersion")
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     texts, labels = load_data(DATA_PATH, apply_output_merges=False)
@@ -36,6 +44,7 @@ async def lifespan(_app: FastAPI):
     _state.update(
         vectorizer=vectorizer, clf=clf,
         index_matrix=index_matrix, index_texts=index_texts, index_labels=index_labels,
+        model_version=_read_model_version(),
     )
     yield
     _state.clear()
@@ -51,6 +60,12 @@ class RouteRequest(BaseModel):
 class RouteResponse(BaseModel):
     specialtyIds: list[str]
     usedDefault: bool
+    # Method/confidence for the PRIMARY (first) specialtyId specifically — i.e. whatever
+    # produced specialtyIds[0] — so a caller that only uses the primary pick (like
+    # NexEagleWebsite today) doesn't need to dig into raw.segments to log it.
+    method: str | None
+    confidence: float | None
+    modelVersion: str | None
     raw: dict
 
 
@@ -72,7 +87,10 @@ def model_info():
 def route_symptom(req: RouteRequest):
     query = (req.query or "").strip()
     if not query:
-        return RouteResponse(specialtyIds=[], usedDefault=True, raw={"specialists": [], "segments": []})
+        return RouteResponse(
+            specialtyIds=[], usedDefault=True, method=None, confidence=None,
+            modelVersion=_state.get("model_version"), raw={"specialists": [], "segments": []},
+        )
 
     specialists, per_segment = classify_sentence(
         query, _state["vectorizer"], _state["clf"],
@@ -86,10 +104,14 @@ def route_symptom(req: RouteRequest):
             specialty_ids.append(slug)
 
     used_default = any(r["method"] == "default (low confidence)" for r in per_segment)
+    primary_segment = per_segment[0] if per_segment else None
 
     return RouteResponse(
         specialtyIds=specialty_ids,
         usedDefault=used_default,
+        method=primary_segment["method"] if primary_segment else None,
+        confidence=primary_segment["confidence"] if primary_segment else None,
+        modelVersion=_state.get("model_version"),
         raw={
             "specialists": specialists,
             "segments": [
