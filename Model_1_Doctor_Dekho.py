@@ -211,10 +211,16 @@ def train_classifier(texts, labels, sample_weight=None):
     min_class_count = min(label_counts.values())
     n_splits = max(2, min(5, min_class_count))
 
+    # Only pass params= at all when sample_weight is actually used — some sklearn versions
+    # take a much slower metadata-routing code path in cross_val_score merely because a params
+    # kwarg was supplied, even as an explicit None. Keeping the zero-arg call for the common
+    # (unweighted) case preserves the original fast behavior for the CLI/live service, which
+    # never pass sample_weight.
+    cv_score_kwargs = {"params": {"sample_weight": sample_weight}} if sample_weight is not None else {}
+
     try:
         cv = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=42)
-        fit_params = {"sample_weight": sample_weight} if sample_weight is not None else None
-        scores = cross_val_score(clf, X_vec, labels, cv=cv, params=fit_params)
+        scores = cross_val_score(clf, X_vec, labels, cv=cv, **cv_score_kwargs)
         print(
             f"{n_splits}-fold cross-validation accuracy: "
             f"{scores.mean():.2f} (+/- {scores.std():.2f})\n"
@@ -225,8 +231,7 @@ def train_classifier(texts, labels, sample_weight=None):
         # K-fold so we still get SOME estimate.
         try:
             cv = KFold(n_splits=n_splits, shuffle=True, random_state=42)
-            fit_params = {"sample_weight": sample_weight} if sample_weight is not None else None
-            scores = cross_val_score(clf, X_vec, labels, cv=cv, fit_params=fit_params)
+            scores = cross_val_score(clf, X_vec, labels, cv=cv, **cv_score_kwargs)
             print(
                 f"Warning: one or more classes have too few examples for "
                 f"stratified CV; used plain {n_splits}-fold CV instead "
