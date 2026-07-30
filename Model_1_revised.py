@@ -283,7 +283,7 @@ def main():
 
     # A couple of nonsense/gibberish queries, to confirm the fallback works.
     GIBBERISH_SAMPLE_QUERIES = ["jgjhkj", "asfgtqwafazfyiur", "zxcvbnmlkjhgfdsaqwerty"]
-    print("\n=== Gibberish sample query checks (should all say 'No matches found.') ===")
+    print("\n=== Gibberish sample query checks (should all say 'Wrong input. Search again.') ===")
     for query in GIBBERISH_SAMPLE_QUERIES:
         result = predict(query, bundle=pipeline_bundle)
         print(f"{query!r:70s} -> {result}")
