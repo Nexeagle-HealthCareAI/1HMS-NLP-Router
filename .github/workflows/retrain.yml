@@ -60,10 +60,10 @@ jobs:
         run: |
           git config user.name "easyhms-nlp-retrain-bot"
           git config user.email "actions@github.com"
-          if git diff --quiet -- Hinglish_Symptoms_Reference_v2.csv model_meta.json; then
+          if git diff --quiet -- Hinglish_Symptoms_Reference_V3.csv model_meta.json symptom_specialist_classifier.joblib; then
             echo "No promotion this run — nothing to commit."
           else
-            git add Hinglish_Symptoms_Reference_v2.csv model_meta.json
+            git add Hinglish_Symptoms_Reference_V3.csv model_meta.json symptom_specialist_classifier.joblib
             git commit -m "Auto-retrain: promote new model $(date -u +%Y-%m-%d)"
             git push origin HEAD:develop
             echo "Promoted and pushed — deploy-nlp.yml will redeploy dev automatically."

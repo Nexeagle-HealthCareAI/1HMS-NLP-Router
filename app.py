@@ -11,9 +11,9 @@ CHANGED FROM THE PREVIOUS VERSION (which wrapped Model_1_Doctor_Dekho):
     replaced with `noMatch` — this is a BREAKING response-shape change for
     any caller that was relying on always getting back at least one
     specialtyId.
-  - "Confidence" is no longer a classifier probability or cosine similarity;
-    it's the word-overlap coverage ratio (see Model_1_revised.word_match_ratio)
-    between the query and the closest known training example.
+  - "Confidence" is not a classifier probability; it's the cosine similarity
+    (see Model_1_revised.best_match) between the query's TF-IDF vector and
+    the closest known training example's.
   - Model_1_revised has no LABEL_ALIASES normalization step, so specialist
     label spelling/duplication is whatever the training CSV contains as-is.
     If the training data introduced new/renamed labels, specialty_mapping.py
@@ -35,8 +35,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import joblib
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from Model_1_revised import (
     MODEL_OUT,
@@ -78,6 +81,16 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="EasyHMS NLP Symptom Router", lifespan=lifespan)
 
+# Per-IP rate limiting -- /route-symptom has no auth, and a single query can take real
+# CPU time (TF-IDF transform + classifier + cosine-similarity coverage check), so an
+# unauthenticated client hammering it is a cheap way to degrade the service for everyone
+# else. Keyed on remote address, so this only works as intended if the client's real IP
+# reaches the app unmodified (no IP-rewriting reverse proxy in front) -- revisit if one
+# gets added later.
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 
 class RouteRequest(BaseModel):
     query: str
@@ -85,14 +98,14 @@ class RouteRequest(BaseModel):
 
 class RouteResponse(BaseModel):
     specialtyIds: list[str]
-    # True when Model_1_revised's gibberish check or word-overlap coverage
+    # True when Model_1_revised's gibberish check or cosine-similarity coverage
     # check rejected the input (Model_1_revised.NO_MATCH_MESSAGE), i.e. there
     # is no specialist to return at all. Replaces the old `usedDefault`
     # field — there is no default specialist to fall back to anymore.
     noMatch: bool
     method: str | None
-    # Word-overlap coverage ratio (0-1) against the closest known training
-    # example — NOT a classifier probability or cosine similarity anymore.
+    # Cosine similarity (0-1) between the query and the closest known training
+    # example's TF-IDF vector — NOT a classifier probability.
     confidence: float | None
     modelVersion: str | None
     raw: dict
@@ -131,7 +144,7 @@ def _predict_with_coverage(query: str, bundle: dict, threshold: float = MATCH_TH
             "flaggedGibberish": True, "noMatch": True,
         }
 
-    ratio, closest = best_match(cleaned, bundle["texts"])
+    ratio, closest = best_match(cleaned, bundle["features"], bundle["texts_matrix"], bundle["texts"])
     if ratio < threshold:
         return {
             "specialist": None, "matchRatio": ratio, "closestKnownExample": closest,
@@ -147,7 +160,8 @@ def _predict_with_coverage(query: str, bundle: dict, threshold: float = MATCH_TH
 
 
 @app.post("/route-symptom", response_model=RouteResponse)
-def route_symptom(req: RouteRequest):
+@limiter.limit("30/minute")
+def route_symptom(request: Request, req: RouteRequest):
     query = (req.query or "").strip()
     if not query:
         return RouteResponse(

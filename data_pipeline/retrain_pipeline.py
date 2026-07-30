@@ -3,7 +3,8 @@
 Fetches the current CMS-editable training set + production feedback, merges them, trains a
 candidate model, evaluates it against the FROZEN validation_set.csv, and only if it doesn't
 regress vs. the currently-promoted model's recorded metrics, promotes it — regenerating
-../Hinglish_Symptoms_Reference_v2.csv and ../model_meta.json.
+../Hinglish_Symptoms_Reference_V3.csv, ../model_meta.json, and
+../symptom_specialist_classifier.joblib (the artifact app.py actually loads at startup).
 
 If the candidate regresses, nothing is written — this script is safe to run repeatedly with
 no effect until there's actually enough good new data to justify a change. The GitHub Actions
@@ -30,18 +31,21 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import joblib
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from Model_1_Doctor_Dekho import (  # noqa: E402
-    build_search_index, classify_segment, train_classifier,
+from Model_1_revised import (  # noqa: E402
+    MODEL_OUT, MATCH_THRESHOLD, clean_text, build_feature_union, evaluate_candidates, best_match,
 )
 from specialty_mapping import NEXEAGLE_SPECIALTY_ID_TO_LABEL  # noqa: E402
 from generate_dataset import normalize_for_dedupe  # noqa: E402
 
 HERE = Path(__file__).parent
 REPO_ROOT = HERE.parent
-CSV_PATH = REPO_ROOT / "Hinglish_Symptoms_Reference_v2.csv"
+CSV_PATH = REPO_ROOT / "Hinglish_Symptoms_Reference_V3.csv"
 META_PATH = REPO_ROOT / "model_meta.json"
+MODEL_PATH = REPO_ROOT / MODEL_OUT
 VALIDATION_PATH = HERE / "validation_set.csv"
 
 # Corrections (the model suggested X, patient actually booked Y) are unambiguous strong
@@ -159,21 +163,30 @@ def load_validation_set():
     return [r["text"] for r in rows], [r["specialist"] for r in rows]
 
 
-def evaluate(vectorizer, clf, index_matrix, index_texts, index_labels, val_texts, val_labels):
-    top1 = topk = confidently_wrong = 0
+def evaluate(features, clf, train_texts, train_matrix, val_texts, val_labels, threshold: float = MATCH_THRESHOLD):
+    """Mirrors Model_1_revised.predict()'s two-stage logic (cosine-similarity coverage gate,
+    then classifier) against the frozen validation set. `noMatchRate` covers cases the
+    coverage gate rejects outright (never reaches the classifier); `confidentlyWrongRate`
+    covers cases that passed the gate but got the wrong specialist -- the more costly failure
+    mode, since the caller gets a confident-looking wrong answer instead of an honest "no
+    match"."""
+    top1 = wrong = no_match = 0
     n = len(val_texts)
     for text, true_label in zip(val_texts, val_labels):
-        res = classify_segment(text, vectorizer, clf, index_matrix, index_texts, index_labels)
-        if res["specialist"] == true_label:
+        cleaned = clean_text(text)
+        ratio, _ = best_match(cleaned, features, train_matrix, train_texts)
+        if ratio < threshold:
+            no_match += 1
+            continue
+        pred = clf.predict(features.transform([cleaned]))[0]
+        if pred == true_label:
             top1 += 1
-        if true_label in res["candidates"]:
-            topk += 1
-        elif res["method"] != "default (low confidence)":
-            confidently_wrong += 1
+        else:
+            wrong += 1
     return {
         "top1Accuracy": round(top1 / n, 4),
-        "topKAccuracy": round(topk / n, 4),
-        "confidentlyWrongRate": round(confidently_wrong / n, 4),
+        "noMatchRate": round(no_match / n, 4),
+        "confidentlyWrongRate": round(wrong / n, 4),
     }
 
 
@@ -189,7 +202,9 @@ def is_regression(candidate: dict, baseline: dict | None) -> bool:
     if baseline is None or not baseline.get("validationMetrics"):
         return False  # nothing to compare against — first-ever run, anything is an improvement
     prev = baseline["validationMetrics"]
-    if candidate["topKAccuracy"] < prev["topKAccuracy"] - TOLERANCE:
+    if "top1Accuracy" not in prev or "confidentlyWrongRate" not in prev:
+        return False  # baseline used an older/incompatible metrics schema — nothing safe to compare
+    if candidate["top1Accuracy"] < prev["top1Accuracy"] - TOLERANCE:
         return True
     if candidate["confidentlyWrongRate"] > prev["confidentlyWrongRate"] + TOLERANCE:
         return True
@@ -204,13 +219,13 @@ def write_promoted_csv(texts, labels, types):
             writer.writerow([text, label, row_type])
 
 
-def write_meta(metrics: dict, training_row_count: int):
+def write_meta(metrics: dict, training_row_count: int, validation_row_count: int):
     now = datetime.now(timezone.utc)
     meta = {
         "modelVersion": now.strftime("%Y-%m-%d-%H%M%S"),
         "lastRetrainedAt": now.isoformat(),
         "trainingRowCount": training_row_count,
-        "validationRowCount": None,  # filled in by caller if desired; fixed set, rarely changes
+        "validationRowCount": validation_row_count,
         "validationMetrics": metrics,
     }
     with open(META_PATH, "w", encoding="utf-8") as f:
@@ -242,11 +257,15 @@ def main():
     texts, labels, types, weights = merge_rows(training_examples, feedback_rows)
     print(f"Merged training set: {len(texts)} rows across {len(set(labels))} classes\n")
 
-    vectorizer, clf = train_classifier(texts, labels, sample_weight=weights)
-    index_matrix, index_texts, index_labels = build_search_index(texts, labels, vectorizer)
+    features = build_feature_union()
+    X_feats = features.fit_transform(texts)
+
+    print("Cross-validating candidate models on merged training data:")
+    best_name, best_clf = evaluate_candidates(X_feats, labels)
+    best_clf.fit(X_feats, labels, sample_weight=weights)
 
     val_texts, val_labels = load_validation_set()
-    candidate_metrics = evaluate(vectorizer, clf, index_matrix, index_texts, index_labels, val_texts, val_labels)
+    candidate_metrics = evaluate(features, best_clf, texts, X_feats, val_texts, val_labels)
     print(f"Candidate validation metrics: {candidate_metrics}")
 
     baseline = load_current_meta()
@@ -257,9 +276,18 @@ def main():
         print("\nNOT PROMOTED — candidate regresses vs. the currently-promoted model. No files changed.")
         return
 
+    bundle = {
+        "features": features,
+        "model": best_clf,
+        "model_name": best_name,
+        "classes": sorted(set(labels)),
+        "texts": texts,
+        "texts_matrix": X_feats,
+    }
+    joblib.dump(bundle, MODEL_PATH)
     write_promoted_csv(texts, labels, types)
-    write_meta(candidate_metrics, len(texts))
-    print(f"\nPROMOTED — {CSV_PATH.name} and {META_PATH.name} updated.")
+    write_meta(candidate_metrics, len(texts), len(val_texts))
+    print(f"\nPROMOTED — {CSV_PATH.name}, {META_PATH.name}, and {MODEL_PATH.name} updated.")
 
 
 if __name__ == "__main__":

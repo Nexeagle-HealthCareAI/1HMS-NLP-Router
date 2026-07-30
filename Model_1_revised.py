@@ -19,17 +19,15 @@ Approach
 - Saves the trained pipeline + label list + raw training texts to disk for
   reuse.
 - Before trusting the classifier's prediction, a lightweight "coverage"
-  check compares the user's input against every known training text using
-  word-level overlap (word order doesn't matter). If at least 90% of the
-  words in the user's input also appear in some known training example
-  (per-word similarity, so minor spelling variation is still tolerated),
-  we trust the classifier's guess. Otherwise we don't trust it and ask
-  the user for more information.
+  check compares the user's input against every known training text via
+  cosine similarity of their TF-IDF vectors (the same features the
+  classifier itself uses). If the closest known training example isn't
+  similar enough (>= MATCH_THRESHOLD), we don't trust the classifier's
+  guess and ask the user for more information instead.
 """
 
 import sys
 import os
-import difflib
 import joblib
 import numpy as np
 import pandas as pd
@@ -42,6 +40,7 @@ from sklearn.naive_bayes import ComplementNB
 from sklearn.pipeline import Pipeline, FeatureUnion
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.metrics import classification_report, accuracy_score, f1_score
+from sklearn.metrics.pairwise import cosine_similarity
 
 # --- gibberish-detector setup -----------------------------------------
 # Uses the `gibberish-detector` PyPI package (pip install gibberish-detector).
@@ -82,11 +81,28 @@ DATA_PATH = "Hinglish_Symptoms_Reference_V3.csv"
 MODEL_OUT = "symptom_specialist_classifier.joblib"
 RANDOM_STATE = 42
 
-# Minimum fraction (0-1) of the words in a user's input that must be
-# found (word order doesn't matter) in at least one known training
-# example before we trust the model's prediction. Below this, we ask the
-# user for more information instead of guessing.
-MATCH_THRESHOLD = 0.9
+# Minimum cosine similarity (0-1) between a user's input and the closest known
+# training example (both as TF-IDF vectors) before we trust the model's
+# prediction. Below this, we ask the user for more information instead of
+# guessing.
+#
+# NOTE on calibration: data_pipeline/validation_set.csv can't be used to pick
+# this -- ~97% of its rows are exact-text duplicates of rows already in the
+# training CSV, so every query scores a trivial 1.0 against it (see the
+# validation-set/training-set overlap note in data_pipeline/README or ask
+# before relying on validationMetrics for anything threshold-related). This
+# value was instead picked from realistic hand-written Hinglish symptom
+# queries NOT present in the training data (which scored ~0.29-0.87) vs.
+# gibberish/keyboard-mash strings (~0.0-0.19) -- 0.25 clears all the former
+# with margin while rejecting the latter. It does NOT reliably reject
+# coherent but off-topic Hinglish text (e.g. "aaj cricket match kab hai"
+# scored ~0.26) -- cosine similarity over TF-IDF is a lexical/character
+# overlap signal, not a semantic one, so some shared function words
+# ("mein", "hai", "kab") are enough to clear this bar. Tightening it to
+# filter those out would also start rejecting real symptom queries (the
+# lowest-scoring genuine one seen was ~0.29) -- a real fix needs a semantic
+# signal, not just a higher threshold.
+MATCH_THRESHOLD = 0.25
 
 # Sample queries to sanity-check the trained model on (edit/add your own).
 SAMPLE_QUERIES = [
@@ -178,56 +194,21 @@ def evaluate_candidates(X_train_feats, y_train):
 
 
 # ---------------------------------------------------------------------------
-# Word-level match (order-independent)
+# Coverage check: cosine similarity against every known training example
 # ---------------------------------------------------------------------------
-def tokenize(s: str) -> list:
-    """Lowercase, whitespace-split into words (light punctuation stripped)."""
-    s = clean_text(s).lower()
-    s = "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in s)
-    return [w for w in s.split() if w]
-
-
-def word_similarity(w1: str, w2: str) -> float:
-    """Similarity (0-1) between two individual words, tolerant of minor
-    spelling variation (e.g. 'dard'/'darrd'), via difflib's ratio."""
-    if not w1 or not w2:
-        return 0.0
-    return difflib.SequenceMatcher(None, w1, w2).ratio()
-
-
-def word_match_ratio(a: str, b: str, word_match_threshold: float = 0.85) -> float:
-    """Fraction (0-1) of the words in `a` that have a close match somewhere
-    in `b`, ignoring word order entirely. Each word in `a` is matched
-    against its single best-matching word in `b` (a word in `b` can be
-    reused to match more than one word in `a`). Two words are considered a
-    match if their `word_similarity` is >= `word_match_threshold`, which
-    absorbs small spelling differences without requiring an exact match.
-    """
-    a_words = tokenize(a)
-    b_words = tokenize(b)
-    if not a_words or not b_words:
-        return 0.0
-
-    matched = 0
-    for wa in a_words:
-        best = max(word_similarity(wa, wb) for wb in b_words)
-        if best >= word_match_threshold:
-            matched += 1
-    return matched / len(a_words)
-
-
-def best_match(text: str, corpus_texts) -> tuple:
-    """Compare `text` against every string in `corpus_texts` and return
-    (best_ratio, best_matching_text) for the closest one found, where
-    `best_ratio` is the word_match_ratio (word order doesn't matter)."""
-    best_ratio = 0.0
-    best_text = None
-    for candidate in corpus_texts:
-        ratio = word_match_ratio(text, candidate)
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best_text = candidate
-    return best_ratio, best_text
+def best_match(cleaned_text: str, features, texts_matrix, texts) -> tuple:
+    """Compare `cleaned_text` against every row of `texts_matrix` (the
+    training corpus's TF-IDF vectors, precomputed once at training time) via
+    cosine similarity, and return (best_score, best_matching_text) for the
+    closest one found. `features` is the same fitted FeatureUnion the
+    classifier uses, so this reuses the classifier's own notion of
+    similarity instead of a separate word-overlap heuristic -- a single
+    vectorized matrix multiply instead of an O(corpus size) per-word scan,
+    so it stays fast even against a multi-thousand-row corpus."""
+    query_vec = features.transform([cleaned_text])
+    sims = cosine_similarity(query_vec, texts_matrix)[0]
+    idx = int(sims.argmax())
+    return float(sims[idx]), texts[idx]
 
 
 def main():
@@ -269,9 +250,12 @@ def main():
         "model": final_clf,
         "model_name": best_name,
         "classes": sorted(df["specialist"].unique().tolist()),
-        # Raw training texts, kept so predict()/interactive_test() can run
-        # the order-preserving letter-match coverage check against them.
+        # Raw training texts + their precomputed TF-IDF vectors, kept so
+        # predict()/interactive_test() can run the cosine-similarity
+        # coverage check against them without re-vectorizing the whole
+        # corpus on every call.
         "texts": df["text"].tolist(),
+        "texts_matrix": X_all_feats,
     }
     joblib.dump(pipeline_bundle, MODEL_OUT)
     print(f"\nSaved trained pipeline to {MODEL_OUT}")
@@ -297,12 +281,10 @@ def predict(text: str, bundle_path: str = MODEL_OUT, bundle: dict = None,
     prediction is returned:
       1. Gibberish check (gibberish-detector library, if its model file is
          available) -- catches keyboard-mash input like "dfgskjbnskfjdn".
-      2. Word-level match ratio (see `word_match_ratio`) against every
-         known training example -- word order does not matter, only
-         whether the words themselves are present. If fewer than
-         `threshold` (default 0.9, i.e. 90%) of the input's words are
-         found in ANY training example, the classifier's guess isn't
-         trusted.
+      2. Cosine similarity (see `best_match`) between the input's TF-IDF
+         vector and every known training example's -- if the closest
+         known example isn't similar enough (below `threshold`), the
+         classifier's guess isn't trusted.
 
     If either check fails, this returns NO_MATCH_MESSAGE
     ("No matches found.") instead of a specialist name.
@@ -329,9 +311,9 @@ def predict(text: str, bundle_path: str = MODEL_OUT, bundle: dict = None,
             print("Flagged as gibberish by gibberish-detector.")
         return NO_MATCH_MESSAGE
 
-    ratio, closest = best_match(cleaned, bundle["texts"])
+    ratio, closest = best_match(cleaned, bundle["features"], bundle["texts_matrix"], bundle["texts"])
     if verbose:
-        print(f"Best match ratio: {ratio:.2f} (closest known example: {closest!r})")
+        print(f"Best match similarity: {ratio:.2f} (closest known example: {closest!r})")
 
     if ratio < threshold:
         return NO_MATCH_MESSAGE
