@@ -50,7 +50,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.metrics import classification_report, accuracy_score, f1_score
 from sklearn.metrics.pairwise import cosine_similarity
 
-DATA_PATH = "Hinglish_Symptoms_Reference_V4_.csv"
+DATA_PATH = "Hinglish_Symptoms_V28.csv"
 MODEL_OUT = "symptom_specialist_classifier.joblib"
 RANDOM_STATE = 42
 
