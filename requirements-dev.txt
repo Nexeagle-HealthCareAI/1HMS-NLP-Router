@@ -4,3 +4,10 @@
 # voice/).
 pytest==7.4.3
 httpx==0.28.1
+# tests/test_voice.py tests voice/api_client.py's HTTP-client logic (mocked
+# requests calls) unconditionally -- unlike SpeechRecognition/PyAudio/
+# indic-transliteration (genuinely optional, needs system audio libraries),
+# `requests` is a hard, lightweight, pure-Python dependency of api_client.py
+# with no reason to skip testing it just because the audio stack isn't
+# installed. Keep this pin in sync with requirements-voice.txt.
+requests==2.32.3
