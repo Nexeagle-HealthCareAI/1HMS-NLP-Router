@@ -14,9 +14,13 @@ REQUIRED_COLUMNS = {"text", "specialist", "type"}
 
 
 def load_data(path: str) -> pd.DataFrame:
-    """Load and clean a training CSV. Uses the tolerant Python parser (vs.
-    the default C engine) and skips unparseable rows, since some dataset
-    revisions have had the odd unescaped comma inside a free-text field."""
+    """Load and clean a training CSV -- the first step of
+    SymptomClassifier.train(). Call this directly (rather than .train())
+    if you just want to inspect/validate a candidate dataset (row counts,
+    class balance, duplicates) before committing to a full training run.
+    Uses the tolerant Python parser (vs. the default C engine) and skips
+    unparseable rows, since some dataset revisions have had the odd
+    unescaped comma inside a free-text field."""
     df = pd.read_csv(path, engine="python", on_bad_lines="skip")
 
     missing = REQUIRED_COLUMNS - set(df.columns)
@@ -46,9 +50,13 @@ def load_data(path: str) -> pd.DataFrame:
 
 def evaluate_candidates(X_train_feats, y_train):
     """Stratified CV over a few candidate classifiers; returns the name and
-    an unfitted instance of the best one by mean macro-F1. Fold count is
-    capped by the smallest class's example count, so this doesn't blow up
-    on a dataset with a thin class."""
+    an unfitted instance of the best one by mean macro-F1. Called by
+    SymptomClassifier.train() -- reach for this directly only if you're
+    experimenting with a NEW candidate model (add it to the `candidates`
+    dict below) and want to compare it against the existing ones on
+    already-vectorized features, without running a full train(). Fold
+    count is capped by the smallest class's example count, so this doesn't
+    blow up on a dataset with a thin class."""
     min_class_count = pd.Series(y_train).value_counts().min()
     n_splits = max(2, min(5, min_class_count))
 

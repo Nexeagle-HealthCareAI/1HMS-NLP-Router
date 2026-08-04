@@ -65,6 +65,12 @@ know `api` exists, and `api` doesn't know `voice` exists.
   set, and promotes (rewrites the V28 CSV + `model_meta.json` + the joblib
   bundle) only if it doesn't regress vs. the currently-promoted model. Not
   needed at runtime (excluded from the Docker image).
+- `tests/` — the test suite (mandatory after any code change — see
+  [Testing](#testing) below and [docs/testing.md](docs/testing.md)).
+- `docs/` — one page per layer, with a module map and common recipes for
+  each: [nlp_brain.md](docs/nlp_brain.md), [api.md](docs/api.md),
+  [voice.md](docs/voice.md), [data_pipeline.md](docs/data_pipeline.md),
+  [testing.md](docs/testing.md).
 
 ## API
 
@@ -106,6 +112,21 @@ To also run the voice client against it:
 ```bash
 pip install -r requirements-voice.txt
 python -m voice.cli
+```
+
+## Testing
+
+Tests are mandatory after any code change, enforced by a CI gate (a failing
+test blocks the Docker build/deploy) and a pre-commit hook for fast local
+feedback. Full details, fixtures, and how to add a new test:
+[docs/testing.md](docs/testing.md). Quick start:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest                            # full suite
+pytest -m "not integration"       # fast subset (what the pre-commit hook runs)
+
+git config core.hooksPath .githooks   # one-time, activates the local pre-commit hook
 ```
 
 ## Deployment

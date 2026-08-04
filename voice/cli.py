@@ -9,6 +9,11 @@ from .speech_to_text import SPEECH_RECOGNITION_AVAILABLE, is_stop_command, liste
 
 
 def _print_result(response: dict) -> None:
+    """Formats a raw /route-symptom JSON response (see api/schemas.py's
+    RouteResponse) for a terminal user. Kept separate from interactive()'s
+    loop so a future non-terminal voice frontend (e.g. text-to-speech
+    output instead of print()) can reuse the request/response plumbing
+    below and just swap this one function."""
     if response.get("noMatch"):
         if response.get("raw", {}).get("flaggedGibberish"):
             print("Sorry, that didn't look like a symptom description.")
@@ -22,6 +27,12 @@ def _print_result(response: dict) -> None:
 
 
 def interactive(client: SymptomRouterClient = None) -> None:
+    """`python -m voice.cli` -- the voice layer's main loop: listen ->
+    transcribe -> (unless it's a stop command) send to the API -> print the
+    result -> listen again, until a stop phrase or Ctrl+C. Accepts an
+    injected `client` for testing; real usage should just call
+    `interactive()` with no arguments and let it build a SymptomRouterClient
+    from NLP_API_BASE_URL (see config.py)."""
     client = client or SymptomRouterClient()
 
     try:

@@ -1,0 +1,6 @@
+# Dependencies for running the test suite (tests/). Not needed by the
+# deployed API image -- installed in CI and by developers locally, on top
+# of requirements.txt (and requirements-voice.txt if you're also touching
+# voice/).
+pytest==7.4.3
+httpx==0.28.1

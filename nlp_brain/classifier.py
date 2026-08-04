@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 
 from .config import DATA_PATH, MATCH_THRESHOLD, MODEL_OUT, RANDOM_STATE
 from .features import build_feature_union
-from .matching import best_match
+from .matching import best_match, normalize_matrix
 from .text_utils import clean_text, is_gibberish
 from .training import evaluate_candidates, load_data
 
@@ -30,6 +30,13 @@ class PredictionResult:
 
 
 class SymptomClassifier:
+    """The trained pipeline: feature extractor + classifier + the coverage-
+    gate's reference corpus, bundled together. Construct one via `.train()`
+    (from a CSV) or `.load()` (from a saved bundle) -- calling `__init__`
+    directly is for those two classmethods and tests/conftest.py's
+    `tiny_classifier` fixture; application code should not build one field
+    by field."""
+
     def __init__(self, features, model, model_name, classes, texts, texts_matrix):
         self.features = features
         self.model = model
@@ -37,13 +44,32 @@ class SymptomClassifier:
         self.classes = classes
         self.texts = texts
         self.texts_matrix = texts_matrix
+        # Precomputed once here (NOT persisted in the joblib bundle -- cheap
+        # to rebuild on load, and storing it would nearly double the bundle's
+        # size) so every predict() call only has to normalize a single query
+        # row instead of re-normalizing the whole corpus matrix every time.
+        # See matching.normalize_matrix() for why this matters.
+        self._texts_matrix_normalized = normalize_matrix(texts_matrix)
 
     @classmethod
     def load(cls, path: str = MODEL_OUT) -> "SymptomClassifier":
+        """Loads a previously-saved bundle. Use this at process startup
+        (see api/main.py's lifespan()) or in a one-off script/notebook that
+        needs predictions without retraining -- NOT per-request; loading
+        deserializes the whole corpus matrix from disk and re-normalizes it
+        (see __init__), which takes real time (roughly 0.2-2s depending on
+        disk cache) that a request handler shouldn't pay."""
         bundle = joblib.load(path)
         return cls(**bundle)
 
     def save(self, path: str = MODEL_OUT) -> None:
+        """Writes this classifier's bundle to disk in the schema `.load()`
+        expects. Call this after `.train()` produces a classifier you want
+        to keep (nlp_brain/cli.py's `train` command and
+        data_pipeline/retrain_pipeline.py's promotion step both do this) --
+        this is the ONLY place that schema is defined, specifically so nlp_brain/cli.py
+        and retrain_pipeline.py can't drift out of sync with each other (they used
+        to each build the bundle dict by hand)."""
         joblib.dump({
             "features": self.features,
             "model": self.model,
@@ -127,7 +153,7 @@ class SymptomClassifier:
         if is_gibberish(cleaned):
             return PredictionResult(None, None, None, True, True)
 
-        ratio, closest = best_match(cleaned, self.features, self.texts_matrix, self.texts)
+        ratio, closest = best_match(cleaned, self.features, self._texts_matrix_normalized, self.texts)
         if ratio < threshold:
             return PredictionResult(None, ratio, closest, False, True)
 

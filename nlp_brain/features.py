@@ -5,10 +5,14 @@ from sklearn.pipeline import FeatureUnion
 
 
 def build_feature_union() -> FeatureUnion:
-    """Combine word-level and char-level TF-IDF. Char n-grams give
-    robustness to the spelling variations in this dataset (e.g.
-    "mein"/"me", "doctor"/"daktar"/"docter"); word n-grams capture medical
-    terms and multi-word keywords."""
+    """Returns a fresh, UNFITTED FeatureUnion -- call this once per training
+    run (SymptomClassifier.train() calls it twice: once for the held-out CV
+    split, once again for the final all-data fit) and call `.fit_transform()`
+    /`.transform()` on the result; never share one fitted instance's
+    vocabulary across two different datasets. Combines word-level and
+    char-level TF-IDF: char n-grams give robustness to the spelling
+    variations in this dataset (e.g. "mein"/"me", "doctor"/"daktar"/"docter");
+    word n-grams capture medical terms and multi-word keywords."""
     return FeatureUnion([
         ("word_tfidf", TfidfVectorizer(
             analyzer="word",

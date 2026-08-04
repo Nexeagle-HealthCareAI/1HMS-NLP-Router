@@ -32,11 +32,17 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Make both this file's own directory (for sibling imports like generate_dataset)
+# and the repo root (for nlp_brain/specialty_mapping) importable regardless of how
+# this module is invoked -- as a script from within data_pipeline/ (retrain.yml's
+# working-directory), or imported as data_pipeline.retrain_pipeline from the repo
+# root (tests/test_retrain_pipeline.py, run via pytest from the repo root).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from nlp_brain import MODEL_OUT, MATCH_THRESHOLD, SymptomClassifier, clean_text  # noqa: E402
 from nlp_brain.features import build_feature_union  # noqa: E402
-from nlp_brain.matching import best_match  # noqa: E402
+from nlp_brain.matching import best_match, normalize_matrix  # noqa: E402
 from nlp_brain.training import evaluate_candidates  # noqa: E402
 from specialty_mapping import NEXEAGLE_SPECIALTY_ID_TO_LABEL  # noqa: E402
 from generate_dataset import normalize_for_dedupe  # noqa: E402
@@ -63,6 +69,11 @@ TOLERANCE = 0.01
 
 
 def fetch_live(cmsapi_url: str, service_key: str):
+    """Live-mode data source: pages through CMSAPI's training-examples and
+    feedback-log endpoints. This is what retrain.yml's nightly cron and
+    CMS's "Retrain now" button both use. For local development or testing
+    the merge/train/evaluate logic without a running CMSAPI, use
+    --training-fixture/--feedback-fixture (load_fixture()) instead."""
     import urllib.request
 
     def get_all_pages(path):
@@ -86,6 +97,10 @@ def fetch_live(cmsapi_url: str, service_key: str):
 
 
 def load_fixture(path: str):
+    """Dry-run data source: loads one JSON file matching the shape either
+    fetch_live() call would return a page of. Use --training-fixture and
+    --feedback-fixture together (see main()) to test a specific past run's
+    inputs, or to develop against CMSAPI endpoints that don't exist yet."""
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
@@ -158,6 +173,11 @@ def merge_rows(training_examples: list[dict], feedback_rows: list[tuple]):
 
 
 def load_validation_set():
+    """Loads the FROZEN validation_set.csv -- the fixed yardstick every
+    candidate model is measured against (see evaluate()/is_regression()).
+    "Frozen" means this file should basically never change; if you're
+    tempted to edit it to make a candidate pass, that's a sign the
+    candidate is the problem, not the validation set."""
     with open(VALIDATION_PATH, encoding="utf-8-sig") as f:
         rows = list(csv.DictReader(f))
     return [r["text"] for r in rows], [r["specialist"] for r in rows]
@@ -170,11 +190,13 @@ def evaluate(features, clf, train_texts, train_matrix, val_texts, val_labels, th
     covers cases that passed the gate but got the wrong specialist -- the more costly failure
     mode, since the caller gets a confident-looking wrong answer instead of an honest "no
     match"."""
+    train_matrix_normalized = normalize_matrix(train_matrix)
+
     top1 = wrong = no_match = 0
     n = len(val_texts)
     for text, true_label in zip(val_texts, val_labels):
         cleaned = clean_text(text)
-        ratio, _ = best_match(cleaned, features, train_matrix, train_texts)
+        ratio, _ = best_match(cleaned, features, train_matrix_normalized, train_texts)
         if ratio < threshold:
             no_match += 1
             continue
@@ -191,6 +213,10 @@ def evaluate(features, clf, train_texts, train_matrix, val_texts, val_labels, th
 
 
 def load_current_meta():
+    """Reads the CURRENTLY-DEPLOYED model's model_meta.json, to serve as
+    is_regression()'s baseline. Returns None on a fresh checkout with no
+    model trained yet (first-ever run), which is_regression() treats as
+    "nothing to compare against, promote unconditionally"."""
     try:
         with open(META_PATH, encoding="utf-8") as f:
             return json.load(f)
@@ -199,6 +225,11 @@ def load_current_meta():
 
 
 def is_regression(candidate: dict, baseline: dict | None) -> bool:
+    """The promotion gate: True if `candidate`'s validation metrics are
+    worse than `baseline`'s by more than TOLERANCE on either axis. Call
+    this after evaluate() and before writing anything to disk (see main())
+    -- if this returns True, main() must not call write_promoted_csv()/
+    save()/write_meta(), so a bad retrain never overwrites the live model."""
     if baseline is None or not baseline.get("validationMetrics"):
         return False  # nothing to compare against — first-ever run, anything is an improvement
     prev = baseline["validationMetrics"]
@@ -212,6 +243,11 @@ def is_regression(candidate: dict, baseline: dict | None) -> bool:
 
 
 def write_promoted_csv(texts, labels, types):
+    """Overwrites the canonical training CSV (Hinglish_Symptoms_V28.csv)
+    with the merged+deduped rows that just got promoted -- called by
+    main() ONLY after is_regression() has said the candidate is safe. This
+    is what keeps the committed CSV in sync with what the deployed joblib
+    bundle was actually trained on; don't call it speculatively."""
     with open(CSV_PATH, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.writer(f)
         writer.writerow(["text", "specialist", "type"])
@@ -220,6 +256,9 @@ def write_promoted_csv(texts, labels, types):
 
 
 def write_meta(metrics: dict, training_row_count: int, validation_row_count: int):
+    """Writes model_meta.json for the newly-promoted model -- what
+    api/routes.py's /model-info serves, and what the NEXT retrain run's
+    load_current_meta() will treat as the baseline to beat."""
     now = datetime.now(timezone.utc)
     meta = {
         "modelVersion": now.strftime("%Y-%m-%d-%H%M%S"),

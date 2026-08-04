@@ -1,0 +1,24 @@
+#!/bin/sh
+# Pre-commit hook: runs the fast test suite before allowing a commit.
+#
+# ONE-TIME ACTIVATION (per clone) -- git doesn't use this file until you
+# point it here (it defaults to the untracked .git/hooks/ directory):
+#     git config core.hooksPath .githooks
+#
+# This mirrors the "mandatory tests after any code change" gate CI runs
+# (.github/workflows/deploy-nlp.yml), minus the slower integration tests
+# (those load the real ~35MB model bundle and run in CI instead) so this
+# stays fast enough to run on every commit. See docs/testing.md.
+
+echo "Running test suite before commit (tests/, excluding -m integration)..."
+python -m pytest tests/ -m "not integration" -q
+status=$?
+
+if [ "$status" -ne 0 ]; then
+    echo ""
+    echo "Tests failed -- commit blocked."
+    echo "Fix the failures, or bypass (not recommended) with: git commit --no-verify"
+    exit 1
+fi
+
+exit 0

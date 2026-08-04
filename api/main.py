@@ -21,6 +21,14 @@ MODEL_META_PATH = Path(__file__).resolve().parent.parent / "model_meta.json"
 
 
 def _read_model_version() -> Optional[str]:
+    """Reads just the modelVersion field out of model_meta.json, to stamp
+    onto every /route-symptom response. Called once at startup (see
+    lifespan() below) rather than per-request, since model_meta.json only
+    changes when data_pipeline/retrain_pipeline.py promotes a new model --
+    which always triggers a redeploy (and thus a fresh startup) anyway.
+    Returns None if the file is missing or malformed, so a fresh
+    environment without a trained model yet still boots instead of
+    crashing."""
     try:
         with open(MODEL_META_PATH, encoding="utf-8") as f:
             return json.load(f).get("modelVersion")
@@ -30,6 +38,12 @@ def _read_model_version() -> Optional[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI startup/shutdown hook: loads the trained SymptomClassifier
+    bundle into app.state ONCE when the process starts (not per-request --
+    loading takes ~0.2-2s depending on disk cache), and clears it on
+    shutdown. Route handlers read app.state.classifier (see routes.py);
+    nothing else in this codebase should call SymptomClassifier.load()
+    directly in a request path."""
     app.state.classifier = SymptomClassifier.load(str(MODEL_BUNDLE_PATH))
     app.state.model_version = _read_model_version()
     yield
