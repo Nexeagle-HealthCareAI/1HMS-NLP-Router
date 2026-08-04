@@ -4,5 +4,4 @@ scikit-learn==1.7.1
 pydantic==2.10.3
 pandas==2.3.3
 joblib==1.4.2
-gibberish-detector==0.1.1
 slowapi==0.1.10

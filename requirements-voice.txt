@@ -1,0 +1,12 @@
+# Dependencies for the Voice-to-Text layer (voice/) ONLY -- a client that
+# talks to the FastAPI service over HTTP. The API server itself (requirements.txt)
+# never needs these; only a machine with a microphone running voice/cli.py does.
+#
+# PyAudio needs the PortAudio system library first:
+#   Windows: usually installs from a prebuilt wheel, no extra step needed.
+#   macOS:   brew install portaudio
+#   Linux:   sudo apt-get install portaudio19-dev
+SpeechRecognition==3.10.4
+PyAudio==0.2.14
+indic-transliteration==2.3.59
+requests==2.32.3

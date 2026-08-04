@@ -3,8 +3,9 @@
 Fetches the current CMS-editable training set + production feedback, merges them, trains a
 candidate model, evaluates it against the FROZEN validation_set.csv, and only if it doesn't
 regress vs. the currently-promoted model's recorded metrics, promotes it — regenerating
-../Hinglish_Symptoms_Reference_V3.csv, ../model_meta.json, and
-../symptom_specialist_classifier.joblib (the artifact app.py actually loads at startup).
+../Hinglish_Symptoms_V28.csv, ../model_meta.json, and
+../symptom_specialist_classifier.joblib (the artifact the api/ layer actually loads at startup,
+via nlp_brain.SymptomClassifier.load()).
 
 If the candidate regresses, nothing is written — this script is safe to run repeatedly with
 no effect until there's actually enough good new data to justify a change. The GitHub Actions
@@ -31,19 +32,18 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-import joblib
-
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from Model_1_revised import (  # noqa: E402
-    MODEL_OUT, MATCH_THRESHOLD, clean_text, build_feature_union, evaluate_candidates, best_match,
-)
+from nlp_brain import MODEL_OUT, MATCH_THRESHOLD, SymptomClassifier, clean_text  # noqa: E402
+from nlp_brain.features import build_feature_union  # noqa: E402
+from nlp_brain.matching import best_match  # noqa: E402
+from nlp_brain.training import evaluate_candidates  # noqa: E402
 from specialty_mapping import NEXEAGLE_SPECIALTY_ID_TO_LABEL  # noqa: E402
 from generate_dataset import normalize_for_dedupe  # noqa: E402
 
 HERE = Path(__file__).parent
 REPO_ROOT = HERE.parent
-CSV_PATH = REPO_ROOT / "Hinglish_Symptoms_Reference_V3.csv"
+CSV_PATH = REPO_ROOT / "Hinglish_Symptoms_V28.csv"
 META_PATH = REPO_ROOT / "model_meta.json"
 MODEL_PATH = REPO_ROOT / MODEL_OUT
 VALIDATION_PATH = HERE / "validation_set.csv"
@@ -164,7 +164,7 @@ def load_validation_set():
 
 
 def evaluate(features, clf, train_texts, train_matrix, val_texts, val_labels, threshold: float = MATCH_THRESHOLD):
-    """Mirrors Model_1_revised.predict()'s two-stage logic (cosine-similarity coverage gate,
+    """Mirrors nlp_brain.SymptomClassifier.predict()'s two-stage logic (cosine-similarity coverage gate,
     then classifier) against the frozen validation set. `noMatchRate` covers cases the
     coverage gate rejects outright (never reaches the classifier); `confidentlyWrongRate`
     covers cases that passed the gate but got the wrong specialist -- the more costly failure
@@ -276,15 +276,15 @@ def main():
         print("\nNOT PROMOTED — candidate regresses vs. the currently-promoted model. No files changed.")
         return
 
-    bundle = {
-        "features": features,
-        "model": best_clf,
-        "model_name": best_name,
-        "classes": sorted(set(labels)),
-        "texts": texts,
-        "texts_matrix": X_feats,
-    }
-    joblib.dump(bundle, MODEL_PATH)
+    classifier = SymptomClassifier(
+        features=features,
+        model=best_clf,
+        model_name=best_name,
+        classes=sorted(set(labels)),
+        texts=texts,
+        texts_matrix=X_feats,
+    )
+    classifier.save(str(MODEL_PATH))
     write_promoted_csv(texts, labels, types)
     write_meta(candidate_metrics, len(texts), len(val_texts))
     print(f"\nPROMOTED — {CSV_PATH.name}, {META_PATH.name}, and {MODEL_PATH.name} updated.")

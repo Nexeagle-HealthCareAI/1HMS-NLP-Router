@@ -5,43 +5,71 @@ Dekho / NexEagleWebsite doctor search. Given a free-text query like *"pet mein d
 hai aur sar bhi dukh raha hai"*, routes it to a specialist via TF-IDF (char+word
 n-gram) features and the best of LinearSVC / LogisticRegression / ComplementNB
 (picked by cross-validation at training time). Before trusting a prediction, the
-query is checked for gibberish (character-bigram model) and must have enough
-word-level overlap with a known training example — genuinely unclear or nonsense
-input gets "No matches found." instead of a guess.
+query is checked for gibberish (a dependency-free heuristic) and must have high
+enough cosine similarity to a known training example — genuinely unclear or
+nonsense input gets "No matches found." instead of a guess.
+
+## Architecture: three independent layers
+
+```
+voice/  --HTTP-->  api/  -->  nlp_brain/
+```
+
+- **`nlp_brain/`** — the NLP "Brain". All ML logic: data loading, feature
+  extraction, model selection/CV, the gibberish + cosine-similarity coverage
+  gate, and prediction. `nlp_brain.SymptomClassifier` is its one public
+  entry point (`load()` / `save()` / `predict()` / `train()`) — it owns the
+  joblib bundle schema and the predict pipeline, so neither is duplicated
+  elsewhere. Zero FastAPI/voice/HTTP imports.
+- **`api/`** — the FastAPI layer. HTTP contract + orchestration only: loads
+  one `SymptomClassifier` at startup, translates requests into
+  `classifier.predict()` calls, maps results to NexEagleWebsite's
+  `specialtyId` slugs, and handles cross-cutting HTTP concerns (rate
+  limiting). No ML logic lives here.
+- **`voice/`** — the Voice-to-Text layer: microphone capture (`SpeechRecognition`)
+  and Devanagari→Roman transliteration, followed by an HTTP call into `api/`
+  via `voice.api_client.SymptomRouterClient`. It never imports `nlp_brain`
+  directly — the only way it reaches the Brain is through the FastAPI
+  contract, so it can run on a different machine (one with a mic, none of
+  the ML dependencies) and be developed/tested independently.
+
+Each layer is only ever a caller of the one "below" it — `nlp_brain` doesn't
+know `api` exists, and `api` doesn't know `voice` exists.
 
 ## Contents
 
-- `Model_1_revised.py` — the core router: data loading, training (feature
-  extraction + model selection/CV), the gibberish + word-overlap coverage gate,
-  and `predict()`. Run standalone (`python Model_1_revised.py`) to train, save
-  the joblib bundle, and drop into an interactive prompt.
-- `app.py` — FastAPI wrapper. Loads the pre-trained
-  `symptom_specialist_classifier.joblib` bundle once at process startup and keeps
-  it in memory — it does **not** train from CSV at boot. The bundle (and
-  `model_meta.json`) are produced offline, by `Model_1_revised.main()` or by
-  `data_pipeline/retrain_pipeline.py`.
-- `big.model` — pretrained character-bigram model for the `gibberish-detector`
-  package (trained from a general-English corpus); used for the gibberish
-  pre-check. Regenerate with `gibberish-detector train <corpus.txt> > big.model`
-  if it needs retraining on different text.
+- `nlp_brain/` — see above. Run `python -m nlp_brain.cli train` to train and
+  save `symptom_specialist_classifier.joblib`, `python -m nlp_brain.cli
+  predict "<text>"` for a single query, or `python -m nlp_brain.cli` (no
+  args) for an interactive prompt — all against the trained bundle, no API
+  needed.
+- `api/` — see above. Entry point is `api.main:app`.
+- `voice/` — see above. Entry point is `python -m voice.cli` (needs
+  `requirements-voice.txt` installed and the API already running — set
+  `NLP_API_BASE_URL` if it's not on `http://127.0.0.1:5003`).
 - `symptom_specialist_classifier.joblib` — the trained pipeline (feature
-  extractors + model + label list + raw training texts) that `app.py` loads at
-  startup.
-- `Hinglish_Symptoms_Reference_V3.csv` — the current training dataset (`text,
-  specialist, type` columns).
+  extractors + model + label list + raw training texts + their TF-IDF
+  vectors) that `api/` loads at startup. Produced offline by
+  `nlp_brain.SymptomClassifier.train()` or `data_pipeline/retrain_pipeline.py`.
+- `model_meta.json` — model version / last-retrained time / validation
+  metrics, served as-is by `GET /model-info`. Written only by
+  `data_pipeline/retrain_pipeline.py` on a successful promotion.
+- `Hinglish_Symptoms_V28.csv` — the current training dataset (`text,
+  specialist, type` columns; 31 specialists, ~15.5k rows).
 - `Hinglish_Symptoms_Reference.csv` / `Hinglish_Symptoms_Reference_v2.csv` —
-  earlier dataset versions, kept for reference/audit only; not used at runtime.
-- `data_pipeline/` — fetches CMS-editable training data + production feedback,
-  retrains, evaluates against a frozen validation set, and promotes (rewrites the
-  V3 CSV + `model_meta.json` + the joblib bundle) only if it doesn't regress vs.
-  the currently-promoted model. Not needed at runtime (excluded from the Docker
-  image).
+  earlier dataset versions, still read by `data_pipeline/generate_dataset.py`
+  and `data_pipeline/build_validation_set.py` respectively; not used at
+  runtime or by the active retrain pipeline.
+- `data_pipeline/` — fetches CMS-editable training data + production
+  feedback, retrains via `nlp_brain`, evaluates against a frozen validation
+  set, and promotes (rewrites the V28 CSV + `model_meta.json` + the joblib
+  bundle) only if it doesn't regress vs. the currently-promoted model. Not
+  needed at runtime (excluded from the Docker image).
 
 ## API
 
 - `GET /health` → `{"status": "ok", "ready": true}`
-- `GET /model-info` → contents of `model_meta.json` (model version, last retrain
-  time, validation metrics).
+- `GET /model-info` → contents of `model_meta.json`.
 - `POST /route-symptom` `{"query": "<Hinglish text>"}` →
   ```json
   {
@@ -49,7 +77,7 @@ input gets "No matches found." instead of a guess.
     "noMatch": false,
     "method": "classifier",
     "confidence": 0.93,
-    "modelVersion": "2026-07-22-baseline",
+    "modelVersion": "2026-08-04-083503",
     "raw": {
       "specialist": "Cardiologist (Heart)",
       "matchRatio": 0.93,
@@ -59,28 +87,38 @@ input gets "No matches found." instead of a guess.
     }
   }
   ```
-  `specialtyIds` contains at most one entry (mapped to NexEagleWebsite's own
-  `specialtyId` slugs via `LABEL_TO_NEXEAGLE_SPECIALTY_ID` in
-  `specialty_mapping.py`). `noMatch: true` (with an empty `specialtyIds`) means the
-  input was flagged as gibberish, or didn't sufficiently overlap with any known
-  training example — there is no default-specialist fallback.
+  `specialtyIds` contains at most one entry (mapped via
+  `LABEL_TO_NEXEAGLE_SPECIALTY_ID` in `specialty_mapping.py`). `noMatch: true`
+  (with an empty `specialtyIds`) means the input was flagged as gibberish, or
+  didn't sufficiently overlap with any known training example — there is no
+  default-specialist fallback. Rate-limited to 30 requests/minute per IP.
 
 ## Local development
 
 ```bash
 pip install -r requirements.txt
-python Model_1_revised.py   # trains and saves symptom_specialist_classifier.joblib
-uvicorn app:app --reload --port 5003
+python -m nlp_brain.cli train      # trains and saves symptom_specialist_classifier.joblib
+uvicorn api.main:app --reload --port 5003
+```
+
+To also run the voice client against it:
+
+```bash
+pip install -r requirements-voice.txt
+python -m voice.cli
 ```
 
 ## Deployment
 
-`.github/workflows/deploy-nlp.yml` builds a Docker image, pushes it to GHCR, and
-deploys to the same dev/prod VMs the rest of EasyHMS runs on — `develop` branch →
-Dev VM (`151.185.45.77:5003`), `main` branch → Prod VM (`151.185.45.67:5003`), both
-via `docker run --network host` matching the other backend services' convention.
+`.github/workflows/deploy-nlp.yml` builds a Docker image (containing only
+`nlp_brain/` + `api/` — `voice/` is a separate client, never part of the
+server image), pushes it to GHCR, and deploys to the same dev/prod VMs the
+rest of EasyHMS runs on — `develop` branch → Dev VM (`151.185.45.77:5003`),
+`main` branch → Prod VM (`151.185.45.67:5003`), both via `docker run
+--network host` matching the other backend services' convention.
 
-`.github/workflows/retrain.yml` runs nightly (and on demand, via workflow_dispatch)
-to retrain against the latest CMS data + production feedback, and auto-promotes
-the result — which redeploys automatically via `deploy-nlp.yml` — only if it
-doesn't regress against the currently-deployed model's recorded validation metrics.
+`.github/workflows/retrain.yml` runs nightly (and on demand, via
+workflow_dispatch) to retrain against the latest CMS data + production
+feedback, and auto-promotes the result — which redeploys automatically via
+`deploy-nlp.yml` — only if it doesn't regress against the currently-deployed
+model's recorded validation metrics.
