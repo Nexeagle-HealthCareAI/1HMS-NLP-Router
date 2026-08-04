@@ -17,6 +17,7 @@ from .candidates import build_candidates, ranked_labels
 from .config import CANDIDATE_MARGIN, DATA_PATH, MATCH_THRESHOLD, MAX_CANDIDATES, MODEL_OUT, RANDOM_STATE
 from .features import build_feature_union
 from .matching import best_match, normalize_matrix
+from .segmentation import split_segments
 from .text_utils import clean_text, is_gibberish
 from .training import evaluate_candidates, load_data
 
@@ -141,29 +142,69 @@ class SymptomClassifier:
         return classifier, metrics
 
     def predict(self, text: str, threshold: float = MATCH_THRESHOLD) -> PredictionResult:
-        """Predict a specialist for a piece of Hinglish symptom text.
+        """Predict specialist(s) for a piece of Hinglish symptom text.
+
+        A sentence naming more than one problem ("pet mein dard hai aur sar
+        bhi dukh raha hai") is split into segments (segmentation.split_segments)
+        and each is run through _predict_segment() independently; their
+        candidate lists are merged (deduped, in first-mention order) into the
+        final result. A plain single-symptom sentence is just the one-segment
+        case of the same path -- nothing here special-cases it.
+        """
+        cleaned = clean_text(text)
+        segments = split_segments(cleaned)
+        segment_results = [self._predict_segment(seg, threshold) for seg in segments]
+
+        candidates: list = []
+        source_by_label: dict = {}
+        for result in segment_results:
+            for label in result.candidates:
+                if label not in candidates:
+                    candidates.append(label)
+                    source_by_label[label] = result
+
+        if not candidates:
+            # No segment cleared the gibberish/coverage bar -- report using the
+            # first segment's diagnostics (match_ratio/closest_known_example/
+            # flagged_gibberish) so callers still have something to show/debug,
+            # same as the single-segment path always did.
+            first = segment_results[0]
+            return PredictionResult(
+                None, [], first.match_ratio, first.closest_known_example,
+                first.flagged_gibberish, True,
+            )
+
+        primary = source_by_label[candidates[0]]
+        return PredictionResult(
+            candidates[0], candidates, primary.match_ratio,
+            primary.closest_known_example, False, False,
+        )
+
+    def _predict_segment(self, segment: str, threshold: float) -> PredictionResult:
+        """The single-segment pipeline predict() used to run directly on the
+        whole query -- now run once per segment and merged by predict().
+        `segment` is already clean_text()-passed (split_segments() operates
+        on already-cleaned input), so no re-cleaning here.
 
         Two checks run before the classifier's prediction is trusted:
           1. Gibberish check (text_utils.is_gibberish) -- catches
              keyboard-mash input like "dfgskjbnskfjdn".
           2. Coverage check (matching.best_match): cosine similarity between
-             the input's TF-IDF vector and every known training example's --
+             the segment's TF-IDF vector and every known training example's --
              if the closest known example isn't similar enough (below
              `threshold`), the classifier's guess isn't trusted.
         """
-        cleaned = clean_text(text)
-
-        if len(cleaned) < 3:
+        if len(segment) < 3:
             return PredictionResult(None, [], None, None, False, True)
 
-        if is_gibberish(cleaned):
+        if is_gibberish(segment):
             return PredictionResult(None, [], None, None, True, True)
 
-        ratio, closest = best_match(cleaned, self.features, self._texts_matrix_normalized, self.texts)
+        ratio, closest = best_match(segment, self.features, self._texts_matrix_normalized, self.texts)
         if ratio < threshold:
             return PredictionResult(None, [], ratio, closest, False, True)
 
-        feats = self.features.transform([cleaned])
+        feats = self.features.transform([segment])
         ranked = ranked_labels(self.model, feats)
         candidates = build_candidates(ranked, CANDIDATE_MARGIN, MAX_CANDIDATES)
         return PredictionResult(candidates[0], candidates, ratio, closest, False, False)

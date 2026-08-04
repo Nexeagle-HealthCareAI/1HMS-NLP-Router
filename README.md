@@ -2,12 +2,18 @@
 
 Hinglish (Hindi-English code-mixed) symptom → specialist classifier for the Doctor
 Dekho / NexEagleWebsite doctor search. Given a free-text query like *"pet mein dard
-hai aur sar bhi dukh raha hai"*, routes it to a specialist via TF-IDF (char+word
-n-gram) features and the best of LinearSVC / LogisticRegression / ComplementNB
-(picked by cross-validation at training time). Before trusting a prediction, the
-query is checked for gibberish (a dependency-free heuristic) and must have high
-enough cosine similarity to a known training example — genuinely unclear or
-nonsense input gets "No matches found." instead of a guess.
+hai aur sar bhi dukh raha hai"* (which names two problems — stomach pain AND a
+headache), splits it into per-symptom segments (`nlp_brain/segmentation.py`) and
+routes each independently via TF-IDF (char+word n-gram) features and the best of
+LinearSVC / LogisticRegression / ComplementNB (picked by cross-validation at
+training time), merging the results into an ordered, deduped specialist list —
+one query can come back with more than one recommended specialist, both because
+of multi-symptom segmentation and because a single segment's own close runner-up
+gets surfaced too (`nlp_brain/candidates.py`) rather than forcing an overconfident
+single pick. Before trusting a prediction, each segment is checked for gibberish
+(a dependency-free heuristic) and must have high enough cosine similarity to a
+known training example — genuinely unclear or nonsense input gets "No matches
+found." instead of a guess.
 
 ## Architecture: three independent layers + one shared utility
 
@@ -84,6 +90,8 @@ by two of them.
   each: [nlp_brain.md](docs/nlp_brain.md), [api.md](docs/api.md),
   [voice.md](docs/voice.md), [speech.md](docs/speech.md),
   [data_pipeline.md](docs/data_pipeline.md), [testing.md](docs/testing.md).
+  Ops runbooks (manual, VM-side steps — not part of the CI/CD pipeline):
+  [OPS-HTTPS-SETUP.md](docs/OPS-HTTPS-SETUP.md).
 
 ## API
 
