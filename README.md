@@ -84,6 +84,8 @@ by two of them.
   each: [nlp_brain.md](docs/nlp_brain.md), [api.md](docs/api.md),
   [voice.md](docs/voice.md), [speech.md](docs/speech.md),
   [data_pipeline.md](docs/data_pipeline.md), [testing.md](docs/testing.md).
+  Ops runbooks (manual, VM-side steps — not part of the CI/CD pipeline):
+  [OPS-HTTPS-SETUP.md](docs/OPS-HTTPS-SETUP.md).
 
 ## API
 
