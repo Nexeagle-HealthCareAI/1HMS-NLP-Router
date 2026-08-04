@@ -26,6 +26,25 @@ RANDOM_STATE = 42
 # (see nlp_brain.cli's calibration check).
 MATCH_THRESHOLD = 0.25
 
+# How much worse (in ranked-confidence score) a runner-up specialist is
+# allowed to be than the top pick and still get surfaced alongside it,
+# instead of showing only the single top guess. Ported from the original
+# prototype's calibrated value (Model_1_Doctor_Dekho.py, deleted in 25df289
+# during the O(N^2) perf rewrite that also dropped this mechanism) which
+# tuned it against a single LogisticRegression model's predict_proba output.
+# nlp_brain.candidates.ranked_labels() now also has to handle LinearSVC
+# (no predict_proba -- falls back to a softmax of decision_function), so
+# this margin's exact calibration should be re-checked if cross-validation
+# starts consistently picking LinearSVC over the probability-based models
+# (see nlp_brain.training.evaluate_candidates).
+CANDIDATE_MARGIN = 0.12
+
+# Hard cap on how many specialists a single prediction can surface, even if
+# more than this many fall within CANDIDATE_MARGIN of the top score --
+# keeps an off-calibration margin from ever turning one query into "here's
+# half our specialist list."
+MAX_CANDIDATES = 3
+
 NO_MATCH_MESSAGE = "No matches found."
 
 # Sample queries to sanity-check a freshly trained model on.

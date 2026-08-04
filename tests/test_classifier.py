@@ -39,7 +39,7 @@ class TestPredict:
 
     def test_gibberish_input_is_rejected_before_reaching_the_classifier(self, tiny_classifier):
         result = tiny_classifier.predict("zxcvbnmlkjhgfdsaqwerty")
-        assert result == PredictionResult(None, None, None, True, True)
+        assert result == PredictionResult(None, [], None, None, True, True)
 
     def test_too_short_input_is_rejected_without_being_called_gibberish(self, tiny_classifier):
         # Distinguishes "nothing to work with" from "flagged as nonsense" --
@@ -65,6 +65,19 @@ class TestPredict:
         assert result.match_ratio is not None
         assert 0.0 <= result.match_ratio <= 1.0
         assert result.closest_known_example is not None
+
+    def test_candidates_starts_with_the_specialist_and_is_bounded(self, tiny_classifier):
+        from nlp_brain.config import MAX_CANDIDATES
+
+        result = tiny_classifier.predict("dant mein bahut dard ho raha hai kaafi dino se")
+        assert result.candidates[0] == result.specialist
+        assert len(result.candidates) <= MAX_CANDIDATES
+        assert len(result.candidates) == len(set(result.candidates))  # no duplicates
+
+    def test_no_match_and_gibberish_predictions_have_no_candidates(self, tiny_classifier):
+        assert tiny_classifier.predict("zxcvbnmlkjhgfdsaqwerty").candidates == []
+        assert tiny_classifier.predict("what is the weather forecast for tomorrow").candidates == []
+        assert tiny_classifier.predict("").candidates == []
 
 
 class TestSaveLoadRoundTrip:

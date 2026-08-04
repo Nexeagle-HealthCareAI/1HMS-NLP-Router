@@ -8,9 +8,9 @@ back into our internal training labels) can import it without pulling in FastAPI
 # Maps our internal 32-class taxonomy to NexEagleWebsite's own `specialtyId` slugs
 # (src/data/patient.ts `specialties` array). NexEagleWebsite already distinguishes the
 # medical-vs-surgical siblings (neurology/neurosurgery, cardiology/cardiothoracicsurgery)
-# that the standalone router's MODEL_OUTPUT_MERGES collapses for single-label accuracy —
-# app.py trains WITHOUT that collapse and lets the top-k candidate mechanism surface both
-# sibling specialties when genuinely ambiguous, instead of losing the distinction.
+# that the original prototype's MODEL_OUTPUT_MERGES collapsed for single-label accuracy —
+# nlp_brain trains WITHOUT that collapse and lets nlp_brain/candidates.py's build_candidates()
+# surface both sibling specialties when genuinely ambiguous, instead of losing the distinction.
 LABEL_TO_NEXEAGLE_SPECIALTY_ID = {
     "General Physician": "general",
     "Paediatrician": "pediatrics",

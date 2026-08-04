@@ -64,17 +64,22 @@ def model_info():
 def _to_response(result: PredictionResult, model_version: Optional[str]) -> RouteResponse:
     """Maps a PredictionResult (nlp_brain's internal representation) onto
     the RouteResponse contract callers actually depend on -- in particular,
-    translating the Brain's internal specialist label (e.g. "Cardiologist
-    (Heart)") into NexEagleWebsite's specialtyId slug (e.g. "cardiology")
-    via specialty_mapping.py. If a label has no corresponding slug (e.g.
-    the training data introduced a new/renamed label that specialty_mapping.py
-    hasn't caught up with yet), specialtyIds comes back empty rather than
-    raising -- the raw.specialist field still carries the internal label for
-    debugging."""
+    translating the Brain's internal specialist label(s) (e.g. "Cardiologist
+    (Heart)") into NexEagleWebsite's specialtyId slug(s) (e.g. "cardiology")
+    via specialty_mapping.py. specialtyIds preserves result.candidates'
+    order (most-confident first) and may have more than one entry when a
+    close runner-up was surfaced (see nlp_brain.candidates.build_candidates)
+    -- deduped by slug rather than by internal label, since two internal
+    labels can map to the same NexEagleWebsite specialty (see
+    specialty_mapping.py's GI/Surgical Gastroenterologist note). A candidate
+    label with no corresponding slug (e.g. the training data introduced a
+    new/renamed label that specialty_mapping.py hasn't caught up with yet)
+    is skipped rather than raising -- the raw.specialist field still carries
+    the internal top-pick label for debugging."""
     specialty_ids: list[str] = []
-    if result.specialist:
-        slug = LABEL_TO_NEXEAGLE_SPECIALTY_ID.get(result.specialist)
-        if slug:
+    for label in result.candidates:
+        slug = LABEL_TO_NEXEAGLE_SPECIALTY_ID.get(label)
+        if slug and slug not in specialty_ids:
             specialty_ids.append(slug)
 
     return RouteResponse(

@@ -106,10 +106,14 @@ by two of them.
     }
   }
   ```
-  `specialtyIds` contains at most one entry (mapped via
-  `LABEL_TO_NEXEAGLE_SPECIALTY_ID` in `specialty_mapping.py`). `noMatch: true`
-  (with an empty `specialtyIds`) means the input was flagged as gibberish, or
-  didn't sufficiently overlap with any known training example — there is no
+  `specialtyIds` is ordered most-confident-first (mapped via
+  `LABEL_TO_NEXEAGLE_SPECIALTY_ID` in `specialty_mapping.py`) and normally
+  has one entry, but may have up to `MAX_CANDIDATES` (3) when a runner-up
+  specialist's confidence is within `CANDIDATE_MARGIN` of the top pick —
+  see `nlp_brain/candidates.py` — rather than forcing an overconfident
+  single guess on a genuinely ambiguous query. `noMatch: true` (with an
+  empty `specialtyIds`) means the input was flagged as gibberish, or didn't
+  sufficiently overlap with any known training example — there is no
   default-specialist fallback. Rate-limited to 30 requests/minute per IP.
 - `POST /route-symptom-audio` — same as above, but takes an uploaded audio
   recording (`multipart/form-data`, field name `audio`, any format `ffmpeg`

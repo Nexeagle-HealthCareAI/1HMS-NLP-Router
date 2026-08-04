@@ -7,7 +7,11 @@ from .config import DATA_PATH, GIBBERISH_SAMPLE_QUERIES, MODEL_OUT, NO_MATCH_MES
 
 
 def _format(result) -> str:
-    return result.specialist if result.specialist else NO_MATCH_MESSAGE
+    if not result.specialist:
+        return NO_MATCH_MESSAGE
+    if len(result.candidates) > 1:
+        return " / ".join(result.candidates)
+    return result.specialist
 
 
 def train(data_path: str = DATA_PATH, model_out: str = MODEL_OUT) -> None:
@@ -43,6 +47,8 @@ def predict_one(text: str, model_out: str = MODEL_OUT) -> None:
     result = classifier.predict(text)
     if result.specialist:
         print(f"Predicted specialist: {result.specialist} (similarity: {result.match_ratio:.2f})")
+        if len(result.candidates) > 1:
+            print(f"Close runner-up(s): {', '.join(result.candidates[1:])}")
     elif result.flagged_gibberish:
         print("Flagged as gibberish.")
     else:
@@ -65,6 +71,8 @@ def interactive(model_out: str = MODEL_OUT) -> None:
         result = classifier.predict(text)
         if result.specialist:
             print(f"Predicted specialist: {result.specialist}")
+            if len(result.candidates) > 1:
+                print(f"Close runner-up(s): {', '.join(result.candidates[1:])}")
         elif result.flagged_gibberish:
             print("Sorry, that didn't look like a symptom description.")
         else:

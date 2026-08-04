@@ -96,6 +96,46 @@ class TestRouteSymptom:
         })
         assert response.json()["specialtyIds"] == ["dentistry"]
 
+    def test_multiple_candidates_produce_multiple_ordered_specialty_ids(self, api_client, monkeypatch, tiny_classifier):
+        from nlp_brain.classifier import PredictionResult
+        import api.routes as routes_module
+
+        monkeypatch.setattr(
+            tiny_classifier, "predict",
+            lambda text: PredictionResult(
+                "Cardiologist", ["Cardiologist", "Dentist"], 0.5, "some known text", False, False,
+            ),
+        )
+        monkeypatch.setattr(
+            routes_module, "LABEL_TO_NEXEAGLE_SPECIALTY_ID",
+            {"Cardiologist": "cardiology", "Dentist": "dentistry"},
+        )
+        response = api_client.post("/route-symptom", json={"query": "irrelevant, predict() is mocked"})
+        assert response.json()["specialtyIds"] == ["cardiology", "dentistry"]
+
+    def test_candidate_labels_mapping_to_the_same_slug_are_deduped(self, api_client, monkeypatch, tiny_classifier):
+        # GI/Surgical Gastroenterologist and General Surgeon both map to
+        # "generalsurgery" (see specialty_mapping.py) -- a close-margin
+        # candidate pair spanning that collision must not surface the same
+        # slug twice.
+        from nlp_brain.classifier import PredictionResult
+        import api.routes as routes_module
+
+        monkeypatch.setattr(
+            tiny_classifier, "predict",
+            lambda text: PredictionResult(
+                "General Surgeon",
+                ["General Surgeon", "GI/Surgical Gastroenterologist"],
+                0.5, "some known text", False, False,
+            ),
+        )
+        monkeypatch.setattr(
+            routes_module, "LABEL_TO_NEXEAGLE_SPECIALTY_ID",
+            {"General Surgeon": "generalsurgery", "GI/Surgical Gastroenterologist": "generalsurgery"},
+        )
+        response = api_client.post("/route-symptom", json={"query": "irrelevant, predict() is mocked"})
+        assert response.json()["specialtyIds"] == ["generalsurgery"]
+
     def test_unmapped_specialist_label_yields_empty_specialty_ids(self, api_client, monkeypatch):
         # If the training data ever introduces a label with no corresponding
         # NexEagleWebsite specialtyId, callers must get an empty list back,

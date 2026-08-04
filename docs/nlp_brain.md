@@ -22,7 +22,7 @@ from nlp_brain import SymptomClassifier, PredictionResult, MODEL_OUT, MATCH_THRE
 | `SymptomClassifier.train(data_path)` | You edited the training CSV, or want to try a new dataset. Returns `(classifier, held_out_metrics)`. |
 | `SymptomClassifier.load(path)` | Loading an already-trained bundle — what `api/main.py`'s startup does, and what you'd do in a script/notebook. |
 | `classifier.save(path)` | Persisting a trained classifier — the ONLY place the joblib bundle's schema is defined (`.train()`/`.load()`/`data_pipeline/retrain_pipeline.py` all go through this). |
-| `classifier.predict(text)` | Getting a prediction. Returns a `PredictionResult(specialist, match_ratio, closest_known_example, flagged_gibberish, no_match)`. |
+| `classifier.predict(text)` | Getting a prediction. Returns a `PredictionResult(specialist, candidates, match_ratio, closest_known_example, flagged_gibberish, no_match)` — `candidates` is the ordered, deduped shortlist `specialist` was taken from (see `candidates.py` below). |
 
 ```python
 classifier = SymptomClassifier.load()
@@ -39,10 +39,11 @@ else:
 
 | File | Responsibility | Touch it when... |
 |---|---|---|
-| `config.py` | `DATA_PATH`, `MODEL_OUT`, `MATCH_THRESHOLD`, sample queries | Changing the canonical dataset path, or recalibrating the coverage-gate threshold (see the big comment there — don't change `MATCH_THRESHOLD` without re-running the calibration check first). |
+| `config.py` | `DATA_PATH`, `MODEL_OUT`, `MATCH_THRESHOLD`, `CANDIDATE_MARGIN`, `MAX_CANDIDATES`, sample queries | Changing the canonical dataset path, or recalibrating the coverage-gate threshold or candidate margin (see the big comments there — don't change either without re-running the calibration check first). |
 | `text_utils.py` | `clean_text()`, `is_gibberish()` — pure functions, no model | Adding a new gibberish-detection rule (keyboard mash, repeated chars, etc.). |
 | `features.py` | `build_feature_union()` — the TF-IDF feature extractor | Changing n-gram ranges, adding a new feature type, tuning `min_df`. |
 | `matching.py` | `normalize_matrix()`, `best_match()` — the cosine-similarity coverage gate | Changing HOW "is this query similar to something we've seen" is computed. See the module docstring for the perf history here — don't call `sklearn.metrics.pairwise.cosine_similarity()` directly against a raw (non-pre-normalized) corpus matrix inside a per-request path; that regressed `/route-symptom` to ~50ms/request once. |
+| `candidates.py` | `ranked_labels()`, `build_candidates()` — expands a single top pick into a close-margin shortlist | Changing how many candidates get surfaced, or how a close runner-up is decided (`CANDIDATE_MARGIN`/`MAX_CANDIDATES` in `config.py`). |
 | `training.py` | `load_data()`, `evaluate_candidates()` | Adding a new candidate classifier algorithm to compare (edit the `candidates` dict in `evaluate_candidates`), or changing CSV validation/cleaning rules. |
 | `classifier.py` | `SymptomClassifier`, `PredictionResult` | Changing what a prediction returns, or the joblib bundle's schema. |
 | `cli.py` | `python -m nlp_brain.cli [train\|predict "<text>"\|interactive]` | You want a script/REPL entry point without spinning up the API. |

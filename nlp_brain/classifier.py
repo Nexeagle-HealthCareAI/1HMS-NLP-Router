@@ -13,7 +13,8 @@ import joblib
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
 
-from .config import DATA_PATH, MATCH_THRESHOLD, MODEL_OUT, RANDOM_STATE
+from .candidates import build_candidates, ranked_labels
+from .config import CANDIDATE_MARGIN, DATA_PATH, MATCH_THRESHOLD, MAX_CANDIDATES, MODEL_OUT, RANDOM_STATE
 from .features import build_feature_union
 from .matching import best_match, normalize_matrix
 from .text_utils import clean_text, is_gibberish
@@ -23,6 +24,11 @@ from .training import evaluate_candidates, load_data
 @dataclass
 class PredictionResult:
     specialist: Optional[str]
+    # Ordered, deduped shortlist of specialists worth showing -- candidates[0]
+    # is always `specialist` when it's set. Has more than one entry only when
+    # a runner-up's ranked-confidence score is within CANDIDATE_MARGIN of the
+    # top pick (see nlp_brain.candidates.build_candidates); [] when no_match.
+    candidates: list
     match_ratio: Optional[float]
     closest_known_example: Optional[str]
     flagged_gibberish: bool
@@ -148,15 +154,16 @@ class SymptomClassifier:
         cleaned = clean_text(text)
 
         if len(cleaned) < 3:
-            return PredictionResult(None, None, None, False, True)
+            return PredictionResult(None, [], None, None, False, True)
 
         if is_gibberish(cleaned):
-            return PredictionResult(None, None, None, True, True)
+            return PredictionResult(None, [], None, None, True, True)
 
         ratio, closest = best_match(cleaned, self.features, self._texts_matrix_normalized, self.texts)
         if ratio < threshold:
-            return PredictionResult(None, ratio, closest, False, True)
+            return PredictionResult(None, [], ratio, closest, False, True)
 
         feats = self.features.transform([cleaned])
-        pred = self.model.predict(feats)[0]
-        return PredictionResult(pred, ratio, closest, False, False)
+        ranked = ranked_labels(self.model, feats)
+        candidates = build_candidates(ranked, CANDIDATE_MARGIN, MAX_CANDIDATES)
+        return PredictionResult(candidates[0], candidates, ratio, closest, False, False)
