@@ -8,8 +8,9 @@ API_BASE_URL = os.environ.get("NLP_API_BASE_URL", "http://127.0.0.1:5003")
 
 # Language hint passed to the speech recognizer. "hi-IN" gives the most
 # accurate transcription for Hindi/Hinglish speech, but always comes back in
-# Devanagari script -- transliteration.devanagari_to_roman() converts it
-# afterward to match the Roman-script Hinglish the NLP Brain was trained on.
+# Devanagari script -- speech.devanagari_to_roman() converts it afterward
+# (inside speech.transcribe_audio_data(), called from speech_to_text.py) to
+# match the Roman-script Hinglish the NLP Brain was trained on.
 SPEECH_LANGUAGE = "hi-IN"
 
 # Phrases that tell the mic to stop listening -- matched as an exact match on

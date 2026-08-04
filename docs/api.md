@@ -14,8 +14,8 @@ Entry point: `api.main:app` — run it with `uvicorn api.main:app`.
 | File | Responsibility | Touch it when... |
 |---|---|---|
 | `main.py` | Creates the `FastAPI` app, wires the `lifespan` (loads the classifier once at startup), attaches the rate limiter | Changing how/when the model is loaded, or adding another cross-cutting concern (auth, CORS, etc. — see the security note in `docs/testing.md`'s caveats). |
-| `routes.py` | The three endpoints; translates `PredictionResult` → `RouteResponse` | Adding a new endpoint, or changing what `/route-symptom` returns. |
-| `schemas.py` | `RouteRequest`/`RouteResponse` pydantic models, `MAX_QUERY_LENGTH` | Changing the request/response contract NexEagleWebsite and `voice/` depend on. |
+| `routes.py` | The four endpoints; translates `PredictionResult` → `RouteResponse` | Adding a new endpoint, or changing what `/route-symptom`/`/route-symptom-audio` return. |
+| `schemas.py` | Request/response pydantic models, `MAX_QUERY_LENGTH`, `MAX_AUDIO_BYTES` | Changing the request/response contract NexEagleWebsite and `voice/` depend on. |
 | `rate_limit.py` | The shared `slowapi.Limiter` instance | Changing the rate limit (currently 30/min per IP, set in `routes.py`'s `@limiter.limit("30/minute")` decorator) or the key function (currently raw client IP — see the caveat in `main.py`'s comment about reverse proxies). |
 
 ## Endpoints
@@ -58,6 +58,42 @@ true` with empty `specialtyIds` means gibberish or "too dissimilar from
 anything trained on" — there is deliberately no default-specialist
 fallback. Rate-limited to 30 requests/minute per client IP; a `429` means
 the caller needs to back off, not retry immediately.
+
+### `POST /route-symptom-audio`
+The voice counterpart: accepts an uploaded audio recording instead of text,
+transcribes + transliterates it server-side (see
+[docs/speech.md](speech.md)), then routes it exactly like `/route-symptom`.
+For a client that records its own audio (e.g. a browser's `MediaRecorder`
+or a mobile app) rather than running Python against a live microphone —
+that's what `voice/`'s own CLI does instead.
+
+```
+POST /route-symptom-audio
+Content-Type: multipart/form-data; boundary=...
+
+audio: <the recording, any format ffmpeg can decode>
+```
+Response is `RouteResponse` plus one extra field:
+```json
+{
+  "transcript": "Dant mein bahut dard hai",
+  "specialtyIds": ["dentistry"],
+  "noMatch": false,
+  "...": "... (same as /route-symptom)"
+}
+```
+`transcript` is `null` when nothing intelligible could be transcribed
+(`noMatch: true` in that case, same as an unclear text query — not an error
+response). Show it to the user so they can see/correct what the server
+heard before trusting the routing decision.
+
+Max upload size 10MB (`413` if exceeded). Rate-limited tighter than the
+text endpoint — **10 requests/minute** per IP, not 30 — since decoding
+audio + calling the speech-recognition service is real work on top of the
+same classification cost `/route-symptom` already pays. Error responses:
+`400` (unrecognizable audio format), `502` (speech service failed, e.g.
+network issue), `503` (transcription unavailable on this server, e.g.
+`ffmpeg` not installed — an operational problem, not the caller's fault).
 
 ## Common recipes
 

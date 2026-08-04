@@ -9,10 +9,13 @@ query is checked for gibberish (a dependency-free heuristic) and must have high
 enough cosine similarity to a known training example — genuinely unclear or
 nonsense input gets "No matches found." instead of a guess.
 
-## Architecture: three independent layers
+## Architecture: three independent layers + one shared utility
 
 ```
 voice/  --HTTP-->  api/  -->  nlp_brain/
+              \              /
+               \            /
+                >  speech/ <
 ```
 
 - **`nlp_brain/`** — the NLP "Brain". All ML logic: data loading, feature
@@ -25,16 +28,24 @@ voice/  --HTTP-->  api/  -->  nlp_brain/
   one `SymptomClassifier` at startup, translates requests into
   `classifier.predict()` calls, maps results to NexEagleWebsite's
   `specialtyId` slugs, and handles cross-cutting HTTP concerns (rate
-  limiting). No ML logic lives here.
-- **`voice/`** — the Voice-to-Text layer: microphone capture (`SpeechRecognition`)
-  and Devanagari→Roman transliteration, followed by an HTTP call into `api/`
-  via `voice.api_client.SymptomRouterClient`. It never imports `nlp_brain`
-  directly — the only way it reaches the Brain is through the FastAPI
-  contract, so it can run on a different machine (one with a mic, none of
-  the ML dependencies) and be developed/tested independently.
+  limiting). No ML logic lives here. Also exposes `POST /route-symptom-audio`
+  for clients that record their own audio (browser, mobile app) and need
+  server-side transcription — see `speech/` below.
+- **`voice/`** — the Voice-to-Text layer: live microphone capture, followed
+  by an HTTP call into `api/` via `voice.api_client.SymptomRouterClient`. It
+  never imports `nlp_brain` directly — the only way it reaches the Brain is
+  through the FastAPI contract, so it can run on a different machine (one
+  with a mic, none of the ML dependencies) and be developed/tested
+  independently.
+- **`speech/`** — shared transcription + Devanagari→Roman transliteration,
+  used by both `voice/` (live mic audio) and `api/` (uploaded audio). Exists
+  as its own package specifically so neither `voice/` nor `api/` has to
+  depend on the other just to share this logic.
 
-Each layer is only ever a caller of the one "below" it — `nlp_brain` doesn't
-know `api` exists, and `api` doesn't know `voice` exists.
+Each of `voice/`/`api/`/`nlp_brain/` is only ever a caller of the one
+"below" it — `nlp_brain` doesn't know `api` exists, and `api` doesn't know
+`voice` exists. `speech/` depends on none of the three and is depended on
+by two of them.
 
 ## Contents
 
@@ -47,6 +58,8 @@ know `api` exists, and `api` doesn't know `voice` exists.
 - `voice/` — see above. Entry point is `python -m voice.cli` (needs
   `requirements-voice.txt` installed and the API already running — set
   `NLP_API_BASE_URL` if it's not on `http://127.0.0.1:5003`).
+- `speech/` — see above. Not runnable standalone; a library used by `voice/`
+  and `api/`.
 - `symptom_specialist_classifier.joblib` — the trained pipeline (feature
   extractors + model + label list + raw training texts + their TF-IDF
   vectors) that `api/` loads at startup. Produced offline by
@@ -69,8 +82,8 @@ know `api` exists, and `api` doesn't know `voice` exists.
   [Testing](#testing) below and [docs/testing.md](docs/testing.md)).
 - `docs/` — one page per layer, with a module map and common recipes for
   each: [nlp_brain.md](docs/nlp_brain.md), [api.md](docs/api.md),
-  [voice.md](docs/voice.md), [data_pipeline.md](docs/data_pipeline.md),
-  [testing.md](docs/testing.md).
+  [voice.md](docs/voice.md), [speech.md](docs/speech.md),
+  [data_pipeline.md](docs/data_pipeline.md), [testing.md](docs/testing.md).
 
 ## API
 
@@ -98,6 +111,14 @@ know `api` exists, and `api` doesn't know `voice` exists.
   (with an empty `specialtyIds`) means the input was flagged as gibberish, or
   didn't sufficiently overlap with any known training example — there is no
   default-specialist fallback. Rate-limited to 30 requests/minute per IP.
+- `POST /route-symptom-audio` — same as above, but takes an uploaded audio
+  recording (`multipart/form-data`, field name `audio`, any format `ffmpeg`
+  can decode) instead of text, transcribes + transliterates it server-side,
+  and returns the same shape plus a `transcript` field. For a browser
+  (`MediaRecorder`) or mobile client, not for Python code with a live mic —
+  see [docs/api.md](docs/api.md) and [docs/speech.md](docs/speech.md) for
+  the full contract, error modes, and size/rate limits (tighter than the
+  text endpoint: 10MB / 10 requests-per-minute).
 
 ## Local development
 
@@ -131,9 +152,11 @@ git config core.hooksPath .githooks   # one-time, activates the local pre-commit
 
 ## Deployment
 
-`.github/workflows/deploy-nlp.yml` builds a Docker image (containing only
-`nlp_brain/` + `api/` — `voice/` is a separate client, never part of the
-server image), pushes it to GHCR, and deploys to the same dev/prod VMs the
+`.github/workflows/deploy-nlp.yml` builds a Docker image (containing
+`nlp_brain/` + `api/` + `speech/`, plus the `ffmpeg` system package `speech/`
+needs for audio format conversion — `voice/` is a separate client, never
+part of the server image), pushes it to GHCR, and deploys to the same
+dev/prod VMs the
 rest of EasyHMS runs on — `develop` branch → Dev VM (`151.185.45.77:5003`),
 `main` branch → Prod VM (`151.185.45.67:5003`), both via `docker run
 --network host` matching the other backend services' convention.

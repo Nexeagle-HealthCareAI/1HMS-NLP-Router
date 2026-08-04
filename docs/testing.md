@@ -39,8 +39,9 @@ once per session) rather than the tests themselves.
 | `tests/test_text_utils.py` | `clean_text()`, `is_gibberish()` — pure functions. |
 | `tests/test_matching.py` | `normalize_matrix()`, `best_match()` — the coverage gate, on small hand-built matrices. |
 | `tests/test_classifier.py` | `SymptomClassifier`: train/predict/save/load, plus `@pytest.mark.integration` tests against the real committed bundle. |
-| `tests/test_api.py` | Every `api/` endpoint via a `TestClient`, including the query length limit and rate limit. |
-| `tests/test_voice.py` | `is_stop_command()`, `SymptomRouterClient` (mocked HTTP), plus skip-if-not-installed tests for the optional STT/transliteration deps. |
+| `tests/test_api.py` | Every `api/` endpoint via a `TestClient`, including `/route-symptom-audio` (transcription mocked), the query length/audio size limits, and both rate limits. |
+| `tests/test_voice.py` | `is_stop_command()`, `SymptomRouterClient` (mocked HTTP), `listen_from_microphone()`'s no-mic-available path (mocked). |
+| `tests/test_speech.py` | `devanagari_to_roman()`, `transcribe_audio_data()`/`transcribe_audio_file()` (recognizer mocked), plus one real-`ffmpeg` test that self-skips if `ffmpeg` isn't installed. |
 | `tests/test_retrain_pipeline.py` | `feedback_to_rows()`, `merge_rows()`, `is_regression()` — the pure decision logic, not the live CMSAPI fetch. |
 | `tests/test_performance.py` | Latency regression guard — see below. |
 
@@ -86,6 +87,16 @@ once per session) rather than the tests themselves.
 - `voice.speech_to_text.listen_from_microphone()`'s actual audio capture —
   no microphone in CI. The "no mic available" degradation path IS tested
   (mocked `OSError`).
+- `speech.transcribe_audio_file()`'s real `ffmpeg` conversion in the
+  default test run — needs the `ffmpeg` binary, which CI doesn't install
+  (same reasoning as `PyAudio`: not worth the fragility for something
+  that's a deployment concern, not routing/business logic). One test
+  (`tests/test_speech.py::TestToWavWithRealFfmpeg`) exercises it for real
+  and self-skips via `shutil.which("ffmpeg")` if absent.
+- Actually calling Google's Web Speech API (`recognize_google`) — every
+  test mocks the recognizer. If you need to verify the real API still
+  behaves as expected, that's a manual check (`python -m voice.cli`
+  against a real microphone), not part of the automated suite.
 - `data_pipeline.retrain_pipeline.fetch_live()` — needs a real CMSAPI.
   Test the pure logic it feeds into (`feedback_to_rows`, `merge_rows`,
   `is_regression`) instead, or use `--training-fixture`/`--feedback-fixture`

@@ -5,13 +5,20 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 
 from nlp_brain import NO_MATCH_MESSAGE, PredictionResult
 from specialty_mapping import LABEL_TO_NEXEAGLE_SPECIALTY_ID
+from speech import (
+    AudioFormatError,
+    AudioUnintelligible,
+    SpeechServiceError,
+    TranscriptionError,
+    transcribe_audio_file,
+)
 
 from .rate_limit import limiter
-from .schemas import RouteRequest, RouteResponse
+from .schemas import MAX_AUDIO_BYTES, RouteRequest, RouteResponse, RouteResponseWithTranscript
 
 router = APIRouter()
 
@@ -100,3 +107,61 @@ def route_symptom(request: Request, req: RouteRequest):
     query = (req.query or "").strip()
     result = request.app.state.classifier.predict(query)
     return _to_response(result, request.app.state.model_version)
+
+
+def _reject_if_too_large(audio: UploadFile) -> None:
+    """UploadFile wraps a SpooledTemporaryFile, so its size can be checked
+    synchronously by seeking -- no need to buffer the whole thing into
+    memory first just to measure it. Raises before any ffmpeg/STT work
+    happens, so an oversized upload is cheap to reject."""
+    audio.file.seek(0, 2)  # SEEK_END
+    size = audio.file.tell()
+    audio.file.seek(0)
+    if size > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio file too large ({size} bytes, max {MAX_AUDIO_BYTES}).",
+        )
+
+
+@router.post("/route-symptom-audio", response_model=RouteResponseWithTranscript)
+@limiter.limit("10/minute")
+def route_symptom_audio(request: Request, audio: UploadFile = File(...)):
+    """Voice counterpart to /route-symptom: accepts an uploaded audio
+    recording (any format ffmpeg can decode -- webm/opus from a browser's
+    MediaRecorder, wav, m4a, etc.), transcribes and transliterates it
+    server-side (see speech/transcription.py), then routes the resulting
+    text exactly like /route-symptom would. Intended for a web/mobile
+    client that records audio itself (e.g. a Next.js frontend using
+    MediaRecorder) rather than running Python -- voice/'s own CLI still
+    uses a live microphone directly and doesn't need this endpoint.
+
+    Rate-limited tighter than /route-symptom (10/min vs. 30/min per IP):
+    ffmpeg decoding + a speech-recognition API call is real work per
+    request, on top of the same classification cost the text endpoint
+    already pays.
+    """
+    _reject_if_too_large(audio)
+
+    try:
+        transcript = transcribe_audio_file(audio.file)
+    except AudioFormatError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except SpeechServiceError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except AudioUnintelligible:
+        return RouteResponseWithTranscript(
+            transcript=None,
+            specialtyIds=[], noMatch=True, method=None, confidence=None,
+            modelVersion=request.app.state.model_version,
+            raw={"specialist": None, "matchRatio": None, "closestKnownExample": None,
+                 "flaggedGibberish": False, "message": "Could not understand the audio."},
+        )
+    except TranscriptionError as e:
+        # Package not installed, etc. -- an operational/deployment problem,
+        # not something a client retry fixes.
+        raise HTTPException(status_code=503, detail=str(e))
+
+    result = request.app.state.classifier.predict(transcript)
+    response = _to_response(result, request.app.state.model_version)
+    return RouteResponseWithTranscript(transcript=transcript, **response.model_dump())

@@ -1,11 +1,15 @@
 # Dependencies for the Voice-to-Text layer (voice/) ONLY -- a client that
-# talks to the FastAPI service over HTTP. The API server itself (requirements.txt)
-# never needs these; only a machine with a microphone running voice/cli.py does.
+# talks to the FastAPI service over HTTP. Only a machine with a microphone
+# running voice/cli.py needs these.
 #
-# PyAudio needs the PortAudio system library first:
-#   Windows: usually installs from a prebuilt wheel, no extra step needed.
-#   macOS:   brew install portaudio
-#   Linux:   sudo apt-get install portaudio19-dev
+# SpeechRecognition and indic-transliteration are also in requirements.txt
+# (the API server needs them too, for POST /route-symptom-audio's
+# server-side transcription -- see speech/transcription.py, shared by both).
+# Keep those two pins in sync between the two files. PyAudio and requests
+# are voice/-only: PyAudio for live microphone capture (needs the PortAudio
+# system library -- Windows: usually a prebuilt wheel, no extra step;
+# macOS: brew install portaudio; Linux: sudo apt-get install portaudio19-dev),
+# requests for talking to the API.
 SpeechRecognition==3.10.4
 PyAudio==0.2.14
 indic-transliteration==2.3.59

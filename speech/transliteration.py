@@ -28,8 +28,7 @@ def devanagari_to_roman(text: str) -> str:
     if not TRANSLITERATION_AVAILABLE:
         print(
             "Note: got Devanagari-script speech but the 'indic-transliteration' "
-            "package isn't installed, so it can't be converted to Roman script. "
-            "Install it with:\n    pip install -r requirements-voice.txt"
+            "package isn't installed, so it can't be converted to Roman script."
         )
         return text
 

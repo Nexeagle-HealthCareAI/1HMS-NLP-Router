@@ -1,7 +1,16 @@
-"""Microphone capture + transcription. Single responsibility: turn audio
-into Roman-script text. Knows nothing about symptom routing."""
+"""Microphone capture. Single responsibility: turn a live mic feed into an
+sr.AudioData object and hand it to speech.transcribe_audio_data() for the
+actual transcription -- that step is shared with api/'s uploaded-audio
+endpoint (see speech/transcription.py), so it isn't duplicated here.
+"""
+from speech import (
+    AudioUnintelligible,
+    SpeechServiceError,
+    TranscriptionError,
+    transcribe_audio_data,
+)
+
 from .config import SPEECH_LANGUAGE, STOP_PHRASES
-from .transliteration import devanagari_to_roman
 
 try:
     import speech_recognition as sr
@@ -39,15 +48,17 @@ def listen_from_microphone(language: str = SPEECH_LANGUAGE, timeout: float = 8.0
 
     print("Transcribing...")
     try:
-        raw_text = recognizer.recognize_google(audio, language=language)
-        text = devanagari_to_roman(raw_text)
+        text = transcribe_audio_data(audio, language=language)
         print(f"You said: {text}")
         return text
-    except sr.UnknownValueError:
+    except AudioUnintelligible:
         print("Could not understand the audio. Try again.")
         return None
-    except sr.RequestError as e:
-        print(f"Speech recognition service error ({e}). Check your internet connection.")
+    except SpeechServiceError as e:
+        print(f"{e} Check your internet connection.")
+        return None
+    except TranscriptionError as e:
+        print(str(e))
         return None
 
 

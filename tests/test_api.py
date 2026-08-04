@@ -119,3 +119,100 @@ class TestRateLimit:
 
         response = api_client.post("/route-symptom", json=query)
         assert response.status_code == 429
+
+
+class TestRouteSymptomAudio:
+    """POST /route-symptom-audio -- transcribe_audio_file() is mocked in
+    every test here (see api.routes.transcribe_audio_file) so these never
+    need real audio, ffmpeg, or network access; tests/test_speech.py covers
+    the transcription logic itself."""
+
+    @staticmethod
+    def _upload(api_client, content: bytes = b"pretend-audio-bytes", filename: str = "clip.webm"):
+        return api_client.post(
+            "/route-symptom-audio",
+            files={"audio": (filename, content, "audio/webm")},
+        )
+
+    def test_transcribed_query_returns_a_specialist_and_the_transcript(self, api_client, monkeypatch):
+        import api.routes as routes_module
+        monkeypatch.setattr(
+            routes_module, "transcribe_audio_file",
+            lambda file_obj: "dant mein bahut dard ho raha hai kaafi dino se",
+        )
+
+        response = self._upload(api_client)
+        body = response.json()
+
+        assert response.status_code == 200
+        assert body["transcript"] == "dant mein bahut dard ho raha hai kaafi dino se"
+        assert body["noMatch"] is False
+        assert body["raw"]["specialist"] is not None
+
+    def test_unintelligible_audio_returns_no_match_not_an_error(self, api_client, monkeypatch):
+        import api.routes as routes_module
+        from speech import AudioUnintelligible
+
+        def raise_unintelligible(file_obj):
+            raise AudioUnintelligible("Could not understand the audio.")
+
+        monkeypatch.setattr(routes_module, "transcribe_audio_file", raise_unintelligible)
+
+        response = self._upload(api_client)
+        body = response.json()
+
+        assert response.status_code == 200
+        assert body["transcript"] is None
+        assert body["noMatch"] is True
+        assert body["raw"]["message"] == "Could not understand the audio."
+
+    def test_bad_audio_format_returns_400(self, api_client, monkeypatch):
+        import api.routes as routes_module
+        from speech import AudioFormatError
+
+        def raise_format_error(file_obj):
+            raise AudioFormatError("Couldn't decode the uploaded file as audio.")
+
+        monkeypatch.setattr(routes_module, "transcribe_audio_file", raise_format_error)
+
+        response = self._upload(api_client)
+        assert response.status_code == 400
+
+    def test_speech_service_failure_returns_502(self, api_client, monkeypatch):
+        import api.routes as routes_module
+        from speech import SpeechServiceError
+
+        def raise_service_error(file_obj):
+            raise SpeechServiceError("network down")
+
+        monkeypatch.setattr(routes_module, "transcribe_audio_file", raise_service_error)
+
+        response = self._upload(api_client)
+        assert response.status_code == 502
+
+    def test_oversized_upload_is_rejected_with_413(self, api_client):
+        from api.schemas import MAX_AUDIO_BYTES
+        oversized = b"x" * (MAX_AUDIO_BYTES + 1)
+
+        response = self._upload(api_client, content=oversized)
+
+        assert response.status_code == 413
+
+    def test_upload_at_the_size_limit_is_accepted(self, api_client, monkeypatch):
+        import api.routes as routes_module
+        from api.schemas import MAX_AUDIO_BYTES
+        monkeypatch.setattr(routes_module, "transcribe_audio_file", lambda file_obj: "sar mein dard hai")
+
+        at_limit = b"x" * MAX_AUDIO_BYTES
+        response = self._upload(api_client, content=at_limit)
+
+        assert response.status_code == 200
+
+    def test_rate_limit_is_tighter_than_the_text_endpoint(self, api_client, monkeypatch):
+        import api.routes as routes_module
+        monkeypatch.setattr(routes_module, "transcribe_audio_file", lambda file_obj: "sar mein dard hai")
+
+        for _ in range(10):
+            assert self._upload(api_client).status_code == 200
+
+        assert self._upload(api_client).status_code == 429
