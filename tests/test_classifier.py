@@ -80,6 +80,47 @@ class TestPredict:
         assert tiny_classifier.predict("").candidates == []
 
 
+class TestMultiSymptomPrediction:
+    """A sentence naming more than one problem gets routed to a specialist
+    per symptom (see nlp_brain.segmentation), not forced into one label."""
+
+    def test_two_distinct_symptoms_joined_by_aur_yield_both_specialists(self, tiny_classifier):
+        # Each half is an exact training row (Cardiologist / Dentist) joined
+        # by "aur" -- should split cleanly and classify each confidently.
+        result = tiny_classifier.predict(
+            "dil mein bahut dard ho raha hai aur dant mein bahut dard ho raha hai"
+        )
+        assert result.no_match is False
+        assert "Cardiologist" in result.candidates
+        assert "Dentist" in result.candidates
+        assert result.specialist == result.candidates[0]
+
+    def test_specialist_order_matches_first_mention(self, tiny_classifier):
+        # Swapping which symptom comes first should swap which specialist
+        # leads the candidate list.
+        result = tiny_classifier.predict(
+            "dant mein bahut dard ho raha hai aur dil mein bahut dard ho raha hai"
+        )
+        assert result.candidates[0] == "Dentist"
+        assert "Cardiologist" in result.candidates
+
+    def test_a_junk_segment_does_not_block_a_good_segment_alongside_it(self, tiny_classifier):
+        # The first segment is real (Dentist); the second is keyboard-mash
+        # gibberish. The good segment's result should still come through.
+        result = tiny_classifier.predict(
+            "dant mein bahut dard ho raha hai aur zxcvbnmlkjhgfdsaqwerty"
+        )
+        assert result.no_match is False
+        assert result.specialist == "Dentist"
+
+    def test_single_symptom_sentence_is_unaffected_by_segmentation(self, tiny_classifier):
+        # No separator word present -- behaves exactly like the pre-
+        # segmentation single-query path.
+        result = tiny_classifier.predict("dant mein bahut dard ho raha hai kaafi dino se")
+        assert result.specialist == "Dentist"
+        assert result.no_match is False
+
+
 class TestSaveLoadRoundTrip:
     def test_save_then_load_preserves_prediction_behavior(self, tiny_classifier, tmp_path):
         path = str(tmp_path / "roundtrip.joblib")
