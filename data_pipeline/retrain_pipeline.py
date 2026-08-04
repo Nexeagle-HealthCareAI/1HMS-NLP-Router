@@ -108,7 +108,16 @@ def load_fixture(path: str):
 def feedback_to_rows(feedback: list[dict]):
     """Converts feedback-log entries into (text, specialist, type, weight) rows. Rows with
     no observed booking carry no usable signal (we don't know if the suggestion was right)
-    and are skipped entirely."""
+    and are skipped entirely.
+
+    Always trains on actualBookedSpecialtyId, the patient's real choice -- NOT
+    predictedSpecialtyId (the router's #1 pick), even for an "accepted" (non-correction) row.
+    Since the candidate mechanism (nlp_brain/candidates.py) can surface more than one
+    specialist, wasCorrection=False only means the booking landed on SOME candidate the router
+    offered (see CMSAPI's SymptomRouterRepository.GetFeedbackLogAsync's acceptableSpecialtyIds)
+    -- not necessarily #1. Using predictedSpecialtyId there would silently train the model to
+    reinforce a top pick the patient specifically didn't choose, on exactly the close-call
+    queries this mechanism exists to handle well."""
     rows = []
     skipped_no_booking = 0
     skipped_unmappable = 0
@@ -121,12 +130,11 @@ def feedback_to_rows(feedback: list[dict]):
         if not query:
             continue
 
+        slug = item.get("actualBookedSpecialtyId")
         if item.get("wasCorrection"):
-            slug = item.get("actualBookedSpecialtyId")
             row_type = "Production Feedback - Correction"
             weight = WEIGHT_CORRECTION
         else:
-            slug = item.get("predictedSpecialtyId")
             row_type = "Production Feedback - Accepted"
             weight = WEIGHT_ACCEPTED
 

@@ -28,13 +28,28 @@ class TestFeedbackToRows:
         rows = feedback_to_rows(feedback)
         assert rows == [("dant mein dard hai", "Dentist", "Production Feedback - Correction", WEIGHT_CORRECTION)]
 
-    def test_silent_accept_uses_the_predicted_specialty_at_half_weight(self):
+    def test_silent_accept_uses_the_actually_booked_specialty_at_half_weight(self):
         feedback = [{
             "query": "dant mein dard hai", "hasBooking": True, "wasCorrection": False,
-            "predictedSpecialtyId": "dentistry",
+            "predictedSpecialtyId": "dentistry", "actualBookedSpecialtyId": "dentistry",
         }]
         rows = feedback_to_rows(feedback)
         assert rows == [("dant mein dard hai", "Dentist", "Production Feedback - Accepted", WEIGHT_ACCEPTED)]
+
+    def test_silent_accept_on_a_runner_up_candidate_trains_on_what_was_booked_not_the_top_pick(self):
+        # wasCorrection=False only means the booking landed on SOME candidate the router
+        # surfaced (see CMSAPI's SymptomRouterRepository.GetFeedbackLogAsync), not necessarily
+        # #1 -- the training label must reflect what was actually booked, or a genuine
+        # close-call confirmation silently reinforces the wrong specialist.
+        feedback = [{
+            "query": "chest mein dard hai aur saans phool rahi hai", "hasBooking": True, "wasCorrection": False,
+            "predictedSpecialtyId": "cardiology", "actualBookedSpecialtyId": "pulmonology",
+        }]
+        rows = feedback_to_rows(feedback)
+        assert rows == [(
+            "chest mein dard hai aur saans phool rahi hai", "Pulmonologist (Chest/Lungs)",
+            "Production Feedback - Accepted", WEIGHT_ACCEPTED,
+        )]
 
     def test_rows_with_no_booking_carry_no_signal_and_are_dropped(self):
         feedback = [{"query": "dant mein dard hai", "hasBooking": False}]
@@ -43,14 +58,14 @@ class TestFeedbackToRows:
     def test_rows_with_an_unmappable_specialty_id_are_dropped(self):
         feedback = [{
             "query": "dant mein dard hai", "hasBooking": True, "wasCorrection": False,
-            "predictedSpecialtyId": "not-a-real-specialty",
+            "predictedSpecialtyId": "dentistry", "actualBookedSpecialtyId": "not-a-real-specialty",
         }]
         assert feedback_to_rows(feedback) == []
 
     def test_rows_with_an_empty_query_are_dropped(self):
         feedback = [{
             "query": "  ", "hasBooking": True, "wasCorrection": False,
-            "predictedSpecialtyId": "dentistry",
+            "predictedSpecialtyId": "dentistry", "actualBookedSpecialtyId": "dentistry",
         }]
         assert feedback_to_rows(feedback) == []
 
