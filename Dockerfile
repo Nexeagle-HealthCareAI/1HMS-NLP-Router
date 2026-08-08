@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY nlp_brain/ nlp_brain/
 COPY api/ api/
 COPY speech/ speech/
+COPY location_brain/ location_brain/
+COPY location_API/ location_API/
 COPY specialty_mapping.py model_meta.json symptom_specialist_classifier.joblib ./
 
 EXPOSE 5003
