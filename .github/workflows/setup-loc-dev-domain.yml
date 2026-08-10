@@ -1,0 +1,82 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ONE-OFF: Map loc-dev.nexeagle.com -> Location API on the Dev VM (HTTPS)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Manual (workflow_dispatch) only -- NOT part of the regular deploy pipeline.
+# DNS for loc-dev.nexeagle.com already points at the Dev VM (151.185.45.77);
+# this installs/updates a Caddy reverse proxy there so the domain answers over
+# HTTPS and forwards to the location_API container on localhost:5004.
+#
+# Unlike Prod (see docs/OPS-HTTPS-SETUP.md, which only appends a site block to
+# an ALREADY-running Caddy instance), the Dev VM has no reverse proxy running
+# at all yet -- confirmed by probing 151.185.45.77 on 80/443 (both closed).
+# This workflow sets Caddy up from scratch the first time it runs, and is
+# idempotent (safe to re-run later, e.g. after a VM rebuild).
+#
+# REQUIRES ports 80 and 443 open in the Dev VM's firewall BEFORE running --
+# Caddy needs port 80 for the Let's Encrypt HTTP-01 challenge and 443 to serve.
+# Reuses the same secrets as deploy-location-api.yml -- no new credentials.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: Setup — loc-dev.nexeagle.com
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-caddy:
+    name: "Install/update Caddy reverse proxy on Dev VM"
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Configure loc-dev.nexeagle.com on Dev VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          password: ${{ secrets.DEV_SSH_PASSWORD }}
+          port: 22
+          command_timeout: 5m
+          script: |
+            set -e
+            mkdir -p /opt/caddy
+
+            CADDY_BLOCK='
+            loc-dev.nexeagle.com {
+                reverse_proxy localhost:5004
+            }'
+
+            if [ ! -f /opt/caddy/Caddyfile ]; then
+              echo "$CADDY_BLOCK" > /opt/caddy/Caddyfile
+              echo "Created new Caddyfile with loc-dev.nexeagle.com block."
+            elif ! grep -q "loc-dev.nexeagle.com" /opt/caddy/Caddyfile; then
+              echo "$CADDY_BLOCK" >> /opt/caddy/Caddyfile
+              echo "Appended loc-dev.nexeagle.com block to existing Caddyfile."
+            else
+              echo "Caddyfile already has a loc-dev.nexeagle.com block -- leaving it as-is."
+            fi
+
+            if docker ps -a --format '{{.Names}}' | grep -qx caddy; then
+              echo "Caddy container already exists -- reloading config."
+              docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+            else
+              echo "No Caddy container found -- starting one."
+              docker run -d --name caddy --network host --restart unless-stopped \
+                -v /opt/caddy/Caddyfile:/etc/caddy/Caddyfile \
+                -v caddy_data:/data \
+                caddy:2
+            fi
+
+      - name: Verify HTTPS is up
+        run: |
+          echo "Waiting for Caddy to complete the ACME handshake..."
+          for i in 1 2 3 4 5 6; do
+            S=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+                https://loc-dev.nexeagle.com/health 2>/dev/null || echo 000)
+            echo "Attempt $i — HTTP $S"
+            [ "$S" = "200" ] && echo "✅ https://loc-dev.nexeagle.com is up" && exit 0
+            sleep 10
+          done
+          echo "⚠️ Not answering yet -- check ports 80/443 are open on the Dev VM's firewall, and 'docker logs caddy' there."
+          exit 0
