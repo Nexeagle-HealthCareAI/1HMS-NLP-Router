@@ -15,29 +15,37 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-from .interfaces import ICitySearcher, ICoordinateFinder, IPincodeFinder
+from .interfaces import ICitySearcher, ICoordinateFinder, IPincodeFinder, ISmartLocator
 from .fallback_strategies import FallbackChain, default_fallback_chain
-from .repositories import CitiesRepository, PincodeRepository
+from .repositories import CitiesRepository, GovPincodeRepository, PincodeRepository, TownsRepository
 from .services import (
     CitySearchService,
     CoordinateLookupService,
     PincodeLookupService,
+    SmartLocationService,
 )
 
 
-class PincodeFinder(ICitySearcher, IPincodeFinder, ICoordinateFinder):
+class PincodeFinder(ICitySearcher, IPincodeFinder, ICoordinateFinder, ISmartLocator):
     """
     Facade that wires repositories, fallback chain, and services together.
 
     Callers that only need one capability should depend on the matching
-    narrow interface (ICitySearcher / IPincodeFinder / ICoordinateFinder)
-    rather than on this concrete class directly.
+    narrow interface (ICitySearcher / IPincodeFinder / ICoordinateFinder /
+    ISmartLocator) rather than on this concrete class directly.
+
+    `gov_pincodes_csv`/`towns_csv` are optional so existing callers that
+    only pass the original two CSVs keep working -- but locate()
+    (ISmartLocator) needs both and raises RuntimeError if either was
+    omitted, rather than silently returning empty/degraded results.
     """
 
     def __init__(
         self,
         cities_csv: str,
         pincodes_csv: str,
+        gov_pincodes_csv: Optional[str] = None,
+        towns_csv: Optional[str] = None,
         fallback: Optional[FallbackChain] = None,
     ) -> None:
         cities_repo = CitiesRepository(cities_csv)
@@ -47,6 +55,12 @@ class PincodeFinder(ICitySearcher, IPincodeFinder, ICoordinateFinder):
         self._searcher = CitySearchService(cities_repo, pincode_repo)
         self._pincode_svc = PincodeLookupService(cities_repo, pincode_repo, chain)
         self._coord_svc = CoordinateLookupService(cities_repo, pincode_repo)
+
+        self._smart_svc: Optional[SmartLocationService] = None
+        if gov_pincodes_csv and towns_csv:
+            gov_pincode_repo = GovPincodeRepository(gov_pincodes_csv)
+            towns_repo = TownsRepository(towns_csv)
+            self._smart_svc = SmartLocationService(cities_repo, towns_repo, gov_pincode_repo, chain)
 
     # --- ICitySearcher ---
 
@@ -62,3 +76,13 @@ class PincodeFinder(ICitySearcher, IPincodeFinder, ICoordinateFinder):
 
     def get_coordinates(self, city_query: str) -> Dict:
         return self._coord_svc.get_coordinates(city_query)
+
+    # --- ISmartLocator ---
+
+    def locate(self, query: str) -> Dict:
+        if self._smart_svc is None:
+            raise RuntimeError(
+                "PincodeFinder was constructed without gov_pincodes_csv/towns_csv -- "
+                "locate() needs both. Pass them to __init__ to enable smart search."
+            )
+        return self._smart_svc.locate(query)

@@ -13,11 +13,12 @@ Each service class:
 from __future__ import annotations
 
 import difflib
+import re
 from typing import Dict, List, Optional
 
-from .interfaces import ICitySearcher, ICoordinateFinder, IPincodeFinder
+from .interfaces import ICitySearcher, ICoordinateFinder, IPincodeFinder, ISmartLocator
 from .fallback_strategies import FallbackChain, default_fallback_chain
-from .repositories import CitiesRepository, PincodeRepository
+from .repositories import CitiesRepository, GovPincodeRepository, PincodeRepository, TownsRepository
 
 
 # ---------------------------------------------------------------------------
@@ -284,3 +285,193 @@ class CoordinateLookupService(ICoordinateFinder):
         result["latitude"] = lat
         result["longitude"] = lon
         return result
+
+
+# ---------------------------------------------------------------------------
+# ISmartLocator
+# ---------------------------------------------------------------------------
+
+_PINCODE_RE = re.compile(r"^\d{6}$")
+_COORDINATES_RE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$")
+
+# A district/office listing can run into the hundreds for a large district
+# -- cap the raw supporting records returned so one query can't return a
+# multi-hundred-entry payload. `pincodes` (deduped) has no such cap.
+_MAX_DETAILS = 20
+
+
+class SmartLocationService(ISmartLocator):
+    """
+    Detects what KIND of location query it's given -- a 6-digit pincode, a
+    "lat,lon" coordinate pair, or free-text (city/town/district name) --
+    and routes to the appropriate repository, always returning the SAME
+    response shape regardless of which kind it was. Built on
+    GovPincodeRepository (the ~165K-row official India Post directory,
+    with coordinates) and TownsRepository (~5,193 towns) for far broader
+    coverage than CitiesRepository's ~213 curated major cities alone.
+    """
+
+    def __init__(
+        self,
+        cities_repo: CitiesRepository,
+        towns_repo: TownsRepository,
+        gov_pincode_repo: GovPincodeRepository,
+        fallback: Optional[FallbackChain] = None,
+    ) -> None:
+        self._cities = cities_repo
+        self._towns = towns_repo
+        self._gov_pincodes = gov_pincode_repo
+        # Reused as-is against GovPincodeRepository: SubstringFallback/
+        # FuzzyFallback only ever call .by_district()/.all_districts(),
+        # which GovPincodeRepository implements with the same shape as
+        # PincodeRepository -- no new fallback code needed (OCP/DIP).
+        self._fallback = fallback or default_fallback_chain()
+
+    def locate(self, query: str) -> Dict:
+        raw = query
+        stripped = query.strip()
+
+        result: Dict = {
+            "query": raw,
+            "queryType": None,
+            "found": False,
+            "matched": None,
+            "district": None,
+            "state": None,
+            "pincodes": [],
+            "coordinates": None,
+            "details": [],
+            "suggestions": [],
+            "message": "",
+        }
+
+        if not stripped:
+            result["message"] = "Please enter a pincode, coordinates (\"lat,lon\"), or a city/town name."
+            return result
+
+        pincode_match = _PINCODE_RE.match(stripped)
+        coord_match = _COORDINATES_RE.match(stripped)
+
+        if pincode_match:
+            return self._locate_by_pincode(stripped, result)
+        if coord_match:
+            return self._locate_by_coordinates(coord_match, result)
+        return self._locate_by_text(raw, stripped, result)
+
+    def _locate_by_pincode(self, pincode: str, result: Dict) -> Dict:
+        result["queryType"] = "pincode"
+        offices = self._gov_pincodes.by_pincode(pincode)
+        if not offices:
+            result["message"] = f"No location found for pincode '{pincode}'."
+            return result
+
+        primary = offices[0]
+        result["found"] = True
+        result["matched"] = primary["District"].title()
+        result["district"] = ", ".join(sorted({o["District"].title() for o in offices}))
+        result["state"] = ", ".join(sorted({o["StateName"].title() for o in offices}))
+        result["pincodes"] = [pincode]
+        if primary["Latitude"] is not None:
+            result["coordinates"] = {"latitude": primary["Latitude"], "longitude": primary["Longitude"]}
+        result["details"] = [_office_detail(o) for o in offices[:_MAX_DETAILS]]
+        return result
+
+    def _locate_by_coordinates(self, match: "re.Match[str]", result: Dict) -> Dict:
+        """KNOWN LIMITATION: pincodes_gov.csv itself contains occasional
+        bad coordinates (verified -- one Madhya Pradesh record's listed
+        lat/long exactly coincides with a real Mumbai location, ~800m
+        closer than genuine Mumbai post offices in the same dataset). This
+        is a source-data quality issue, not something resolvable by
+        querying it differently. Returning the top-5 nearest (not just 1,
+        see `details`) is a partial mitigation -- a caller comparing
+        multiple candidates is more likely to notice one is an outlier
+        than to blindly trust a single `matched` value."""
+        result["queryType"] = "coordinates"
+        lat, lon = float(match.group(1)), float(match.group(2))
+        nearest = self._gov_pincodes.nearest(lat, lon, limit=5)
+        if not nearest:
+            result["message"] = "No location data available for reverse coordinate lookup."
+            return result
+
+        primary = nearest[0]
+        result["found"] = True
+        result["matched"] = primary["OfficeName"]
+        result["district"] = primary["District"].title()
+        result["state"] = primary["StateName"].title()
+        result["pincodes"] = sorted({o["Pincode"] for o in nearest})
+        result["coordinates"] = {"latitude": primary["Latitude"], "longitude": primary["Longitude"]}
+        result["details"] = [{**_office_detail(o), "distanceKm": o["DistanceKm"]} for o in nearest]
+        return result
+
+    def _locate_by_text(self, raw: str, query: str, result: Dict) -> Dict:
+        result["queryType"] = "text"
+        query_norm = " ".join(query.split()).lower()
+
+        city_records = self._cities.by_norm(query_norm)
+        town_records = self._towns.by_norm(query_norm)
+
+        canonical = None
+        district_hint = None
+        state_hint = None
+        coordinates = None
+
+        if city_records:
+            rec = city_records[0]
+            canonical = rec["City"]
+            state_hint = rec["State"] or None
+            coordinates = _parse_coordinates(rec["Lat"], rec["Long"])
+        if town_records:
+            rec = town_records[0]
+            canonical = canonical or rec["Name"]
+            district_hint = rec["District"] or None
+            state_hint = state_hint or (rec["State"] or None)
+
+        district_query = (district_hint or canonical or query).strip().lower()
+        offices = self._gov_pincodes.by_district(district_query)
+        if not offices:
+            offices = self._fallback.resolve(district_query, self._gov_pincodes)
+
+        if not canonical and not offices:
+            result["suggestions"] = self._suggest(query_norm)
+            result["message"] = f"No location found for '{raw.strip()}'."
+            return result
+
+        result["found"] = True
+        result["matched"] = canonical or offices[0]["District"].title()
+        result["district"] = district_hint or (offices[0]["District"].title() if offices else None)
+        result["state"] = state_hint or (offices[0]["StateName"].title() if offices else None)
+        result["coordinates"] = coordinates
+        if offices:
+            result["pincodes"] = sorted({o["Pincode"] for o in offices})
+            result["details"] = [_office_detail(o) for o in offices[:_MAX_DETAILS]]
+        return result
+
+    def _suggest(self, query_norm: str, n: int = 5) -> List[str]:
+        all_names = (
+            self._towns.all_norms_set()
+            | self._cities.all_norms_set()
+            | self._gov_pincodes.all_districts_set()
+        )
+        close = difflib.get_close_matches(query_norm, list(all_names), n=n, cutoff=0.5)
+        return [c.title() for c in close]
+
+
+def _office_detail(office: Dict) -> Dict:
+    return {
+        "officeName": office["OfficeName"],
+        "officeType": office["OfficeType"],
+        "district": office["District"].title(),
+        "state": office["StateName"].title(),
+        "pincode": office["Pincode"],
+        "latitude": office["Latitude"],
+        "longitude": office["Longitude"],
+    }
+
+
+def _parse_coordinates(lat_str: str, lon_str: str) -> Optional[Dict]:
+    try:
+        if lat_str and lon_str:
+            return {"latitude": float(lat_str), "longitude": float(lon_str)}
+    except ValueError:
+        pass
+    return None

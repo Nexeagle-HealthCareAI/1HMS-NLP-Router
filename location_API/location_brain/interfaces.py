@@ -48,3 +48,20 @@ class ICoordinateFinder(ABC):
           query, found, matched_city, state, latitude, longitude,
           suggestions, message
         """
+
+
+class ISmartLocator(ABC):
+    """Resolve a free-form location query -- a pincode, "lat,lon"
+    coordinates, or a city/town/district name -- into one unified result,
+    without the caller needing to know or specify which kind of query it
+    is (that's the whole point: ICitySearcher/IPincodeFinder/
+    ICoordinateFinder each require the caller to already know they have a
+    city name; this doesn't)."""
+
+    @abstractmethod
+    def locate(self, query: str) -> Dict:
+        """
+        Return a result dict with keys:
+          query, queryType, found, matched, district, state, pincodes,
+          coordinates, details, suggestions, message
+        """

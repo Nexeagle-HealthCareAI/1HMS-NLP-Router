@@ -6,3 +6,7 @@ fastapi==0.115.6
 uvicorn[standard]==0.32.1
 pydantic==2.10.3
 slowapi==0.1.10
+# GET/POST /locate's vectorized haversine nearest-neighbor search over the
+# ~165K-row gov. pincode dataset (see location_brain/repositories.py's
+# GovPincodeRepository.nearest()).
+numpy==1.26.4

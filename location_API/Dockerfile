@@ -13,14 +13,23 @@ RUN pip install --no-cache-dir -r requirements.txt
 # match main.py's `from location_brain.Pincode_final import ...` -- NOT
 # nested under location_API/, which is just this repo's on-disk layout.
 #
-# Only the two CSVs main.py's PincodeFinder actually loads (Indian_Cities_
-# Database.csv, pincode-dataset.csv) are copied -- Cities_Towns_District_
-# State_India.csv, Ind_adm2_Points.csv, and pincodes_gov.csv are committed
-# to the repo but unreferenced by any code path here (verified: nothing
-# under location_brain/ imports or opens them). Together they're ~68MB;
-# copying them into the image would be pure bloat for zero functionality.
+# The 4 CSVs PincodeFinder actually loads: the original two (Indian_Cities_
+# Database.csv, pincode-dataset.csv) plus the two GET/POST /locate needs
+# (pincodes_gov.csv -- the ~165K-row official India Post directory, WITH
+# coordinates; Cities_Towns_District_State_India.csv -- ~5,193 towns).
+# Ind_adm2_Points.csv (~45MB, raw district-boundary polygon vertices, no
+# pincode/office/city name attached) is still NOT copied -- it's strictly
+# less useful than pincodes_gov.csv's richer points for the same nearest-
+# neighbor use case, and would need real polygon geometry (e.g. shapely)
+# to use correctly as actual point-in-polygon reverse geocoding rather
+# than a nearest-vertex approximation. Re-evaluate if a future feature
+# specifically needs true polygon containment.
 COPY location_API/location_brain/*.py location_brain/
-COPY location_API/location_brain/Indian_Cities_Database.csv location_API/location_brain/pincode-dataset.csv location_brain/
+COPY location_API/location_brain/Indian_Cities_Database.csv \
+     location_API/location_brain/pincode-dataset.csv \
+     location_API/location_brain/pincodes_gov.csv \
+     location_API/location_brain/Cities_Towns_District_State_India.csv \
+     location_brain/
 COPY location_API/main.py ./
 
 EXPOSE 5004
