@@ -26,11 +26,13 @@ on:
     branches: [develop, main]
     paths:
       - "location_API/**"
+      - "tests/location_API/**"
       - ".github/workflows/deploy-location-api.yml"
   pull_request:
     branches: [develop, main]
     paths:
       - "location_API/**"
+      - "tests/location_API/**"
       - ".github/workflows/deploy-location-api.yml"
   workflow_dispatch:
 
