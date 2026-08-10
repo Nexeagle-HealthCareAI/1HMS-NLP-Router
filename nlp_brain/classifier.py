@@ -13,7 +13,7 @@ import joblib
 from sklearn.metrics import accuracy_score, classification_report, f1_score
 from sklearn.model_selection import train_test_split
 
-from .candidates import build_candidates, ranked_labels
+from .candidates import build_candidates, merge_candidates, ranked_labels
 from .config import CANDIDATE_MARGIN, DATA_PATH, MATCH_THRESHOLD, MAX_CANDIDATES, MODEL_OUT, RANDOM_STATE
 from .features import build_feature_union
 from .matching import best_match, normalize_matrix
@@ -148,19 +148,23 @@ class SymptomClassifier:
         bhi dukh raha hai") is split into segments (segmentation.split_segments)
         and each is run through _predict_segment() independently; their
         candidate lists are merged (deduped, in first-mention order) into the
-        final result. A plain single-symptom sentence is just the one-segment
-        case of the same path -- nothing here special-cases it.
+        final result, then re-capped at MAX_CANDIDATES -- each segment's own
+        list already respects the cap (see build_candidates()), but merging
+        N segments' capped lists can still exceed it (e.g. two 3-candidate
+        segments could combine to 6 before this trims it back down). A plain
+        single-symptom sentence is just the one-segment case of the same
+        path -- nothing here special-cases it.
         """
         cleaned = clean_text(text)
         segments = split_segments(cleaned)
         segment_results = [self._predict_segment(seg, threshold) for seg in segments]
 
-        candidates: list = []
+        candidates = merge_candidates([r.candidates for r in segment_results], MAX_CANDIDATES)
+
         source_by_label: dict = {}
         for result in segment_results:
             for label in result.candidates:
-                if label not in candidates:
-                    candidates.append(label)
+                if label in candidates and label not in source_by_label:
                     source_by_label[label] = result
 
         if not candidates:

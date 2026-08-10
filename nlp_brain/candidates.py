@@ -36,3 +36,24 @@ def build_candidates(ranked: list, margin: float, max_candidates: int) -> list:
         if top_score - score <= margin:
             candidates.append(label)
     return candidates
+
+
+def merge_candidates(segment_candidates: list, max_candidates: int) -> list:
+    """Combines several segments' own candidate lists (classifier.predict()
+    calls this once per multi-symptom query, one list per segment -- see
+    segmentation.split_segments()) into one final, deduped shortlist, in
+    first-mention order, re-capped at `max_candidates`.
+
+    Each segment's own list already respects `max_candidates` (build_candidates()
+    guarantees that), but simply concatenating N segments' capped lists can
+    still exceed it -- e.g. two 3-candidate segments combine to as many as 6
+    unique labels before this trims it back down. This is the one place that
+    invariant is actually guaranteed for the final, user-facing result; a
+    real 3-segment query once returned 5 candidates (cap 3) before this
+    existed -- see tests/test_candidates.py."""
+    merged: list = []
+    for candidates in segment_candidates:
+        for label in candidates:
+            if label not in merged:
+                merged.append(label)
+    return merged[:max_candidates]

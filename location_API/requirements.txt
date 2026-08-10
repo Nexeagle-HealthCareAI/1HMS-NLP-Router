@@ -1,0 +1,8 @@
+# Dependencies for location_API -- a standalone city/pincode/coordinate
+# lookup service, deployed and versioned independently of the NLP router
+# (see ../requirements.txt). Exposed for OTHER applications to call, not
+# consumed by anything in nlp_brain/api/voice/speech.
+fastapi==0.115.6
+uvicorn[standard]==0.32.1
+pydantic==2.10.3
+slowapi==0.1.10
