@@ -91,17 +91,23 @@ jobs:
           port: 22
           command_timeout: 2m
           script: |
-            echo "--- docker ps -a (caddy + location-api) ---"
-            docker ps -a --filter "name=caddy" --filter "name=location-api"
+            echo "--- docker ps -a (ALL containers) ---"
+            docker ps -a
             echo
-            echo "--- Caddyfile contents ---"
+            echo "--- /opt/caddy/Caddyfile ---"
             cat /opt/caddy/Caddyfile 2>/dev/null || echo "(no /opt/caddy/Caddyfile)"
             echo
-            echo "--- other Caddyfiles on the box (if any) ---"
-            find / -xdev -iname "Caddyfile*" 2>/dev/null
+            echo "--- /opt/whatsapp-webhook/Caddyfile ---"
+            cat /opt/whatsapp-webhook/Caddyfile 2>/dev/null || echo "(no /opt/whatsapp-webhook/Caddyfile)"
             echo
-            echo "--- docker logs caddy (last 40 lines) ---"
-            docker logs caddy --tail 40 2>&1
+            echo "--- docker inspect: which container mounts which Caddyfile ---"
+            for c in $(docker ps -a --format '{{.Names}}'); do
+              echo "container: $c"
+              docker inspect "$c" --format '  image: {{.Config.Image}}  mounts: {{range .Mounts}}{{.Source}}->{{.Destination}} {{end}}  network: {{.HostConfig.NetworkMode}}  status: {{.State.Status}}' 2>/dev/null
+            done
+            echo
+            echo "--- docker logs caddy (last 30 lines) ---"
+            docker logs caddy --tail 30 2>&1
             echo
             echo "--- listening ports 80/443 ---"
             (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep -E ':80 |:443 |LISTEN' || echo "(ss/netstat unavailable or nothing listening)"
