@@ -80,3 +80,28 @@ jobs:
           done
           echo "⚠️ Not answering yet -- check ports 80/443 are open on the Dev VM's firewall, and 'docker logs caddy' there."
           exit 0
+
+      - name: Diagnostics (always runs, even if the check above didn't succeed)
+        if: always()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          password: ${{ secrets.DEV_SSH_PASSWORD }}
+          port: 22
+          command_timeout: 2m
+          script: |
+            echo "--- docker ps -a (caddy + location-api) ---"
+            docker ps -a --filter "name=caddy" --filter "name=location-api"
+            echo
+            echo "--- Caddyfile contents ---"
+            cat /opt/caddy/Caddyfile 2>/dev/null || echo "(no /opt/caddy/Caddyfile)"
+            echo
+            echo "--- other Caddyfiles on the box (if any) ---"
+            find / -xdev -iname "Caddyfile*" 2>/dev/null
+            echo
+            echo "--- docker logs caddy (last 40 lines) ---"
+            docker logs caddy --tail 40 2>&1
+            echo
+            echo "--- listening ports 80/443 ---"
+            (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep -E ':80 |:443 |LISTEN' || echo "(ss/netstat unavailable or nothing listening)"
