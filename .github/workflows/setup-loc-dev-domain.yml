@@ -3,18 +3,21 @@
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # Manual (workflow_dispatch) only -- NOT part of the regular deploy pipeline.
-# DNS for loc-dev.nexeagle.com already points at the Dev VM (151.185.45.77);
-# this installs/updates a Caddy reverse proxy there so the domain answers over
-# HTTPS and forwards to the location_API container on localhost:5004.
+# DNS for loc-dev.nexeagle.com already points at the Dev VM (151.185.45.77).
 #
-# Unlike Prod (see docs/OPS-HTTPS-SETUP.md, which only appends a site block to
-# an ALREADY-running Caddy instance), the Dev VM has no reverse proxy running
-# at all yet -- confirmed by probing 151.185.45.77 on 80/443 (both closed).
-# This workflow sets Caddy up from scratch the first time it runs, and is
-# idempotent (safe to re-run later, e.g. after a VM rebuild).
+# CORRECTED after the first run: the Dev VM already runs a NATIVE (non-Docker)
+# Caddy process -- not a container, so `docker ps` never shows it -- bound to
+# *:80, *:443 and 127.0.0.1:2019, already serving other nexeagle.com
+# subdomains for other services on this same shared multi-tenant VM (which
+# also runs easyhms-api, cms-api, nexmarket, 1rad-api, sqlserver, etc.). This
+# workflow's first version didn't know that and started its own Dockerized
+# `caddy:2 --network host` container, which crash-looped forever fighting the
+# native one for port 2019. That container is removed here on every run.
 #
-# REQUIRES ports 80 and 443 open in the Dev VM's firewall BEFORE running --
-# Caddy needs port 80 for the Let's Encrypt HTTP-01 challenge and 443 to serve.
+# This now matches the Prod pattern exactly (docs/OPS-HTTPS-SETUP.md): find
+# the ALREADY-running Caddy, append a site block to ITS Caddyfile, reload it.
+# Idempotent -- safe to re-run.
+#
 # Reuses the same secrets as deploy-location-api.yml -- no new credentials.
 # ═══════════════════════════════════════════════════════════════════════════════
 
@@ -40,32 +43,35 @@ jobs:
           command_timeout: 5m
           script: |
             set -e
-            mkdir -p /opt/caddy
 
-            CADDY_BLOCK='
-            loc-dev.nexeagle.com {
-                reverse_proxy localhost:5004
-            }'
+            echo "--- Removing the stray Dockerized caddy container from the first run ---"
+            docker rm -f caddy 2>/dev/null && echo "Removed." || echo "Not present -- nothing to remove."
 
-            if [ ! -f /opt/caddy/Caddyfile ]; then
-              echo "$CADDY_BLOCK" > /opt/caddy/Caddyfile
-              echo "Created new Caddyfile with loc-dev.nexeagle.com block."
-            elif ! grep -q "loc-dev.nexeagle.com" /opt/caddy/Caddyfile; then
-              echo "$CADDY_BLOCK" >> /opt/caddy/Caddyfile
-              echo "Appended loc-dev.nexeagle.com block to existing Caddyfile."
+            echo "--- Locating the native Caddy process and its real config file ---"
+            CADDY_PID=$(pgrep -f 'caddy run' | head -n1 || true)
+            if [ -z "$CADDY_PID" ]; then
+              echo "No native 'caddy run' process found on this VM -- can't proceed automatically." >&2
+              exit 1
+            fi
+            CADDY_CONFIG=$(ps -p "$CADDY_PID" -o args= | grep -oP '(?<=--config )\S+' || true)
+            [ -z "$CADDY_CONFIG" ] && CADDY_CONFIG=/etc/caddy/Caddyfile
+            echo "Native Caddy PID $CADDY_PID, config file: $CADDY_CONFIG"
+
+            echo "--- Adding loc-dev.nexeagle.com to $CADDY_CONFIG (if not already present) ---"
+            if ! grep -q "loc-dev.nexeagle.com" "$CADDY_CONFIG"; then
+              printf '\nloc-dev.nexeagle.com {\n    reverse_proxy localhost:5004\n}\n' >> "$CADDY_CONFIG"
+              echo "Appended block."
             else
-              echo "Caddyfile already has a loc-dev.nexeagle.com block -- leaving it as-is."
+              echo "Block already present -- leaving as-is."
             fi
 
-            if docker ps -a --format '{{.Names}}' | grep -qx caddy; then
-              echo "Caddy container already exists -- reloading config."
-              docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+            echo "--- Reloading native Caddy ---"
+            if systemctl is-active --quiet caddy 2>/dev/null; then
+              systemctl reload caddy
+              echo "Reloaded via systemctl."
             else
-              echo "No Caddy container found -- starting one."
-              docker run -d --name caddy --network host --restart unless-stopped \
-                -v /opt/caddy/Caddyfile:/etc/caddy/Caddyfile \
-                -v caddy_data:/data \
-                caddy:2
+              caddy reload --config "$CADDY_CONFIG"
+              echo "Reloaded via caddy CLI."
             fi
 
       - name: Verify HTTPS is up
@@ -78,7 +84,7 @@ jobs:
             [ "$S" = "200" ] && echo "✅ https://loc-dev.nexeagle.com is up" && exit 0
             sleep 10
           done
-          echo "⚠️ Not answering yet -- check ports 80/443 are open on the Dev VM's firewall, and 'docker logs caddy' there."
+          echo "⚠️ Not answering yet -- check the Caddyfile got the block and 'systemctl status caddy' / 'journalctl -u caddy' on the Dev VM."
           exit 0
 
       - name: Diagnostics (always runs, even if the check above didn't succeed)
@@ -91,23 +97,14 @@ jobs:
           port: 22
           command_timeout: 2m
           script: |
-            echo "--- docker ps -a (ALL containers) ---"
-            docker ps -a
+            echo "--- native caddy process ---"
+            pgrep -af 'caddy run' || echo "(not running)"
             echo
-            echo "--- /opt/caddy/Caddyfile ---"
-            cat /opt/caddy/Caddyfile 2>/dev/null || echo "(no /opt/caddy/Caddyfile)"
+            echo "--- tail of its config ---"
+            CADDY_PID=$(pgrep -f 'caddy run' | head -n1 || true)
+            CADDY_CONFIG=$(ps -p "$CADDY_PID" -o args= 2>/dev/null | grep -oP '(?<=--config )\S+' || true)
+            [ -z "$CADDY_CONFIG" ] && CADDY_CONFIG=/etc/caddy/Caddyfile
+            tail -n 15 "$CADDY_CONFIG" 2>/dev/null || echo "(couldn't read $CADDY_CONFIG)"
             echo
-            echo "--- /opt/whatsapp-webhook/Caddyfile ---"
-            cat /opt/whatsapp-webhook/Caddyfile 2>/dev/null || echo "(no /opt/whatsapp-webhook/Caddyfile)"
-            echo
-            echo "--- docker inspect: which container mounts which Caddyfile ---"
-            for c in $(docker ps -a --format '{{.Names}}'); do
-              echo "container: $c"
-              docker inspect "$c" --format '  image: {{.Config.Image}}  mounts: {{range .Mounts}}{{.Source}}->{{.Destination}} {{end}}  network: {{.HostConfig.NetworkMode}}  status: {{.State.Status}}' 2>/dev/null
-            done
-            echo
-            echo "--- docker logs caddy (last 30 lines) ---"
-            docker logs caddy --tail 30 2>&1
-            echo
-            echo "--- listening ports 80/443 ---"
-            (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep -E ':80 |:443 |LISTEN' || echo "(ss/netstat unavailable or nothing listening)"
+            echo "--- listening on 80/443? ---"
+            (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep -E ':80 |:443 ' || echo "(nothing listening)"
