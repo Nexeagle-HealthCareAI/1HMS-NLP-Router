@@ -90,6 +90,11 @@ by two of them.
   each: [nlp_brain.md](docs/nlp_brain.md), [api.md](docs/api.md),
   [voice.md](docs/voice.md), [speech.md](docs/speech.md),
   [data_pipeline.md](docs/data_pipeline.md), [testing.md](docs/testing.md).
+  New to the repo? Start with
+  [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) instead — one
+  comprehensive top-to-bottom reference (architecture, full API contracts,
+  the prediction pipeline, deployment/HTTPS setup, and current Prod status)
+  that ties all of the above together.
   Ops runbooks (manual, VM-side steps — not part of the CI/CD pipeline):
   [OPS-HTTPS-SETUP.md](docs/OPS-HTTPS-SETUP.md).
 
