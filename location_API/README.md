@@ -21,9 +21,49 @@ narrow `interfaces/`) → `finder.py` (a facade wiring it all together) →
 | `GET/POST /locate` | pincode, `"lat,lon"`, **or** free-text city/town/district — auto-detected | **Start here.** Broadest coverage, single unified response shape regardless of input kind. See below. |
 | `GET/POST /find-pincode` | city name (+ optional state) | You specifically need the older `PincodeResponse` shape, or a state-scoped pincode search (`/locate` doesn't take a state filter). |
 | `GET/POST /coordinates` | city name | You specifically need `CoordinatesResponse`'s shape. Only covers the curated ~213-city list — `/locate` covers far more. |
-| `GET /search` | partial city name | Autocomplete-style "did you mean" suggestions as the user types. |
+| `GET /search` | partial city/town/district name | **Autocomplete-style search as the user types.** Same broad data coverage as `/locate`, but returns a ranked LIST of typed candidates instead of one best-effort answer. See below. |
 
 All endpoints are rate-limited: 60 requests/minute per client IP.
+
+### `GET /search` — autocomplete across every dataset
+
+```
+GET /search?city=mumbai&limit=5
+```
+
+Searches the curated ~213 cities, the ~19K pincode-dataset districts, the
+~5,193-town list, and the official government pincode directory's districts
+all at once (the same coverage `/locate` draws on), merged into one ranked,
+deduplicated list. Ranking: exact match > prefix match > substring match >
+fuzzy typo match; ties broken city-before-town-before-district, then
+alphabetically. `limit` (default 10, max 50) caps how many come back.
+
+Each match is typed and enriched with a small sample of pincodes/coordinates
+when known:
+```json
+{
+  "query": "mumbai",
+  "matches": [
+    {
+      "name": "Mumbai", "type": "city", "state": "Maharashtra", "district": null,
+      "pincodes": ["400001", "400002", "400003", "400004", "400005"],
+      "coordinates": {"latitude": 18.987807, "longitude": 72.836447}
+    },
+    {
+      "name": "Mumbai Suburban", "type": "district", "state": "Maharashtra", "district": null,
+      "pincodes": ["400010", "400024", "400029", "400042", "400043"],
+      "coordinates": {"latitude": 19.068833, "longitude": 72.877783}
+    }
+  ]
+}
+```
+`type` is `"city"` (curated, has its own coordinates), `"town"` (broader
+list, district/state only), or `"district"`. Same name can legitimately
+appear more than once with different types (e.g. "Mumbai" the city and
+"Mumbai" the district) — these are kept distinct, not merged. `pincodes` is
+capped at 5 per match (a full list is what `/locate` or `/find-pincode` are
+for); `coordinates` prefers a city's own curated lat/long and falls back to
+the government dataset's when the city has none.
 
 ### `GET/POST /locate` — the smart, unified endpoint
 
@@ -76,9 +116,9 @@ as a partial mitigation — compare candidates rather than blindly trusting
 | File | Rows | Used by |
 |---|---|---|
 | `Indian_Cities_Database.csv` | ~213 | `/search`, `/find-pincode`, `/coordinates`, `/locate` (text) — the only source with coordinates for named cities |
-| `pincode-dataset.csv` | ~19K | `/find-pincode` (district-level, no coordinates) |
-| `pincodes_gov.csv` | ~165K | `/locate` (pincode + coordinates lookups) — official India Post directory, post-office-level, **with coordinates** |
-| `Cities_Towns_District_State_India.csv` | ~5,193 | `/locate` (text) — much broader town coverage than the curated cities list |
+| `pincode-dataset.csv` | ~19K | `/search`, `/find-pincode` (district-level, no coordinates) |
+| `pincodes_gov.csv` | ~165K | `/search`, `/locate` (pincode + coordinates lookups) — official India Post directory, post-office-level, **with coordinates** |
+| `Cities_Towns_District_State_India.csv` | ~5,193 | `/search`, `/locate` (text) — much broader town coverage than the curated cities list |
 | `Ind_adm2_Points.csv` | ~785K | **Not used.** Raw district-boundary polygon vertices, no pincode/office/city name attached — see the Dockerfile comment for why this wasn't wired in. |
 
 ## Local development

@@ -54,61 +54,160 @@ def _suggest_cities(
 # ICitySearcher
 # ---------------------------------------------------------------------------
 
+# City results rank above towns, which rank above bare districts, when tied
+# on match quality -- cities are the curated/major-place dataset.
+_SEARCH_TYPE_ORDER = {"city": 0, "town": 1, "district": 2}
+
+# Autocomplete results stay light -- a large district can have hundreds of
+# pincodes; the caller can always follow up with /locate for the full list.
+_SEARCH_PINCODE_CAP = 5
+
+
 class CitySearchService(ICitySearcher):
     """
-    Searches for matching cities across BOTH datasets and returns a ranked,
-    deduplicated list.
+    Autocomplete-style search across every available dataset -- curated
+    cities (~213, with coordinates), pincode-dataset districts (~19K rows),
+    and, when provided, the much broader towns list (~5,193) and the
+    official government pincode directory's districts (~165K post offices)
+    -- merged into one ranked, deduplicated, typed result list ("city" /
+    "town" / "district"), each enriched with state/district and a small
+    sample of pincodes/coordinates where available.
+
+    `towns_repo`/`gov_pincode_repo` are optional so existing callers built
+    with just the original two repos keep working, just with narrower
+    coverage (no "town" results, no pincode/coordinate enrichment from the
+    government dataset) -- same optionality pattern as
+    `PincodeFinder.locate()`'s gov_pincodes_csv/towns_csv.
     """
 
     def __init__(
         self,
         cities_repo: CitiesRepository,
         pincode_repo: PincodeRepository,
+        towns_repo: Optional[TownsRepository] = None,
+        gov_pincode_repo: Optional[GovPincodeRepository] = None,
     ) -> None:
         self._cities = cities_repo
         self._pincodes = pincode_repo
+        self._towns = towns_repo
+        self._gov_pincodes = gov_pincode_repo
 
     def search_cities(self, query: str, limit: int = 10) -> List[Dict]:
         query_norm = " ".join(query.strip().split()).lower()
         if not query_norm:
             return []
 
-        all_names = self._cities.all_norms_set() | self._pincodes.all_districts_set()
-        scored: List[tuple] = []
-        seen: set = set()
+        pool = self._name_pool()
 
-        def _add(name_norm: str, score: int) -> None:
-            for rec in self._cities.by_norm(name_norm):
-                key = (rec["City"], rec["State"])
-                if key not in seen:
-                    seen.add(key)
-                    scored.append((score, rec["City"], rec["State"]))
-            for rec in self._pincodes.by_district(name_norm):
-                key = (rec["District"].title(), rec["StateName"].title())
-                if key not in seen:
-                    seen.add(key)
-                    scored.append((score, key[0], key[1]))
+        # (type, name_norm) -> best score seen (0 exact / 1 prefix / 2
+        # substring / 3 fuzzy) -- computed over the whole pool first, since
+        # it's cheap; only the winning entries get enriched with
+        # pincodes/coordinates below.
+        scored: Dict[tuple, int] = {}
 
-        # 1. Exact match
-        if query_norm in all_names:
-            _add(query_norm, 0)
+        def _consider(name_norm: str, kind: str, score: int) -> None:
+            key = (kind, name_norm)
+            if key not in scored or score < scored[key]:
+                scored[key] = score
 
-        # 2. Prefix / substring match
-        for name_norm in all_names:
+        for name_norm, kind in pool:
             if name_norm == query_norm:
-                continue
-            if name_norm.startswith(query_norm):
-                _add(name_norm, 1)
+                _consider(name_norm, kind, 0)
+            elif name_norm.startswith(query_norm):
+                _consider(name_norm, kind, 1)
             elif query_norm in name_norm:
-                _add(name_norm, 2)
+                _consider(name_norm, kind, 2)
 
-        # 3. Fuzzy typo match
-        close = difflib.get_close_matches(query_norm, list(all_names), n=limit * 2, cutoff=0.6)
-        for name_norm in close:
-            _add(name_norm, 3)
+        pool_names = [name for name, _kind in pool]
+        for name_norm in difflib.get_close_matches(query_norm, pool_names, n=limit * 3, cutoff=0.6):
+            for kind in {k for n, k in pool if n == name_norm}:
+                _consider(name_norm, kind, 3)
 
-        scored.sort(key=lambda t: (t[0], t[1]))
-        return [{"city": c, "state": s} for _, c, s in scored[:limit]]
+        records = self._typed_records(scored)
+        records.sort(key=lambda r: (r[0], _SEARCH_TYPE_ORDER.get(r[1], 9), r[2]))
+
+        return [self._enrich(kind, name, state, district) for _, kind, name, state, district in records[:limit]]
+
+    def _name_pool(self) -> List[tuple]:
+        """Every searchable (normalised_name, type) pair across all
+        available datasets."""
+        pool = [(n, "city") for n in self._cities.all_norms_set()]
+        pool += [(n, "district") for n in self._pincodes.all_districts_set()]
+        if self._towns is not None:
+            pool += [(n, "town") for n in self._towns.all_norms_set()]
+        if self._gov_pincodes is not None:
+            pool += [(n, "district") for n in self._gov_pincodes.all_districts_set()]
+        return pool
+
+    def _typed_records(self, scored: Dict[tuple, int]) -> List[tuple]:
+        """One display record per winning (type, name_norm) key:
+        (score, type, name, state, district). Cheap lookups only --
+        pincode/coordinate enrichment happens later, just for the final
+        top-`limit` slice."""
+        seen: set = set()
+        records: List[tuple] = []
+
+        for (kind, name_norm), score in scored.items():
+            if kind == "city":
+                for rec in self._cities.by_norm(name_norm):
+                    key = ("city", rec["City"], rec["State"])
+                    if key not in seen:
+                        seen.add(key)
+                        records.append((score, "city", rec["City"], rec["State"] or None, None))
+            elif kind == "town" and self._towns is not None:
+                for rec in self._towns.by_norm(name_norm):
+                    key = ("town", rec["Name"], rec["District"])
+                    if key not in seen:
+                        seen.add(key)
+                        records.append((score, "town", rec["Name"], rec["State"] or None, rec["District"] or None))
+            else:  # district (from pincode_repo and/or gov_pincode_repo -- deduped by title-cased name)
+                title = name_norm.title()
+                key = ("district", title)
+                if key not in seen:
+                    seen.add(key)
+                    records.append((score, "district", title, self._district_state(name_norm), None))
+
+        return records
+
+    def _district_state(self, district_norm: str) -> Optional[str]:
+        if self._gov_pincodes is not None:
+            offices = self._gov_pincodes.by_district(district_norm)
+            if offices:
+                return offices[0]["StateName"].title()
+        matches = self._pincodes.by_district(district_norm)
+        if matches and matches[0]["StateName"]:
+            return matches[0]["StateName"].title()
+        return None
+
+    def _enrich(self, kind: str, name: str, state: Optional[str], district: Optional[str]) -> Dict:
+        coordinates: Optional[Dict] = None
+        if kind == "city":
+            city_records = self._cities.by_norm(name.strip().lower())
+            if city_records:
+                coordinates = _parse_coordinates(city_records[0]["Lat"], city_records[0]["Long"])
+
+        lookup_norm = (district or name).strip().lower()
+        pincodes: List[str] = []
+
+        if self._gov_pincodes is not None:
+            offices = self._gov_pincodes.by_district(lookup_norm)
+            if offices:
+                pincodes = sorted({o["Pincode"] for o in offices})[:_SEARCH_PINCODE_CAP]
+                if coordinates is None and offices[0]["Latitude"] is not None:
+                    coordinates = {"latitude": offices[0]["Latitude"], "longitude": offices[0]["Longitude"]}
+        if not pincodes:
+            matches = self._pincodes.by_district(lookup_norm)
+            if matches:
+                pincodes = sorted({m["Pincode"] for m in matches})[:_SEARCH_PINCODE_CAP]
+
+        return {
+            "name": name,
+            "type": kind,
+            "state": state,
+            "district": district,
+            "pincodes": pincodes,
+            "coordinates": coordinates,
+        }
 
 
 # ---------------------------------------------------------------------------

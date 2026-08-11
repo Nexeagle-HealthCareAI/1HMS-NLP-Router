@@ -38,6 +38,9 @@ class PincodeFinder(ICitySearcher, IPincodeFinder, ICoordinateFinder, ISmartLoca
     only pass the original two CSVs keep working -- but locate()
     (ISmartLocator) needs both and raises RuntimeError if either was
     omitted, rather than silently returning empty/degraded results.
+    search_cities() (ICitySearcher) degrades more gracefully instead: it
+    still works with just the original two CSVs, just with narrower
+    coverage (see CitySearchService's docstring).
     """
 
     def __init__(
@@ -52,14 +55,17 @@ class PincodeFinder(ICitySearcher, IPincodeFinder, ICoordinateFinder, ISmartLoca
         pincode_repo = PincodeRepository(pincodes_csv)
         chain = fallback or default_fallback_chain()
 
-        self._searcher = CitySearchService(cities_repo, pincode_repo)
+        # Built once here (not duplicated per-service) so CitySearchService
+        # and SmartLocationService share the same in-memory repositories.
+        towns_repo = TownsRepository(towns_csv) if towns_csv else None
+        gov_pincode_repo = GovPincodeRepository(gov_pincodes_csv) if gov_pincodes_csv else None
+
+        self._searcher = CitySearchService(cities_repo, pincode_repo, towns_repo=towns_repo, gov_pincode_repo=gov_pincode_repo)
         self._pincode_svc = PincodeLookupService(cities_repo, pincode_repo, chain)
         self._coord_svc = CoordinateLookupService(cities_repo, pincode_repo)
 
         self._smart_svc: Optional[SmartLocationService] = None
-        if gov_pincodes_csv and towns_csv:
-            gov_pincode_repo = GovPincodeRepository(gov_pincodes_csv)
-            towns_repo = TownsRepository(towns_csv)
+        if gov_pincode_repo and towns_repo:
             self._smart_svc = SmartLocationService(cities_repo, towns_repo, gov_pincode_repo, chain)
 
     # --- ICitySearcher ---

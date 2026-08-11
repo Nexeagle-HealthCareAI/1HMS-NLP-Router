@@ -68,14 +68,25 @@ class PincodeResponse(BaseModel):
     message: str
 
 
-class CityMatch(BaseModel):
-    city: str
-    state: Optional[str]
+class Coordinates(BaseModel):
+    latitude: float
+    longitude: float
+
+
+class SearchMatch(BaseModel):
+    name: str
+    # "city" (curated ~213, has coordinates) | "town" (broader ~5,193 list,
+    # district/state only) | "district" (from either pincode dataset)
+    type: str
+    state: Optional[str] = None
+    district: Optional[str] = None
+    pincodes: List[str] = []
+    coordinates: Optional[Coordinates] = None
 
 
 class SearchResponse(BaseModel):
     query: str
-    matches: List[CityMatch]
+    matches: List[SearchMatch]
 
 
 class CoordinatesResponse(BaseModel):
@@ -87,11 +98,6 @@ class CoordinatesResponse(BaseModel):
     longitude: Optional[float]
     suggestions: List[str]
     message: str
-
-
-class Coordinates(BaseModel):
-    latitude: float
-    longitude: float
 
 
 class LocateDetail(BaseModel):
@@ -161,7 +167,17 @@ def _search(city: str, limit: int) -> SearchResponse:
 
     return SearchResponse(
         query=city,
-        matches=[CityMatch(city=m["city"], state=m["state"]) for m in matches],
+        matches=[
+            SearchMatch(
+                name=m["name"],
+                type=m["type"],
+                state=m["state"],
+                district=m["district"],
+                pincodes=m["pincodes"],
+                coordinates=Coordinates(**m["coordinates"]) if m["coordinates"] else None,
+            )
+            for m in matches
+        ],
     )
 
 
@@ -191,6 +207,14 @@ def search_cities(
     city: str = Query(..., min_length=1),
     limit: int = Query(10, ge=1, le=50),
 ):
+    """Autocomplete-style "did you mean" search as the user types. Searches
+    across ALL datasets -- the curated ~213 cities, ~19K pincode-dataset
+    districts, ~5,193 towns, and the ~165K-row government pincode
+    directory's districts (the same broad coverage /locate draws on) --
+    merged into one ranked, typed ("city"/"town"/"district") result list,
+    each with state/district and a small capped sample of pincodes/
+    coordinates when known. For a single best-effort answer to one query
+    (rather than a list of candidates), use /locate instead."""
     return _search(city, limit)
 
 
@@ -252,10 +276,12 @@ def _locate(query: str) -> LocateResponse:
 def locate_get(request: Request, q: str = Query(..., min_length=1)):
     """Smart unified search: pass a 6-digit pincode, "lat,lon" coordinates,
     or a free-text city/town/district name -- the query type is detected
-    automatically. Broader coverage than /search, /find-pincode, and
-    /coordinates combined (the ~165K-row official India Post directory +
-    ~5,193 towns, vs. those endpoints' ~213 curated major cities), and the
-    only one of the four that supports reverse coordinate lookup."""
+    automatically and a SINGLE best-effort result is returned (with a few
+    supporting candidates in `details`). Broader coverage than
+    /find-pincode and /coordinates (which only cover the curated ~213
+    cities), and the only endpoint that supports reverse coordinate lookup.
+    For a ranked LIST of candidates as the user types, use /search instead
+    (same underlying data coverage as this endpoint)."""
     return _locate(q)
 
 

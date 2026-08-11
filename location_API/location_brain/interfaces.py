@@ -15,14 +15,17 @@ from typing import Dict, List, Optional
 
 
 class ICitySearcher(ABC):
-    """Search for city / district names that match a free-text query."""
+    """Search for city / town / district names that match a free-text query."""
 
     @abstractmethod
     def search_cities(self, query: str, limit: int = 10) -> List[Dict]:
         """
-        Return up to *limit* best-matching city records.
+        Return up to *limit* best-matching place records, ranked by match
+        quality (exact > prefix > substring > fuzzy typo).
 
-        Each record is a dict with at least ``{"city": str, "state": str}``.
+        Each record is a dict with keys:
+          name, type ("city" | "town" | "district"), state, district,
+          pincodes (capped sample), coordinates (if known).
         """
 
 
