@@ -1,0 +1,110 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ONE-OFF: Map loc-dev.nexeagle.com -> Location API on the Dev VM (HTTPS)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Manual (workflow_dispatch) only -- NOT part of the regular deploy pipeline.
+# DNS for loc-dev.nexeagle.com already points at the Dev VM (151.185.45.77).
+#
+# CORRECTED after the first run: the Dev VM already runs a NATIVE (non-Docker)
+# Caddy process -- not a container, so `docker ps` never shows it -- bound to
+# *:80, *:443 and 127.0.0.1:2019, already serving other nexeagle.com
+# subdomains for other services on this same shared multi-tenant VM (which
+# also runs easyhms-api, cms-api, nexmarket, 1rad-api, sqlserver, etc.). This
+# workflow's first version didn't know that and started its own Dockerized
+# `caddy:2 --network host` container, which crash-looped forever fighting the
+# native one for port 2019. That container is removed here on every run.
+#
+# This now matches the Prod pattern exactly (docs/OPS-HTTPS-SETUP.md): find
+# the ALREADY-running Caddy, append a site block to ITS Caddyfile, reload it.
+# Idempotent -- safe to re-run.
+#
+# Reuses the same secrets as deploy-location-api.yml -- no new credentials.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: Setup — loc-dev.nexeagle.com
+
+on:
+  workflow_dispatch:
+
+jobs:
+  setup-caddy:
+    name: "Install/update Caddy reverse proxy on Dev VM"
+    runs-on: ubuntu-latest
+    environment: development
+
+    steps:
+      - name: Configure loc-dev.nexeagle.com on Dev VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          password: ${{ secrets.DEV_SSH_PASSWORD }}
+          port: 22
+          command_timeout: 5m
+          script: |
+            set -e
+
+            echo "--- Removing the stray Dockerized caddy container from the first run ---"
+            docker rm -f caddy 2>/dev/null && echo "Removed." || echo "Not present -- nothing to remove."
+
+            echo "--- Locating the native Caddy process and its real config file ---"
+            CADDY_PID=$(pgrep -f 'caddy run' | head -n1 || true)
+            if [ -z "$CADDY_PID" ]; then
+              echo "No native 'caddy run' process found on this VM -- can't proceed automatically." >&2
+              exit 1
+            fi
+            CADDY_CONFIG=$(ps -p "$CADDY_PID" -o args= | grep -oP '(?<=--config )\S+' || true)
+            [ -z "$CADDY_CONFIG" ] && CADDY_CONFIG=/etc/caddy/Caddyfile
+            echo "Native Caddy PID $CADDY_PID, config file: $CADDY_CONFIG"
+
+            echo "--- Adding loc-dev.nexeagle.com to $CADDY_CONFIG (if not already present) ---"
+            if ! grep -q "loc-dev.nexeagle.com" "$CADDY_CONFIG"; then
+              printf '\nloc-dev.nexeagle.com {\n    reverse_proxy localhost:5004\n}\n' >> "$CADDY_CONFIG"
+              echo "Appended block."
+            else
+              echo "Block already present -- leaving as-is."
+            fi
+
+            echo "--- Reloading native Caddy ---"
+            if systemctl is-active --quiet caddy 2>/dev/null; then
+              systemctl reload caddy
+              echo "Reloaded via systemctl."
+            else
+              caddy reload --config "$CADDY_CONFIG"
+              echo "Reloaded via caddy CLI."
+            fi
+
+      - name: Verify HTTPS is up
+        run: |
+          echo "Waiting for Caddy to complete the ACME handshake..."
+          for i in 1 2 3 4 5 6; do
+            S=$(curl -s -o /dev/null -w '%{http_code}' --max-time 8 \
+                https://loc-dev.nexeagle.com/health 2>/dev/null || echo 000)
+            echo "Attempt $i — HTTP $S"
+            [ "$S" = "200" ] && echo "✅ https://loc-dev.nexeagle.com is up" && exit 0
+            sleep 10
+          done
+          echo "⚠️ Not answering yet -- check the Caddyfile got the block and 'systemctl status caddy' / 'journalctl -u caddy' on the Dev VM."
+          exit 0
+
+      - name: Diagnostics (always runs, even if the check above didn't succeed)
+        if: always()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          password: ${{ secrets.DEV_SSH_PASSWORD }}
+          port: 22
+          command_timeout: 2m
+          script: |
+            echo "--- native caddy process ---"
+            pgrep -af 'caddy run' || echo "(not running)"
+            echo
+            echo "--- tail of its config ---"
+            CADDY_PID=$(pgrep -f 'caddy run' | head -n1 || true)
+            CADDY_CONFIG=$(ps -p "$CADDY_PID" -o args= 2>/dev/null | grep -oP '(?<=--config )\S+' || true)
+            [ -z "$CADDY_CONFIG" ] && CADDY_CONFIG=/etc/caddy/Caddyfile
+            tail -n 15 "$CADDY_CONFIG" 2>/dev/null || echo "(couldn't read $CADDY_CONFIG)"
+            echo
+            echo "--- listening on 80/443? ---"
+            (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null) | grep -E ':80 |:443 ' || echo "(nothing listening)"

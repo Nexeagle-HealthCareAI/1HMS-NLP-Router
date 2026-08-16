@@ -1,45 +1,47 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# EASYHMS NLP SYMPTOM ROUTER — CI/CD Pipeline  (FastAPI/scikit-learn -> GHCR -> VM)
+# LOCATION API — CI/CD Pipeline  (FastAPI city/pincode/coordinate lookup -> GHCR -> VM)
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# STAGES:
-#   Stage 1 — Build        pip install + import smoke test
-#   Stage 2 — Docker       build & push image to GHCR
-#   Stage 3 — Deploy Dev   pull image -> run on Dev VM  (develop branch, port 5003)
-#   Stage 4 — Deploy Prod  pull image -> run on Prod VM (main branch,    port 5003)
+# Deployed independently of the NLP Router (deploy-nlp.yml) -- separate image,
+# separate container, separate port (5004 vs. 5003) on the SAME dev/prod VMs.
+# Path-filtered so a change under location_API/ doesn't touch the NLP router and
+# vice versa; each service only rebuilds/redeploys on its own changes.
 #
-# No secrets are baked into the image or required by the app itself (no DB, no API
-# keys) — it just needs the SAME SSH secrets already used by the other EasyHMS
-# backend deploy workflows (this repo has its own copies, since GitHub secrets
-# aren't shared across repos):
+# STAGES:
+#   Stage 1 — Build        pip install + import smoke test + location_API's own tests
+#   Stage 2 — Docker       build & push image to GHCR
+#   Stage 3 — Deploy Dev   pull image -> run on Dev VM  (develop branch, port 5004)
+#   Stage 4 — Deploy Prod  pull image -> run on Prod VM (main branch,    port 5004)
+#
+# Reuses the SAME SSH/GHCR secrets as deploy-nlp.yml (same repo, same VMs):
 #   GHCR_TOKEN            GitHub PAT (write:packages + repo)
 #   DEV_SSH_HOST / DEV_SSH_USER / DEV_SSH_PASSWORD    Dev VM (151.185.45.77)
 #   PROD_SSH_HOST / PROD_SSH_USER / PROD_SSH_KEY_B64  Prod App VM (151.185.45.67)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-name: EasyHMS NLP Router — CI/CD
+name: Location API — CI/CD
 
 on:
   push:
     branches: [develop, main]
-    paths-ignore:
+    paths:
       - "location_API/**"
       - "tests/location_API/**"
       - ".github/workflows/deploy-location-api.yml"
   pull_request:
     branches: [develop, main]
-    paths-ignore:
+    paths:
       - "location_API/**"
       - "tests/location_API/**"
       - ".github/workflows/deploy-location-api.yml"
   workflow_dispatch:
 
 concurrency:
-  group: easyhms-nlp-router-${{ github.ref }}
+  group: location-api-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/easyhms-nlp-router
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/easyhms-location-api
 
 jobs:
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -54,13 +56,14 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
-      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - run: pip install -r location_API/requirements.txt -r requirements-dev.txt
 
       - name: Import smoke test
-        run: python -c "import api.main"
+        working-directory: location_API
+        run: python -c "import main"
 
-      - name: Run test suite
-        run: python -m pytest tests/ -v --ignore=tests/location_API
+      - name: Run location_API test suite
+        run: python -m pytest tests/location_API -v
 
 # ═══════════════════════════════════════════════════════════════════════════════
   docker:
@@ -96,11 +99,12 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: location_API/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=location-api
+          cache-to: type=gha,mode=max,scope=location-api
 
 # ═══════════════════════════════════════════════════════════════════════════════
   deploy-dev:
@@ -140,8 +144,8 @@ jobs:
               exit 1
             fi
 
-            docker rm -f nlp-router-dev 2>/dev/null || true
-            docker run -d --name nlp-router-dev --restart unless-stopped \
+            docker rm -f location-api-dev 2>/dev/null || true
+            docker run -d --name location-api-dev --restart unless-stopped \
               --network host "$IMAGE_LC"
             docker image prune -f || true
 
@@ -150,12 +154,12 @@ jobs:
           sleep 10
           for i in 1 2 3 4 5; do
             S=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-                http://${{ secrets.DEV_SSH_HOST }}:5003/health 2>/dev/null || echo 000)
+                http://${{ secrets.DEV_SSH_HOST }}:5004/health 2>/dev/null || echo 000)
             echo "Attempt $i — HTTP $S"
-            [ "$S" = "200" ] && echo "✅ NLP Router (dev) is up" && exit 0
+            [ "$S" = "200" ] && echo "✅ Location API (dev) is up" && exit 0
             sleep 10
           done
-          echo "⚠️ Health check inconclusive — check: docker logs nlp-router-dev"
+          echo "⚠️ Health check inconclusive — check: docker logs location-api-dev"
           exit 0
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -189,8 +193,8 @@ jobs:
                  sleep 5; \
                done; \
                if [ \"\$PULLED\" != 1 ]; then echo 'docker pull failed after 3 attempts, aborting without touching the running container' >&2; exit 1; fi; \
-               docker rm -f nlp-router-prod 2>/dev/null || true; \
-               docker run -d --name nlp-router-prod --restart unless-stopped \
+               docker rm -f location-api-prod 2>/dev/null || true; \
+               docker run -d --name location-api-prod --restart unless-stopped \
                  --network host '$IMAGE_LC'; \
                docker image prune -f"
 
@@ -199,18 +203,18 @@ jobs:
           sleep 15
           for i in 1 2 3 4 5; do
             S=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-                http://${{ secrets.PROD_SSH_HOST }}:5003/health 2>/dev/null || echo 000)
+                http://${{ secrets.PROD_SSH_HOST }}:5004/health 2>/dev/null || echo 000)
             echo "Attempt $i — HTTP $S"
-            [ "$S" = "200" ] && echo "✅ NLP Router (prod) is up" && exit 0
+            [ "$S" = "200" ] && echo "✅ Location API (prod) is up" && exit 0
             sleep 10
           done
-          echo "⚠️ Health check inconclusive — check: docker logs nlp-router-prod"
+          echo "⚠️ Health check inconclusive — check: docker logs location-api-prod"
           exit 0
 
       - name: Write summary
         if: always()
         run: |
-          echo "## 🧠 EasyHMS NLP Router — Prod" >> $GITHUB_STEP_SUMMARY
+          echo "## 📍 Location API — Prod" >> $GITHUB_STEP_SUMMARY
           [ "${{ job.status }}" = "success" ] \
             && echo "**Status:** ✅ Deployed" >> $GITHUB_STEP_SUMMARY \
             || echo "**Status:** ❌ Failed" >> $GITHUB_STEP_SUMMARY

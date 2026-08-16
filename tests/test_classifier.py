@@ -170,3 +170,18 @@ class TestRealBundleIntegration:
         for query in GIBBERISH_SAMPLE_QUERIES:
             result = real_classifier.predict(query)
             assert result.no_match is True, f"expected no_match for {query!r}, got {result.specialist}"
+
+    def test_a_realistic_multi_symptom_query_stays_within_max_candidates(self, real_classifier):
+        # Regression test: this exact 3-symptom query (headache, stomach
+        # ache, fever -- no dental content at all) once returned 5
+        # candidates including "Dentist" despite MAX_CANDIDATES=3, because
+        # merging 3 segments' already-capped lists wasn't re-capped. See
+        # nlp_brain.candidates.merge_candidates().
+        from nlp_brain.config import MAX_CANDIDATES
+        query = "sar mein dard hai, pet mein bhi dard hai aur bukhar bhi hai"
+
+        result = real_classifier.predict(query)
+
+        assert len(result.candidates) <= MAX_CANDIDATES, (
+            f"expected at most {MAX_CANDIDATES} candidates, got {len(result.candidates)}: {result.candidates}"
+        )

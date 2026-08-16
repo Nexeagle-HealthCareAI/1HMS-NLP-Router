@@ -15,14 +15,17 @@ from typing import Dict, List, Optional
 
 
 class ICitySearcher(ABC):
-    """Search for city / district names that match a free-text query."""
+    """Search for city / town / district names that match a free-text query."""
 
     @abstractmethod
     def search_cities(self, query: str, limit: int = 10) -> List[Dict]:
         """
-        Return up to *limit* best-matching city records.
+        Return up to *limit* best-matching place records, ranked by match
+        quality (exact > prefix > substring > fuzzy typo).
 
-        Each record is a dict with at least ``{"city": str, "state": str}``.
+        Each record is a dict with keys:
+          name, type ("city" | "town" | "district"), state, district,
+          pincodes (capped sample), coordinates (if known).
         """
 
 
@@ -47,4 +50,21 @@ class ICoordinateFinder(ABC):
         Return a result dict with keys:
           query, found, matched_city, state, latitude, longitude,
           suggestions, message
+        """
+
+
+class ISmartLocator(ABC):
+    """Resolve a free-form location query -- a pincode, "lat,lon"
+    coordinates, or a city/town/district name -- into one unified result,
+    without the caller needing to know or specify which kind of query it
+    is (that's the whole point: ICitySearcher/IPincodeFinder/
+    ICoordinateFinder each require the caller to already know they have a
+    city name; this doesn't)."""
+
+    @abstractmethod
+    def locate(self, query: str) -> Dict:
+        """
+        Return a result dict with keys:
+          query, queryType, found, matched, district, state, pincodes,
+          coordinates, details, suggestions, message
         """
