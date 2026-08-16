@@ -21,3 +21,11 @@ STOP_PHRASES = {
     "ruk jaiye", "ruk jaiye please", "ruk jao", "ruk jayen", "ruko",
     "ruk jaiyega", "band karo", "band kar do", "band kijiye",
 }
+#Changes for the Mic related timings can be changed only 
+# How long (seconds) to wait for the user to start speaking before giving up.
+# Raise this if users are being cut off before they begin.
+MIC_TIMEOUT = 8.0
+
+# Maximum recording length (seconds) once speech has started.
+# Raise this if users are being cut off mid-sentence.
+MIC_PHRASE_TIME_LIMIT = 12.0

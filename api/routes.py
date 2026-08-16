@@ -77,7 +77,7 @@ def _to_response(result: PredictionResult, model_version: Optional[str]) -> Rout
     is skipped rather than raising -- the raw.specialist field still carries
     the internal top-pick label for debugging."""
     specialty_ids: list[str] = []
-    for label in result.candidates:
+    for label in result.candidates[:5]:
         slug = LABEL_TO_NEXEAGLE_SPECIALTY_ID.get(label)
         if slug and slug not in specialty_ids:
             specialty_ids.append(slug)

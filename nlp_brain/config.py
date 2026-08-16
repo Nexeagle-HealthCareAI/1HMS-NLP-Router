@@ -43,7 +43,7 @@ CANDIDATE_MARGIN = 0.12
 # more than this many fall within CANDIDATE_MARGIN of the top score --
 # keeps an off-calibration margin from ever turning one query into "here's
 # half our specialist list."
-MAX_CANDIDATES = 3
+MAX_CANDIDATES = 5
 
 NO_MATCH_MESSAGE = "No matches found."
 
