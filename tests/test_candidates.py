@@ -1,10 +1,18 @@
 """Unit tests for nlp_brain.candidates -- expanding a single top pick into a
-close-margin shortlist of runner-up specialists.
+close-margin shortlist of runner-up specialists, and merging multiple
+segments' shortlists into one final, capped result.
+
+test_merging_two_capped_segment_lists_can_still_need_recapping (in
+TestMergeCandidates) pins down a real bug: a 3-symptom query once returned
+5 candidates (specialtyIds all the way out to the API response) despite
+MAX_CANDIDATES=3, because classifier.predict() concatenated each segment's
+already-capped list without re-applying the cap to the merged result. See
+nlp_brain.classifier.SymptomClassifier.predict()'s docstring.
 """
 import numpy as np
 import pytest
 
-from nlp_brain.candidates import build_candidates, ranked_labels
+from nlp_brain.candidates import build_candidates, merge_candidates, ranked_labels
 
 
 class _StubProbaModel:
@@ -85,3 +93,38 @@ class TestBuildCandidates:
         ranked = [("Cardiologist", 0.50), ("Dentist", 0.44), ("Dermatologist", 0.37)]
         candidates = build_candidates(ranked, margin=0.12, max_candidates=3)
         assert candidates == ["Cardiologist", "Dentist"]
+
+
+class TestMergeCandidates:
+    def test_single_segment_passes_through_unchanged(self):
+        assert merge_candidates([["Dentist", "Cardiologist"]], max_candidates=3) == ["Dentist", "Cardiologist"]
+
+    def test_merges_two_segments_in_first_mention_order(self):
+        result = merge_candidates([["Dentist"], ["Cardiologist"]], max_candidates=3)
+        assert result == ["Dentist", "Cardiologist"]
+
+    def test_dedupes_a_label_shared_across_segments(self):
+        result = merge_candidates([["Dentist", "Cardiologist"], ["Cardiologist", "Dermatologist"]], max_candidates=5)
+        assert result == ["Dentist", "Cardiologist", "Dermatologist"]
+
+    def test_merging_two_capped_segment_lists_can_still_need_recapping(self):
+        # Each segment individually respects max_candidates=3 -- but two of
+        # them combined (6 unique labels) must still come back capped at 3.
+        # This is the exact shape of the real bug: a 3-symptom query merged
+        # three already-capped segment lists into 5 unique candidates.
+        segment_a = ["Neurologist", "Cardiologist", "Dermatologist"]
+        segment_b = ["Gastroenterologist", "GI/Surgical Gastroenterologist", "Dentist"]
+
+        result = merge_candidates([segment_a, segment_b], max_candidates=3)
+
+        assert len(result) == 3
+        assert result == ["Neurologist", "Cardiologist", "Dermatologist"]
+
+    def test_empty_segment_lists_yield_no_candidates(self):
+        assert merge_candidates([[], []], max_candidates=3) == []
+
+    def test_a_segment_with_no_match_contributes_nothing(self):
+        # _predict_segment() returns candidates=[] for a gibberish/no-match
+        # segment -- merge_candidates() must simply skip it, not error.
+        result = merge_candidates([["Dentist"], []], max_candidates=3)
+        assert result == ["Dentist"]

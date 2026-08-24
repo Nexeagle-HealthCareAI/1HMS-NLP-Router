@@ -10,7 +10,7 @@ from speech import (
     transcribe_audio_data,
 )
 
-from .config import SPEECH_LANGUAGE, STOP_PHRASES
+from .config import MIC_PHRASE_TIME_LIMIT, MIC_TIMEOUT, SPEECH_LANGUAGE, STOP_PHRASES
 
 try:
     import speech_recognition as sr
@@ -19,8 +19,8 @@ except ImportError:
     SPEECH_RECOGNITION_AVAILABLE = False
 
 
-def listen_from_microphone(language: str = SPEECH_LANGUAGE, timeout: float = 8.0,
-                            phrase_time_limit: float = 12.0):
+def listen_from_microphone(language: str = SPEECH_LANGUAGE, timeout: float = MIC_TIMEOUT,
+                            phrase_time_limit: float = MIC_PHRASE_TIME_LIMIT):
     """Record audio from the default microphone and transcribe it to text,
     normalized to Roman script. Returns the transcribed string, or None if
     nothing could be understood (silence, unclear audio, no network, no

@@ -15,6 +15,9 @@ COPY nlp_brain/ nlp_brain/
 COPY api/ api/
 COPY speech/ speech/
 COPY specialty_mapping.py model_meta.json symptom_specialist_classifier.joblib ./
+# location_API/ is a separate, independently-deployed service (its own
+# Dockerfile + .github/workflows/deploy-location-api.yml) -- it doesn't
+# belong in this image, and never did (nothing in api/ imports it).
 
 EXPOSE 5003
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "5003"]

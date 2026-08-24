@@ -22,8 +22,16 @@ name: EasyHMS NLP Router — CI/CD
 on:
   push:
     branches: [develop, main]
+    paths-ignore:
+      - "location_API/**"
+      - "tests/location_API/**"
+      - ".github/workflows/deploy-location-api.yml"
   pull_request:
     branches: [develop, main]
+    paths-ignore:
+      - "location_API/**"
+      - "tests/location_API/**"
+      - ".github/workflows/deploy-location-api.yml"
   workflow_dispatch:
 
 concurrency:
@@ -52,7 +60,7 @@ jobs:
         run: python -c "import api.main"
 
       - name: Run test suite
-        run: python -m pytest tests/ -v
+        run: python -m pytest tests/ -v --ignore=tests/location_API
 
 # ═══════════════════════════════════════════════════════════════════════════════
   docker:
