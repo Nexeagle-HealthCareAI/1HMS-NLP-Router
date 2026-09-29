@@ -8,8 +8,8 @@
 #   Stage 3 — Deploy Dev   pull image -> run on Dev VM  (develop branch, port 5003)
 #   Stage 4 — Deploy Prod  pull image -> run on Prod VM (main branch,    port 5003)
 #
-# No secrets are baked into the image or required by the app itself (no DB, no API
-# keys) — it just needs the SAME SSH secrets already used by the other EasyHMS
+# No secrets are baked into the image or required by the app itself (no DB)
+# — it just needs the SAME SSH secrets already used by the other EasyHMS
 # backend deploy workflows (this repo has its own copies, since GitHub secrets
 # aren't shared across repos):
 #   GHCR_TOKEN            GitHub PAT (write:packages + repo)
@@ -117,6 +117,7 @@ jobs:
           IMAGE: ${{ env.IMAGE_NAME }}:${{ needs.docker.outputs.image_tag }}
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           ACTOR: ${{ github.actor }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}  #doctor_dekho groq API
         with:
           host: ${{ secrets.DEV_SSH_HOST }}
           username: ${{ secrets.DEV_SSH_USER }}
@@ -177,6 +178,7 @@ jobs:
           IMAGE: "${{ env.IMAGE_NAME }}:${{ needs.docker.outputs.image_tag }}"
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           ACTOR: ${{ github.actor }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }} 
         run: |
           IMAGE_LC=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')
           ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
