@@ -1,0 +1,7 @@
+# Optional model-backed components (not needed for the default rule/TF-IDF stack)
+fasttext-wheel>=0.9.2      # language-ID; only used if HMS_FASTTEXT_LID points at lid.176.bin (fails to build on some Python 3.12+ setups)
+# transformers              -> ner.BertNER
+# sentence-transformers     -> specialist_rag.SentenceTransformerEmbedder / CrossEncoderReranker
+fasttext-wheel>=0.9.2      # only used if HMS_FASTTEXT_LID points at lid.176.bin
+# transformers              -> ner.BertNER
+# sentence-transformers     -> specialist_rag.SentenceTransformerEmbedder / CrossEncoderReranker

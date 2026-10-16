@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.env
+*.bak.csv
+novel_symptoms_review.csv
+lid.176.bin
+.DS_Store
