@@ -32,7 +32,11 @@ class Lexicon:
         # (e.g. a minimal test lexicon with zero entries).
         self.max_ngram = max((len(k.split()) for k in self.phrase_index), default=1)
         # single-word vocabulary used for word-level spell repair
-        self.vocab = {w for e in entries for w in e.variant.split()}
+        self.vocab = {e.variant for e in entries if " " not in e.variant}
+        self.spellable_vocab = {
+            e.variant for e in entries
+            if " " not in e.variant and e.category in {"symptom", "body_part", "intensity", "time"}
+        }
         # known typo / alternate spellings -> a word that is in `vocab` (spelling_variants.csv).
         # Aliases pointing at unknown words are dropped, so a bad row can never inject a new word.
         self.aliases = {v: c for v, c in (aliases or {}).items() if c in self.vocab and v not in self.vocab}

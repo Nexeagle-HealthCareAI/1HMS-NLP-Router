@@ -232,13 +232,20 @@ class SymptomExtractor:
     def _mark_negation(ents: list[Entity], words: list[str]) -> list[Entity]:
         """Returns a new list with negation flags set (Bug #3 fix: no in-place mutation)."""
         result: list[Entity] = []
-        starts = {e.start for e in ents}
         for e in ents:
             if e.type != SYMPTOM:
                 result.append(e)
                 continue
             negated = False
-            if e.start > 0 and words[e.start - 1] in _NEGATORS_BEFORE:
+            lookahead = words[e.end:min(e.end + 3, len(words))]
+            idiomatic_breathlessness = (
+                e.canonical == "breathlessness"
+                and any(w in _NEGATORS_AFTER for w in lookahead)
+                and any(w in {"aa", "a", "raha", "rahi", "rahe"} for w in lookahead)
+            )
+            if idiomatic_breathlessness:
+                negated = False
+            elif e.start > 0 and words[e.start - 1] in _NEGATORS_BEFORE:
                 negated = True
             else:
                 other_starts = {o.start for o in ents if o is not e}

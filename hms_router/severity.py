@@ -28,8 +28,11 @@ EMERGENCY, SEVERE_FLAG = "EMERGENCY", "SEVERE"
 EMERGENCY_RULES: list[tuple[str, str, str, str]] = [
     ("seene dard", "Chest pain", "chest pain", EMERGENCY),
     ("seena dard", "Chest pain", "chest pain", EMERGENCY),
+    ("sine dard", "Chest pain", "chest pain", EMERGENCY),
+    ("sina dard", "Chest pain", "chest pain", EMERGENCY),
     ("chest pain", "Chest pain", "chest pain", EMERGENCY),
     ("saans nahi aa", "Breathlessness", "breathlessness", EMERGENCY),
+    ("saans nai aa", "Breathlessness", "breathlessness", EMERGENCY),
     ("saans takleef", "Breathlessness", "breathlessness", EMERGENCY),
     ("saans phoolna", "Breathlessness", "breathlessness", EMERGENCY),
     ("short breath", "Breathlessness", "breathlessness", EMERGENCY),
@@ -49,6 +52,8 @@ EMERGENCY_RULES: list[tuple[str, str, str, str]] = [
     ("numbness", "Limb numbness", "numbness", EMERGENCY),
     ("sar achanak tez dard", "Sudden severe headache", "sudden severe headache", EMERGENCY),
     ("sir achanak tez dard", "Sudden severe headache", "sudden severe headache", EMERGENCY),
+    ("sar mein achanak tez dard", "Sudden severe headache", "sudden severe headache", EMERGENCY),
+    ("sir mein achanak tez dard", "Sudden severe headache", "sudden severe headache", EMERGENCY),
     ("sudden severe headache", "Sudden severe headache", "sudden severe headache", EMERGENCY),
     ("ulti khoon", "Blood in vomit", "blood in vomit", EMERGENCY),
     ("khoon ulti", "Blood in vomit", "blood in vomit", EMERGENCY),       # "khoon ki ulti" (word order flipped)
@@ -97,16 +102,28 @@ def _close(a: str, b: str) -> bool:
     return prev[-1] <= 1
 
 
-def _phrase_in(words: list[str], phrase: list[str]) -> bool:
-    def walk(start: int, k: int) -> bool:
+def _phrase_spans(words: list[str], phrase: list[str]) -> list[tuple[int, int]]:
+    def walk(start: int, k: int, first: int) -> list[tuple[int, int]]:
         if k == len(phrase):
-            return True
+            return [(first, start)]
+        matches: list[tuple[int, int]] = []
         for i in range(start, min(start + (1 if k == 0 else _MAX_GAP + 1), len(words))):
-            if _close(words[i], phrase[k]) and walk(i + 1, k + 1):
-                return True
-        return False
-    first = [i for i, w in enumerate(words) if _close(w, phrase[0])]
-    return any(walk(i, 0) for i in first)
+            if _close(words[i], phrase[k]):
+                matches.extend(walk(i + 1, k + 1, first))
+        return matches
+
+    spans: list[tuple[int, int]] = []
+    for i, word in enumerate(words):
+        if _close(word, phrase[0]):
+            spans.extend(walk(i + 1, 1, i))
+    return spans
+
+
+def _negated_phrase(words: list[str], start: int, end: int) -> bool:
+    negators = {"nahi", "nahin", "no", "without", "bina"}
+    before = words[max(0, start - 2):start]
+    after = words[end:min(len(words), end + 3)]
+    return any(word in negators for word in before + after)
 
 
 def emergency_check(state: dict, texts: list[str] | None = None, rules: list | None = None) -> list[dict]:
@@ -125,7 +142,9 @@ def emergency_check(state: dict, texts: list[str] | None = None, rules: list | N
         for phrase, english, canon, flag in rules:
             if canon in negated or canon in hits:
                 continue
-            if _phrase_in(words, [w for w in phrase.split() if w not in _PARTICLES]):
+            phrase_words = [w for w in phrase.split() if w not in _PARTICLES]
+            spans = _phrase_spans(words, phrase_words)
+            if any(not _negated_phrase(words, start, end) for start, end in spans):
                 hits[canon] = {"english": english, "flag": flag, "via": "text", "phrase": phrase}
 
     # combination red flags (flag SEVERE, not EMERGENCY): stomach pain + fever, at least moderate

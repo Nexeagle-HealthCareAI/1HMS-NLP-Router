@@ -84,7 +84,7 @@ class SpellingCorrector:
         self.unknown_sink = unknown_sink
         self._vocab_list = sorted(lexicon.vocab)
         # fuzzy targets: never very short words - at edit distance 2 anything matches "the", "hai", "ek"
-        self._fuzzy_list = [w for w in self._vocab_list if len(w) >= 4]
+        self._fuzzy_list = sorted(w for w in lexicon.spellable_vocab if len(w) >= 4)
         self._key_index: dict[str, list[str]] = {}
         for w in self._vocab_list:
             self._key_index.setdefault(phonetic_key(w), []).append(w)

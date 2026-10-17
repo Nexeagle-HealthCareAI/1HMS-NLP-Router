@@ -5,9 +5,13 @@ Implements `HMS_NLP_Router_Architecture.pdf`. **Triage support only - not a diag
 
 ```
 pip install -r requirements.txt
-python -m pytest            # run the test-suite (needs hms_router/data/*.csv)
+python -m hms_router.dataset_builder  # regenerate package CSVs after changing the source dataset
+python -m pytest            # run the test-suite (requires the generated package CSVs)
 python demo.py --debug      # interactive; type "quit" to exit
 ```
+
+Run the HTTP API with `uvicorn api:app --reload`. By default it uses in-memory
+`fakeredis` for local development; set `REDIS_URL` to connect to Redis.
 ```python
 import redis
 from hms_router import HMSRouterAgent
@@ -26,6 +30,9 @@ hms-nlp-router/
 │   ├── __init__.py
 │   ├── agent.py             # orchestration, in doc order
 │   ├── pipeline.py          # Steps 1-3 glue
+│   ├── retrieval.py         # Layer 2: session, vector, and long-term retrieval
+│   ├── routing_engine.py    # Layer 4: specialist routing and emergency gate
+│   ├── chroma_store.py      # optional persistent vector store
 │   ├── session.py  language.py  script.py          # L1 (Step 1)
 │   ├── lexicon.py  spelling.py                     # L2 (Step 2)
 │   ├── keywords.py                                 # L2 keyword tagging
@@ -36,14 +43,15 @@ hms-nlp-router/
 │   ├── output.py                                   # L5 (Step 7)
 │   ├── learning.py                                 # L5 (Step 8)
 │   ├── config.py
-│   └── data/                # hinglish_lexicon.csv, spelling_variants.csv, specialist_mapping.csv
+│   └── data/                # generated lexicon and specialist mapping; spelling_variants.csv is optional
 ├── Datasets/
 │   └── combined_symptom_dataset.csv
 ├── scripts/                 # maintenance helpers (run from repo root)
 │   ├── inspect_dataset.py
 │   ├── cleanup_lexicon.py
 │   └── one_off/patch_builder.py   # archived, already applied
-├── tests/                   # 8 test modules (~100 test functions)
+├── tests/                   # test suite
+├── api.py                   # FastAPI gateway
 ├── demo.py
 ├── pytest.ini
 └── requirements.txt
@@ -54,7 +62,7 @@ hms-nlp-router/
 | Doc | Module |
 |---|---|
 | L1 Session / language / script (Step 1) | `session.py`, `language.py`, `script.py` |
-| L2 Spelling, lexicon (Step 2) | `spelling.py`, `lexicon.py`, `data/hinglish_lexicon.csv`, `data/spelling_variants.csv` |
+| L2 Spelling, lexicon (Step 2) | `spelling.py`, `lexicon.py`, `data/hinglish_lexicon.csv`, optional `data/spelling_variants.csv` |
 | L2 Keyword extractor / unique keyword tagging (p.12) | `keywords.py` |
 | L2 NER -> symptom object (Step 3) | `ner.py` |
 | L3 Redis accumulation (Step 4) | `accumulator.py` |
@@ -78,9 +86,9 @@ hms-nlp-router/
 4. No `session:{id}:ttl` key: `EXPIRE` on each key does the job. Soundex/Metaphone replaced by a Hindi consonant-skeleton key (`phonetic_key`).
 
 ## NOT built (needs data, a model, or infrastructure you haven't specified)
-* PostgreSQL long-term logs; FastAPI/WebSocket gateway; chat frontends.
+* PostgreSQL long-term logs; WebSocket gateway; chat frontends.
 * Weekly NER fine-tune; `BertNER`, XGBoost severity model, MedBERT embeddings and the cross-encoder re-ranker have hooks but no trained models.
-* Corpus scale: ~210 lexicon rows / 20 specialist clusters vs the doc's 2000+ symptoms / 5000+ mappings / 150+ emergency terms / 40+ specialists. Step 8 is the mechanism for growing it.
+* Corpus scale: the generated data currently contains 934 lexicon entries and 63 specialist clusters, below the doc's 2000+ symptoms / 5000+ mappings / 150+ emergency terms / 40+ specialists. Step 8 is the mechanism for growing it.
 
 ## Known limitations
 * Devanagari words get a spurious middle "a" (`घबराहट` -> `ghabaraahat`). Known words are rescued by the phonetic key; novel ones reach the review queue in that longer form.

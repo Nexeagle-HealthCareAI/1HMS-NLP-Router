@@ -49,7 +49,12 @@ def _default_corpus() -> tuple:
     """Dataset-derived clusters + curated mapping, built once. Call _default_corpus.cache_clear()
     in a test that swaps DEFAULT_DATASET / DEFAULT_CORPUS."""
     from .dataset_builder import load_corpus_from_dataset
-    return tuple(load_corpus_from_dataset(DEFAULT_DATASET)) + tuple(load_corpus(DEFAULT_CORPUS))
+    dataset_corpus = load_corpus_from_dataset(DEFAULT_DATASET) if DEFAULT_DATASET.exists() else []
+    combined = dataset_corpus + load_corpus(DEFAULT_CORPUS)
+    unique: dict[str, Cluster] = {}
+    for cluster in combined:
+        unique.setdefault(cluster.cluster_id, cluster)
+    return tuple(unique.values())
 
 
 def load_corpus(path: str | Path | None = None) -> list[Cluster]:

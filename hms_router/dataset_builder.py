@@ -39,6 +39,140 @@ DATASET_PATH = _HERE.parent / "Datasets" / "combined_symptom_dataset.csv"
 OUT_MAPPING = _HERE / "data" / "specialist_mapping.csv"
 OUT_LEXICON = _HERE / "data" / "hinglish_lexicon.csv"
 
+# Core vocabulary supports the conversational pipeline independently of the
+# larger, free-text dataset. Keep these canonical entries ahead of generated
+# phrases so the NER and severity layers receive stable symptom names.
+_BASE_LEXICON = [
+    ("fever", "fever", "symptom", "en"),
+    ("cough", "cough", "symptom", "en"),
+    ("vomiting", "vomiting", "symptom", "en"),
+    ("dizziness", "dizziness", "symptom", "en"),
+    ("breathlessness", "breathlessness", "symptom", "en"),
+    ("headache", "headache", "symptom", "en"),
+    ("stomach pain", "stomach pain", "symptom", "en"),
+    ("chest pain", "chest pain", "symptom", "en"),
+    ("back pain", "back pain", "symptom", "en"),
+    ("sore throat", "sore throat", "symptom", "en"),
+    ("vision loss", "vision loss", "symptom", "en"),
+    ("numbness", "numbness", "symptom", "en"),
+    ("itching", "itching", "symptom", "en"),
+    ("rash", "rash", "symptom", "en"),
+    ("diarrhea", "diarrhea", "symptom", "en"),
+    ("nausea", "nausea", "symptom", "en"),
+    ("weakness", "weakness", "symptom", "en"),
+    ("fatigue", "fatigue", "symptom", "en"),
+    ("swelling", "swelling", "symptom", "en"),
+    ("pain", "pain", "symptom", "en"),
+    ("blood in vomit", "blood in vomit", "symptom", "en"),
+    ("unconscious", "unconscious", "symptom", "en"),
+    ("sudden", "sudden", "time", "en"),
+    ("severe", "severe", "intensity", "en"),
+    ("moderate", "moderate", "intensity", "en"),
+    ("mild", "mild", "intensity", "en"),
+    ("stomach", "stomach", "body_part", "en"),
+    ("head", "head", "body_part", "en"),
+    ("chest", "chest", "body_part", "en"),
+    ("back", "back", "body_part", "en"),
+    ("throat", "throat", "body_part", "en"),
+    ("sir dard", "headache", "symptom", "hi"),
+    ("sar dard", "headache", "symptom", "hi"),
+    ("sardard", "headache", "symptom", "hi"),
+    ("sir", "head", "body_part", "hi"),
+    ("sar", "head", "body_part", "hi"),
+    ("pet dard", "stomach pain", "symptom", "hi"),
+    ("pet", "stomach", "body_part", "hi"),
+    ("seene mein dard", "chest pain", "symptom", "hi"),
+    ("seene me dard", "chest pain", "symptom", "hi"),
+    ("sine mein dard", "chest pain", "symptom", "hi"),
+    ("sine me dard", "chest pain", "symptom", "hi"),
+    ("seena me dard", "chest pain", "symptom", "hi"),
+    ("seena", "chest", "body_part", "hi"),
+    ("seene", "chest", "body_part", "hi"),
+    ("kamar dard", "back pain", "symptom", "hi"),
+    ("kamar", "back", "body_part", "hi"),
+    ("gala dard", "sore throat", "symptom", "hi"),
+    ("gala", "throat", "body_part", "hi"),
+    ("bukhar", "fever", "symptom", "hi"),
+    ("bukhaar", "fever", "symptom", "hi"),
+    ("khansi", "cough", "symptom", "hi"),
+    ("khaansi", "cough", "symptom", "hi"),
+    ("ulti", "vomiting", "symptom", "hi"),
+    ("chakkar", "dizziness", "symptom", "hi"),
+    ("saans", "breathlessness", "symptom", "hi"),
+    ("dard", "pain", "symptom", "hi"),
+    ("halka", "mild", "intensity", "hi"),
+    ("thoda", "mild", "intensity", "hi"),
+    ("kaafi", "moderate", "intensity", "hi"),
+    ("tez", "severe", "intensity", "hi"),
+    ("bahut", "very", "intensity", "hi"),
+    ("achanak", "sudden", "time", "hi"),
+    ("aankhon ke aage andhera", "vision loss", "symptom", "hi"),
+    ("haath pair sune", "numbness", "symptom", "hi"),
+    ("haath pair sunn", "numbness", "symptom", "hi"),
+    ("behosh", "unconscious", "symptom", "hi"),
+    ("teen", "3", "number", "hi"),
+    ("do", "2", "number", "hi"),
+    ("ek", "1", "number", "hi"),
+    ("din", "day", "time", "hi"),
+    ("raat", "night", "time", "hi"),
+    ("subah", "morning", "time", "hi"),
+    ("shaam", "evening", "time", "hi"),
+    ("dopahar", "afternoon", "time", "hi"),
+    ("kal", "yesterday", "time", "hi"),
+    ("aaj", "today", "time", "hi"),
+    ("mujhe", "mujhe", "function", "hi"),
+    ("hai", "hai", "particle", "hi"),
+    ("hain", "hain", "particle", "hi"),
+    ("ho", "ho", "particle", "hi"),
+    ("hoon", "hoon", "particle", "hi"),
+    ("raha", "raha", "particle", "hi"),
+    ("rahi", "rahi", "particle", "hi"),
+    ("rahe", "rahe", "particle", "hi"),
+    ("hua", "hua", "particle", "hi"),
+    ("hui", "hui", "particle", "hi"),
+    ("gaya", "gaya", "particle", "hi"),
+    ("gayi", "gayi", "particle", "hi"),
+    ("gaye", "gaye", "particle", "hi"),
+    ("nahi", "nahi", "particle", "hi"),
+    ("nahin", "nahin", "particle", "hi"),
+    ("aa", "aa", "particle", "hi"),
+    ("me", "in", "particle", "hi"),
+    ("mein", "in", "particle", "hi"),
+    ("ka", "ka", "particle", "hi"),
+    ("ki", "ki", "particle", "hi"),
+    ("ke", "ke", "particle", "hi"),
+    ("se", "se", "particle", "hi"),
+    ("aur", "aur", "function", "hi"),
+    ("bhi", "bhi", "function", "hi"),
+    ("bas", "bas", "function", "hi"),
+    ("no", "no", "function", "en"),
+    ("only", "only", "function", "en"),
+    ("ghabrana", "ghabrana", "function", "hi"),
+]
+
+_CURATED_MAPPING = [
+    ("GI1", "Gastroenterologist", "stomach pain;vomiting;fever;diarrhea;nausea",
+     "Gastrointestinal symptoms including abdominal pain, vomiting and fever"),
+    ("GI2", "Gastroenterologist", "stomach pain;vomiting;diarrhea;nausea;constipation",
+     "Gastrointestinal and digestive symptoms"),
+    ("NEU1", "Neurologist", "headache;dizziness;vision loss;numbness;weakness",
+     "Neurological symptoms including headache and dizziness"),
+    ("DERM1", "Dermatologist", "itching;rash;swelling",
+     "Skin symptoms including itching and rash"),
+    ("CARD1", "Cardiologist", "chest pain;breathlessness;dizziness;weakness",
+     "Cardiac symptoms including chest pain and breathlessness"),
+    ("PULM1", "Pulmonologist", "cough;breathlessness;sore throat",
+     "Respiratory symptoms including cough and breathlessness"),
+    ("ORTH1", "Orthopedist", "back pain;joint pain;swelling;pain",
+     "Musculoskeletal pain and joint symptoms"),
+    ("GP1", "General Physician", "fever;cough;headache;fatigue;weakness",
+     "General symptoms for primary assessment"),
+    ("ENT1", "ENT Specialist", "sore throat;cough;hearing loss",
+     "Ear, nose and throat symptoms"),
+    ("OPHT1", "Ophthalmologist", "vision loss;eye pain;blurred vision",
+     "Eye symptoms including vision changes"),
+]
+
 # ------------------------------------------------------------------ specialist → short code
 _SPEC_CODE: dict[str, str] = {
     "Cardiology":                 "CARD",
@@ -240,6 +374,10 @@ def build_lexicon_additions(dataset_path: Path = DATASET_PATH,
     existing = existing_variants or set()
     new_rows: list[dict] = []
     seen: set[str] = set()
+    for variant, canonical, category, lang in _BASE_LEXICON:
+        if variant not in existing and variant not in seen:
+            new_rows.append({"variant": variant, "canonical": canonical, "category": category, "lang": lang})
+            seen.add(variant)
 
     with open(dataset_path, newline="", encoding="utf-8-sig") as f:
         for row in csv.DictReader(f):
@@ -282,7 +420,15 @@ def write_specialist_mapping(rows: list[dict], out: Path = OUT_MAPPING) -> None:
 
 
 def write_lexicon(existing: list[dict], additions: list[dict], out: Path = OUT_LEXICON) -> None:
-    all_rows = existing + additions
+    base = {variant: {"variant": variant, "canonical": canonical, "category": category, "lang": lang}
+            for variant, canonical, category, lang in _BASE_LEXICON}
+    all_rows = list(base.values())
+    known = set(base)
+    for row in existing + additions:
+        variant = row["variant"].strip().lower()
+        if variant not in known:
+            all_rows.append(row)
+            known.add(variant)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=["variant", "canonical", "category", "lang"])
@@ -335,7 +481,12 @@ def build_merged_mapping(dataset_path: Path = DATASET_PATH,
     existing_ids = {r["cluster_id"] for r in existing}
     new_rows = build_specialist_mapping(dataset_path)
     additions = [r for r in new_rows if r["cluster_id"] not in existing_ids]
-    return existing + additions
+    curated = [
+        {"cluster_id": cid, "specialist": specialist, "symptoms": symptoms, "description": description}
+        for cid, specialist, symptoms, description in _CURATED_MAPPING
+        if cid not in existing_ids and cid not in {r["cluster_id"] for r in additions}
+    ]
+    return existing + additions + curated
 
 
 # ------------------------------------------------------------------ CLI

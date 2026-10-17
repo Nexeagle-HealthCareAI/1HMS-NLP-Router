@@ -1,0 +1,1032 @@
+variant,canonical,category,lang
+fever,fever,symptom,en
+cough,cough,symptom,en
+vomiting,vomiting,symptom,en
+dizziness,dizziness,symptom,en
+breathlessness,breathlessness,symptom,en
+headache,headache,symptom,en
+stomach pain,stomach pain,symptom,en
+chest pain,chest pain,symptom,en
+back pain,back pain,symptom,en
+sore throat,sore throat,symptom,en
+vision loss,vision loss,symptom,en
+numbness,numbness,symptom,en
+itching,itching,symptom,en
+rash,rash,symptom,en
+diarrhea,diarrhea,symptom,en
+nausea,nausea,symptom,en
+weakness,weakness,symptom,en
+fatigue,fatigue,symptom,en
+swelling,swelling,symptom,en
+pain,pain,symptom,en
+blood in vomit,blood in vomit,symptom,en
+unconscious,unconscious,symptom,en
+sudden,sudden,time,en
+severe,severe,intensity,en
+moderate,moderate,intensity,en
+mild,mild,intensity,en
+stomach,stomach,body_part,en
+head,head,body_part,en
+chest,chest,body_part,en
+back,back,body_part,en
+throat,throat,body_part,en
+sir dard,headache,symptom,hi
+sar dard,headache,symptom,hi
+sardard,headache,symptom,hi
+sir,head,body_part,hi
+sar,head,body_part,hi
+pet dard,stomach pain,symptom,hi
+pet,stomach,body_part,hi
+seene mein dard,chest pain,symptom,hi
+seene me dard,chest pain,symptom,hi
+sine mein dard,chest pain,symptom,hi
+sine me dard,chest pain,symptom,hi
+seena me dard,chest pain,symptom,hi
+seena,chest,body_part,hi
+seene,chest,body_part,hi
+kamar dard,back pain,symptom,hi
+kamar,back,body_part,hi
+gala dard,sore throat,symptom,hi
+gala,throat,body_part,hi
+bukhar,fever,symptom,hi
+bukhaar,fever,symptom,hi
+khansi,cough,symptom,hi
+khaansi,cough,symptom,hi
+ulti,vomiting,symptom,hi
+chakkar,dizziness,symptom,hi
+saans,breathlessness,symptom,hi
+dard,pain,symptom,hi
+halka,mild,intensity,hi
+thoda,mild,intensity,hi
+kaafi,moderate,intensity,hi
+tez,severe,intensity,hi
+bahut,very,intensity,hi
+achanak,sudden,time,hi
+aankhon ke aage andhera,vision loss,symptom,hi
+haath pair sune,numbness,symptom,hi
+haath pair sunn,numbness,symptom,hi
+behosh,unconscious,symptom,hi
+teen,3,number,hi
+do,2,number,hi
+ek,1,number,hi
+din,day,time,hi
+raat,night,time,hi
+subah,morning,time,hi
+shaam,evening,time,hi
+dopahar,afternoon,time,hi
+kal,yesterday,time,hi
+aaj,today,time,hi
+mujhe,mujhe,function,hi
+hai,hai,particle,hi
+hain,hain,particle,hi
+ho,ho,particle,hi
+hoon,hoon,particle,hi
+raha,raha,particle,hi
+rahi,rahi,particle,hi
+rahe,rahe,particle,hi
+hua,hua,particle,hi
+hui,hui,particle,hi
+gaya,gaya,particle,hi
+gayi,gayi,particle,hi
+gaye,gaye,particle,hi
+nahi,nahi,particle,hi
+nahin,nahin,particle,hi
+aa,aa,particle,hi
+me,in,particle,hi
+mein,in,particle,hi
+ka,ka,particle,hi
+ki,ki,particle,hi
+ke,ke,particle,hi
+se,se,particle,hi
+aur,aur,function,hi
+bhi,bhi,function,hi
+bas,bas,function,hi
+no,no,function,en
+only,only,function,en
+ghabrana,ghabrana,function,hi
+behoshi wale doctor.,behoshi wale doctor.,symptom,hi
+sunn karne wale doctor.,sunn karne wale doctor.,symptom,hi
+breast mein gaanth,breast mein gaanth,symptom,hi
+nipple se khoon ya paani aana,nipple se khoon ya paani aana,symptom,hi
+ji machlana ya ulti,ji machlana ya ulti,symptom,hi
+dil ki dhadkan tez lagna,dil ki dhadkan tez lagna,symptom,hi
+achanak saans phoolna,achanak saans phoolna,symptom,hi
+gulabi jhaag wala balgam,gulabi jhaag wala balgam,symptom,hi
+honth ya ungliyan neeli padna,honth ya ungliyan neeli padna,symptom,hi
+thanda pasina aana,thanda pasina aana,symptom,hi
+chakkar aana,chakkar aana,symptom,hi
+behosh ho jaana,behosh ho jaana,symptom,hi
+bp ki goliyan lete hain,bp ki goliyan lete hain,symptom,hi
+pehle jitna chal nahi paate,pehle jitna chal nahi paate,symptom,hi
+mehnat karte waqt behosh ho jaana,mehnat karte waqt behosh ho jaana,symptom,hi
+dhadkan tez hone ke baad behoshi,dhadkan tez hone ke baad behoshi,symptom,hi
+doctor ne dil mein murmur bataya,doctor ne dil mein murmur bataya,symptom,hi
+"seene mein bhaaripan, dabaav ya jakdan","seene mein bhaaripan, dabaav ya jakdan",symptom,hi
+baithe baithe bhi saans phoolna,baithe baithe bhi saans phoolna,symptom,hi
+thakan / kamzori,thakan / kamzori,symptom,hi
+paani kam piya ya garmi bahut,paani kam piya ya garmi bahut,symptom,hi
+khel ya gym karte hain,khel ya gym karte hain,symptom,hi
+bina wajah vajan kam hona,bina wajah vajan kam hona,symptom,hi
+"nabz bahut dheemi, kamzori aur chakkar","nabz bahut dheemi, kamzori aur chakkar",symptom,hi
+bhaari khaane ke baad hota hai,bhaari khaane ke baad hota hai,symptom,hi
+bp zyada aata hai,bp zyada aata hai,symptom,hi
+cholesterol zyada aaya,cholesterol zyada aaya,symptom,hi
+smoking karte hain,smoking karte hain,symptom,hi
+sugar (diabetes) ki bimari hai,sugar (diabetes) ki bimari hai,symptom,hi
+thandi subah chalne par hota hai,thandi subah chalne par hota hai,symptom,hi
+vajan zyada hai,vajan zyada hai,symptom,hi
+"dhadkan ulti-seedhi, irregular lagna","dhadkan ulti-seedhi, irregular lagna",symptom,hi
+"chai, coffee ya energy drink zyada","chai, coffee ya energy drink zyada",symptom,hi
+sharab zyada peete hain,sharab zyada peete hain,symptom,hi
+thyroid ki bimari,thyroid ki bimari,symptom,hi
+zor se kharrate,zor se kharrate,symptom,hi
+pacemaker laga hua hai,pacemaker laga hua hai,symptom,hi
+pairon mein sujan,pairon mein sujan,symptom,hi
+pregnancy chal rahi hai,pregnancy chal rahi hai,symptom,hi
+bahut tanaav rehta hai,bahut tanaav rehta hai,symptom,hi
+"namak, achaar, papad zyada khaate hain","namak, achaar, papad zyada khaate hain",symptom,hi
+kidney ki bimari hai,kidney ki bimari hai,symptom,hi
+operation se pehle heart check-up chahiye,operation se pehle heart check-up chahiye,symptom,hi
+zyaadatar raat ko,zyaadatar raat ko,symptom,hi
+khoon ki kami (anaemia),khoon ki kami (anaemia),symptom,hi
+covid ke baad se,covid ke baad se,symptom,hi
+bachpan mein rheumatic bukhar hua tha,bachpan mein rheumatic bukhar hua tha,symptom,hi
+baayein karvat letne par,baayein karvat letne par,symptom,hi
+raat ko sookhi khansi,raat ko sookhi khansi,symptom,hi
+uthte hi chakkar aana,uthte hi chakkar aana,symptom,hi
+bp achanak low ho jaata hai,bp achanak low ho jaata hai,symptom,hi
+bp bahut high rehta hai,bp bahut high rehta hai,symptom,hi
+bachcha khelte waqt behosh ho gaya,bachcha khelte waqt behosh ho gaya,symptom,hi
+bachcha theek se doodh nahi peeta,bachcha theek se doodh nahi peeta,symptom,hi
+bahut zyada pasina aur dhadkan tez,bahut zyada pasina aur dhadkan tez,symptom,hi
+behoshi aa gayi thi,behoshi aa gayi thi,symptom,hi
+chakkar aa rahe hain,chakkar aa rahe hain,symptom,hi
+chhati mein phadphadahat ke saath thakaan,chhati mein phadphadahat ke saath thakaan,symptom,hi
+cholesterol bahut high aaya hai,cholesterol bahut high aaya hai,symptom,hi
+dil bahut tez dhadak raha hai,dil bahut tez dhadak raha hai,symptom,hi
+dil ki bimari wale doctor.,dil ki bimari wale doctor.,symptom,hi
+dil wale doctor.,dil wale doctor.,symptom,hi
+exercise ke dauraan behoshi jaisa lagna,exercise ke dauraan behoshi jaisa lagna,symptom,hi
+gardan mein dhadkan mehsoos hoti hai,gardan mein dhadkan mehsoos hoti hai,symptom,hi
+haath pair thande rehte hain,haath pair thande rehte hain,symptom,hi
+heart specialist.,heart specialist.,symptom,hi
+kamar ke neeche soojan hai,kamar ke neeche soojan hai,symptom,hi
+lagatar khansi aa rahi hai,lagatar khansi aa rahi hai,symptom,hi
+lete hue khansi badh jaati hai,lete hue khansi badh jaati hai,symptom,hi
+lete hue saans nahi aati,lete hue saans nahi aati,symptom,hi
+pair mein pulse mehsoos nahi hoti,pair mein pulse mehsoos nahi hoti,symptom,hi
+pairon mein soojan aa gayi hai,pairon mein soojan aa gayi hai,symptom,hi
+pairon mein sunnapan aur kamzori hai,pairon mein sunnapan aur kamzori hai,symptom,hi
+pet mein soojan aur bhaaripan hai,pet mein soojan aur bhaaripan hai,symptom,hi
+seene mein bhaaripan lag raha hai,seene mein bhaaripan lag raha hai,symptom,hi
+seene mein chubhan jaisa dard hai,seene mein chubhan jaisa dard hai,symptom,hi
+seene mein dard ho raha hai,seene mein dard ho raha hai,symptom,hi
+seene mein thumping ho raha hai,seene mein thumping ho raha hai,symptom,hi
+shaam tak pair sooj jaate hain,shaam tak pair sooj jaate hain,symptom,hi
+takhnon aur paon mein swelling hai,takhnon aur paon mein swelling hai,symptom,hi
+thanda paseena aa raha hai,thanda paseena aa raha hai,symptom,hi
+chest mai dard ho raha hai,chest mai dard ho raha hai,symptom,hi
+dil ki dhadkan tez hai,dil ki dhadkan tez hai,symptom,hi
+saans phoolti hai,saans phoolti hai,symptom,hi
+seene mai dard hai,seene mai dard hai,symptom,hi
+burning in the chest,burning in the chest,symptom,hi
+chest pain or discomfort,chest pain or discomfort,symptom,hi
+dil ke operation wale doctor.,dil ke operation wale doctor.,symptom,hi
+fullness in the chest,fullness in the chest,symptom,hi
+heart ka bypass karne wale surgeon.,heart ka bypass karne wale surgeon.,symptom,hi
+heaviness in the chest,heaviness in the chest,symptom,hi
+history of aneurysms,history of aneurysms,symptom,hi
+leg pain and trouble walking,leg pain and trouble walking,symptom,hi
+pressure in the chest,pressure in the chest,symptom,hi
+seene ke surgeon.,seene ke surgeon.,symptom,hi
+squeezing in the chest,squeezing in the chest,symptom,hi
+sudden severe stomach pain,sudden severe stomach pain,symptom,hi
+tightness in the chest,tightness in the chest,symptom,hi
+bateesi (denture) wale doctor.,bateesi (denture) wale doctor.,symptom,hi
+daant dhile mehsoos ho rahe hain.,daant dhile mehsoos ho rahe hain.,symptom,hi
+daant ke specialist.,daant ke specialist.,symptom,hi
+daant mein dard ya sensitivity hai.,daant mein dard ya sensitivity hai.,symptom,hi
+daant se pus nikal raha hai.,daant se pus nikal raha hai.,symptom,hi
+daant tedhe-medhe lag rahe hain,daant tedhe-medhe lag rahe hain,symptom,hi
+daanto wale doctor.,daanto wale doctor.,symptom,hi
+gum tissue overgrow ho gaya hai.,gum tissue overgrow ho gaya hai.,symptom,hi
+jabde mein dard ya sensitivity hai.,jabde mein dard ya sensitivity hai.,symptom,hi
+jaw mein dard ya tenderness hai.,jaw mein dard ya tenderness hai.,symptom,hi
+mouth mein several teeth missing hain.,mouth mein several teeth missing hain.,symptom,hi
+muh mein kai daant missing hain.,muh mein kai daant missing hain.,symptom,hi
+munh se badbu aati hai hamesha,munh se badbu aati hai hamesha,symptom,hi
+severe headaches hote hain baar baar.,severe headaches hote hain baar baar.,symptom,hi
+teeth loose feel ho rahe hain.,teeth loose feel ho rahe hain.,symptom,hi
+tooth enamel thin ho raha hai.,tooth enamel thin ho raha hai.,symptom,hi
+tooth mein pain ya sensitivity hai.,tooth mein pain ya sensitivity hai.,symptom,hi
+cavity ho gayi hai,cavity ho gayi hai,symptom,hi
+daant dukh raha hai,daant dukh raha hai,symptom,hi
+dant mai dard hai,dant mai dard hai,symptom,hi
+dant tuta hua hai,dant tuta hua hai,symptom,hi
+masudo se khoon aa raha hai,masudo se khoon aa raha hai,symptom,hi
+mooh mai chala hai,mooh mai chala hai,symptom,hi
+teeth mai bahut dard hai,teeth mai bahut dard hai,symptom,hi
+guptang par chhale ya ghaav,guptang par chhale ya ghaav,symptom,hi
+guptang par massa,guptang par massa,symptom,hi
+peshab mein jalan,peshab mein jalan,symptom,hi
+guptang par khujli,guptang par khujli,symptom,hi
+naya ya ek se zyada partner,naya ya ek se zyada partner,symptom,hi
+sambandh ke baad shuru hota hai,sambandh ke baad shuru hota hai,symptom,hi
+bagal mein phora hai.,bagal mein phora hai.,symptom,hi
+bagal mein phora ho gya hai.,bagal mein phora ho gya hai.,symptom,hi
+baju mein phora hai.,baju mein phora hai.,symptom,hi
+baju mein phora ho gya hai.,baju mein phora ho gya hai.,symptom,hi
+chamdi rog wale doctor.,chamdi rog wale doctor.,symptom,hi
+chehre aur baal wale doctor.,chehre aur baal wale doctor.,symptom,hi
+chehre mein phora hai.,chehre mein phora hai.,symptom,hi
+chehre mein phora ho gya hai.,chehre mein phora ho gya hai.,symptom,hi
+gaal mein phora hai.,gaal mein phora hai.,symptom,hi
+gaal mein phora ho gya hai.,gaal mein phora ho gya hai.,symptom,hi
+gardan mein phora hai.,gardan mein phora hai.,symptom,hi
+gardan mein phora ho gya hai.,gardan mein phora ho gya hai.,symptom,hi
+ghutne mein phora hai.,ghutne mein phora hai.,symptom,hi
+ghutne mein phora ho gya hai.,ghutne mein phora ho gya hai.,symptom,hi
+jaangh mein phora hai.,jaangh mein phora hai.,symptom,hi
+jaangh mein phora ho gya hai.,jaangh mein phora ho gya hai.,symptom,hi
+kaan mein phora hai.,kaan mein phora hai.,symptom,hi
+kaan mein phora ho gya hai.,kaan mein phora ho gya hai.,symptom,hi
+kamar mein phora hai.,kamar mein phora hai.,symptom,hi
+kamar mein phora ho gya hai.,kamar mein phora ho gya hai.,symptom,hi
+kandhe mein phora hai.,kandhe mein phora hai.,symptom,hi
+kandhe mein phora ho gya hai.,kandhe mein phora ho gya hai.,symptom,hi
+kohni mein phora hai.,kohni mein phora hai.,symptom,hi
+kohni mein phora ho gya hai.,kohni mein phora ho gya hai.,symptom,hi
+kulhe mein phora hai.,kulhe mein phora hai.,symptom,hi
+kulhe mein phora ho gya hai.,kulhe mein phora ho gya hai.,symptom,hi
+maathe mein phora hai.,maathe mein phora hai.,symptom,hi
+maathe mein phora ho gya hai.,maathe mein phora ho gya hai.,symptom,hi
+naak mein phora hai.,naak mein phora hai.,symptom,hi
+naak mein phora ho gya hai.,naak mein phora ho gya hai.,symptom,hi
+pair mein phora hai.,pair mein phora hai.,symptom,hi
+pair mein phora ho gya hai.,pair mein phora ho gya hai.,symptom,hi
+peeth mein phora hai.,peeth mein phora hai.,symptom,hi
+peeth mein phora ho gya hai.,peeth mein phora ho gya hai.,symptom,hi
+pet mein phora hai.,pet mein phora hai.,symptom,hi
+pet mein phora ho gya hai.,pet mein phora ho gya hai.,symptom,hi
+sar mein phora hai.,sar mein phora hai.,symptom,hi
+sar mein phora ho gya hai.,sar mein phora ho gya hai.,symptom,hi
+seene mein phora hai.,seene mein phora hai.,symptom,hi
+seene mein phora ho gya hai.,seene mein phora ho gya hai.,symptom,hi
+skin specialist.,skin specialist.,symptom,hi
+tang mein phora hai.,tang mein phora hai.,symptom,hi
+tang mein phora ho gya hai.,tang mein phora ho gya hai.,symptom,hi
+thodi mein phora hai.,thodi mein phora hai.,symptom,hi
+thodi mein phora ho gya hai.,thodi mein phora ho gya hai.,symptom,hi
+ungli mein phora hai.,ungli mein phora hai.,symptom,hi
+ungli mein phora ho gya hai.,ungli mein phora ho gya hai.,symptom,hi
+chehre pe daane nikal aaye hain,chehre pe daane nikal aaye hain,symptom,hi
+haath mein phora ho gya hai,haath mein phora ho gya hai,symptom,hi
+khaarish ho rahi hai,khaarish ho rahi hai,symptom,hi
+rash ho gaya hai,rash ho gaya hai,symptom,hi
+skin lal ho gayi hai,skin lal ho gayi hai,symptom,hi
+skin mai khujli ho rahi hai,skin mai khujli ho rahi hai,symptom,hi
+naak se khoon aana (nakseer),naak se khoon aana (nakseer),symptom,hi
+kaan mein dard,kaan mein dard,symptom,hi
+munh poora nahi khulta,munh poora nahi khulta,symptom,hi
+nigalne mein dard,nigalne mein dard,symptom,hi
+saans lene mein takleef,saans lene mein takleef,symptom,hi
+dhundhla ya do-do dikhna,dhundhla ya do-do dikhna,symptom,hi
+naak se gaadha peela-hara balgam,naak se gaadha peela-hara balgam,symptom,hi
+maathe par sujan,maathe par sujan,symptom,hi
+awaaz baith jaana / bhaari hona,awaaz baith jaana / bhaari hona,symptom,hi
+gale mein kharash ya dard,gale mein kharash ya dard,symptom,hi
+kaan ke peeche sujan ya laali,kaan ke peeche sujan ya laali,symptom,hi
+naak band,naak band,symptom,hi
+baar baar naak se khoon aana,baar baar naak se khoon aana,symptom,hi
+sirf ek taraf naak band,sirf ek taraf naak band,symptom,hi
+beedi ya cigarette peete hain,beedi ya cigarette peete hain,symptom,hi
+gardan mein gaanth,gardan mein gaanth,symptom,hi
+"gutkha, khaini ya paan khaate hain","gutkha, khaini ya paan khaate hain",symptom,hi
+munh ke ghaav se khoon,munh ke ghaav se khoon,symptom,hi
+munh mein safed ya laal daag,munh mein safed ya laal daag,symptom,hi
+sharab peete hain,sharab peete hain,symptom,hi
+baar baar gala saaf karna,baar baar gala saaf karna,symptom,hi
+khana gale mein atakna,khana gale mein atakna,symptom,hi
+kaan band ya bhaari lagna,kaan band ya bhaari lagna,symptom,hi
+kai din se lagatar chakkar,kai din se lagatar chakkar,symptom,hi
+dheere dheere kam sunai dena,dheere dheere kam sunai dena,symptom,hi
+kaan mein ya aas paas chhale,kaan mein ya aas paas chhale,symptom,hi
+munh sookhna,munh sookhna,symptom,hi
+sir par chot ke baad,sir par chot ke baad,symptom,hi
+sugar hai,sugar hai,symptom,hi
+chehre ke ek taraf sunnapan,chehre ke ek taraf sunnapan,symptom,hi
+munh mein chhala,munh mein chhala,symptom,hi
+kaan mein dhadkan jaisi awaaz,kaan mein dhadkan jaisi awaaz,symptom,hi
+"santulan bigadna, dagmagana","santulan bigadna, dagmagana",symptom,hi
+soonghne ki shakti kam ya khatam,soonghne ki shakti kam ya khatam,symptom,hi
+kaan se badbudar paani aana,kaan se badbudar paani aana,symptom,hi
+acidity rehti hai,acidity rehti hai,symptom,hi
+awaaz chali jaana,awaaz chali jaana,symptom,hi
+haal mein zukaam hua tha,haal mein zukaam hua tha,symptom,hi
+naak behna,naak behna,symptom,hi
+baar baar kaan ka infection,baar baar kaan ka infection,symptom,hi
+sote waqt saans ruk jaati hai,sote waqt saans ruk jaati hai,symptom,hi
+naak se badboo aana,naak se badboo aana,symptom,hi
+gale mein peeche balgam girna,gale mein peeche balgam girna,symptom,hi
+chheenkein aana,chheenkein aana,symptom,hi
+dhool se allergy,dhool se allergy,symptom,hi
+har saal ek hi mausam mein,har saal ek hi mausam mein,symptom,hi
+raat ko zyada,raat ko zyada,symptom,hi
+kaan mein mail jama hona,kaan mein mail jama hona,symptom,hi
+zyada headphone ya earphone lagate hain,zyada headphone ya earphone lagate hain,symptom,hi
+gardan mein dardnaak gilti/gaanth,gardan mein dardnaak gilti/gaanth,symptom,hi
+tonsil par safed daag ya peep,tonsil par safed daag ya peep,symptom,hi
+gale mein kuch atka hua lagna,gale mein kuch atka hua lagna,symptom,hi
+tanaav ya ghabrahat,tanaav ya ghabrahat,symptom,hi
+daant peesna ya jabde mein khatak,daant peesna ya jabde mein khatak,symptom,hi
+kaan mein khujli,kaan mein khujli,symptom,hi
+neend kharab hoti hai,neend kharab hoti hai,symptom,hi
+munh se badboo,munh se badboo,symptom,hi
+din mein bahut neend aana,din mein bahut neend aana,symptom,hi
+munh se saans lena,munh se saans lena,symptom,hi
+naak mein papdi jamna,naak mein papdi jamna,symptom,hi
+bp zyada rehta hai,bp zyada rehta hai,symptom,hi
+garmi ya sookha mausam,garmi ya sookha mausam,symptom,hi
+naak mein ungli karne ki aadat,naak mein ungli karne ki aadat,symptom,hi
+tonsil sooje hue,tonsil sooje hue,symptom,hi
+tonsil se safed badbudar daane nikalna,tonsil se safed badbudar daane nikalna,symptom,hi
+chhikein bahut aa rahi hain,chhikein bahut aa rahi hain,symptom,hi
+ent wale.,ent wale.,symptom,hi
+kaan-naak-gale wale doctor.,kaan-naak-gale wale doctor.,symptom,hi
+naak se paani beh raha hai,naak se paani beh raha hai,symptom,hi
+naak-kaan ke specialist.,naak-kaan ke specialist.,symptom,hi
+kaan mai dard hai,kaan mai dard hai,symptom,hi
+kaan se pani aa raha hai,kaan se pani aa raha hai,symptom,hi
+khansi bahut aa rahi hai,khansi bahut aa rahi hai,symptom,hi
+nose block hai,nose block hai,symptom,hi
+sunayi kam de raha hai,sunayi kam de raha hai,symptom,hi
+achanak bol nahi pa raha hoon,achanak bol nahi pa raha hoon,symptom,hi
+bachcha behosh ho gaya hai,bachcha behosh ho gaya hai,symptom,hi
+casualty wale doctor.,casualty wale doctor.,symptom,hi
+chehra aur jeebh sooj gayi hai,chehra aur jeebh sooj gayi hai,symptom,hi
+emergency wale doctor.,emergency wale doctor.,symptom,hi
+galti se keetnashak nigal liya,galti se keetnashak nigal liya,symptom,hi
+galti se phenyl pee liya,galti se phenyl pee liya,symptom,hi
+khaansne par khoon nikal raha hai,khaansne par khoon nikal raha hai,symptom,hi
+khansi mein khoon aa raha hai,khansi mein khoon aa raha hai,symptom,hi
+mera bachcha hosh mein nahi hai,mera bachcha hosh mein nahi hai,symptom,hi
+ulti mein khoon aaya hai,ulti mein khoon aaya hai,symptom,hi
+ward wale doctor.,ward wale doctor.,symptom,hi
+woh behosh ho kar gir gaye,woh behosh ho kar gir gaye,symptom,hi
+gardan mein dard,gardan mein dard,symptom,hi
+haath mein jhunjhunahat ya sunnapan,haath mein jhunjhunahat ya sunnapan,symptom,hi
+achanak bolne mein ladkhadahat,achanak bolne mein ladkhadahat,symptom,hi
+"santulan nahi banta, dagmagana","santulan nahi banta, dagmagana",symptom,hi
+achanak chehra tedha ho jaana,achanak chehra tedha ho jaana,symptom,hi
+achanak ek taraf haath-pair mein kamzori,achanak ek taraf haath-pair mein kamzori,symptom,hi
+achanak haath ya pair mein kamzori,achanak haath ya pair mein kamzori,symptom,hi
+bukhar ke saath bhram,bukhar ke saath bhram,symptom,hi
+neend na aana,neend na aana,symptom,hi
+achanak potty par control na rehna,achanak potty par control na rehna,symptom,hi
+tez sir dard aur gardan akadna,tez sir dard aur gardan akadna,symptom,hi
+ghutne mein sujan,ghutne mein sujan,symptom,hi
+chot ke baad haddi tedhi dikhna,chot ke baad haddi tedhi dikhna,symptom,hi
+takhne mein dard,takhne mein dard,symptom,hi
+ghutne mein dard,ghutne mein dard,symptom,hi
+takhne mein sujan,takhne mein sujan,symptom,hi
+"pindli garam, laal aur sooji hui","pindli garam, laal aur sooji hui",symptom,hi
+chalne mein dikkat,chalne mein dikkat,symptom,hi
+dono pairon mein nayi kamzori,dono pairon mein nayi kamzori,symptom,hi
+ghutna achanak mud jaata hai,ghutna achanak mud jaata hai,symptom,hi
+"chhat, ped ya seedhi se gire","chhat, ped ya seedhi se gire",symptom,hi
+"kamzori, jaldi thak jaana","kamzori, jaldi thak jaana",symptom,hi
+kandhe mein dard,kandhe mein dard,symptom,hi
+gardan se haath tak jaata dard,gardan se haath tak jaata dard,symptom,hi
+"chidchidapan, jaldi gussa aana","chidchidapan, jaldi gussa aana",symptom,hi
+swabhaav ya vyavhaar mein badlaav,swabhaav ya vyavhaar mein badlaav,symptom,hi
+zyada goliyan ya zehar kha liya,zyada goliyan ya zehar kha liya,symptom,hi
+aawaz bhaari ya baith jaana (hoarseness),aawaz bhaari ya baith jaana (hoarseness),symptom,hi
+baar baar nimoniya hona (repeated pneumonia),baar baar nimoniya hona (repeated pneumonia),symptom,hi
+baar baar pyaas lagti hai,baar baar pyaas lagti hai,symptom,hi
+baar baar sinus infection hona,baar baar sinus infection hona,symptom,hi
+bachche ka langdakar chalna (limping),bachche ka langdakar chalna (limping),symptom,hi
+behoshi aa jaana (loss of consciousness),behoshi aa jaana (loss of consciousness),symptom,hi
+bhookh lagna (hunger),bhookh lagna (hunger),symptom,hi
+bhookh na lagna (loss of appetite),bhookh na lagna (loss of appetite),symptom,hi
+bina wajah khoon bahna (unexplained bleeding),bina wajah khoon bahna (unexplained bleeding),symptom,hi
+body ka balance aur coordination bigadna,body ka balance aur coordination bigadna,symptom,hi
+bolne mein dikkat hona (speech difficulty),bolne mein dikkat hona (speech difficulty),symptom,hi
+bukhar aana (fever),bukhar aana (fever),symptom,hi
+chalne mein takleef hona (walking difficulty),chalne mein takleef hona (walking difficulty),symptom,hi
+cheeni ki bimari wale doctor.,cheeni ki bimari wale doctor.,symptom,hi
+chehra sooja hua dikhna (puffy face),chehra sooja hua dikhna (puffy face),symptom,hi
+coma mein chale jaana,coma mein chale jaana,symptom,hi
+daanton ke beech gap aa jaana,daanton ke beech gap aa jaana,symptom,hi
+dast / loose motion hona (diarrhea),dast / loose motion hona (diarrhea),symptom,hi
+daure / seizures aana,daure / seizures aana,symptom,hi
+dhundhla dikhna (blurry vision),dhundhla dikhna (blurry vision),symptom,hi
+emotions par kontrol karna mushkil hona,emotions par kontrol karna mushkil hona,symptom,hi
+ghabrahat ya anxiety rehna,ghabrahat ya anxiety rehna,symptom,hi
+growth aur development mein deri hona,growth aur development mein deri hona,symptom,hi
+haath bade ho jaana,haath bade ho jaana,symptom,hi
+haddiyon mein dard hona (bone pain),haddiyon mein dard hona (bone pain),symptom,hi
+high cholesterol rehna,high cholesterol rehna,symptom,hi
+hont mote ho jaana,hont mote ho jaana,symptom,hi
+jabda aage nikal aana,jabda aage nikal aana,symptom,hi
+jeebh badi ya moti ho jaana,jeebh badi ya moti ho jaana,symptom,hi
+jhaag wala peshab aana (foamy urine),jhaag wala peshab aana (foamy urine),symptom,hi
+kaan mote ho jaana,kaan mote ho jaana,symptom,hi
+kad chhota rehna (short height),kad chhota rehna (short height),symptom,hi
+khaansi aana (cough),khaansi aana (cough),symptom,hi
+kharrate aana (snoring),kharrate aana (snoring),symptom,hi
+khoon ki kami hona (anemia),khoon ki kami hona (anemia),symptom,hi
+kidney mein pathri hona (kidney stones),kidney mein pathri hona (kidney stones),symptom,hi
+lagataar khujli rehna (constant itching),lagataar khujli rehna (constant itching),symptom,hi
+liver bada ho jaana (enlarged liver),liver bada ho jaana (enlarged liver),symptom,hi
+liver ki bimari hona (liver disease),liver ki bimari hona (liver disease),symptom,hi
+maathe ki haddi aage ubhar aana,maathe ki haddi aage ubhar aana,symptom,hi
+mood aur behavior mein badlav aana,mood aur behavior mein badlav aana,symptom,hi
+muscles mein cramps aana,muscles mein cramps aana,symptom,hi
+muscles mein kamzori aana (muscle weakness),muscles mein kamzori aana (muscle weakness),symptom,hi
+naak chaudi ho jaana,naak chaudi ho jaana,symptom,hi
+neend ki problem hona (sleep problems),neend ki problem hona (sleep problems),symptom,hi
+nigalne mein takleef hona (dysphagia),nigalne mein takleef hona (dysphagia),symptom,hi
+padhai-likhai mein dikkat / learning disability,padhai-likhai mein dikkat / learning disability,symptom,hi
+pair bade ho jaana,pair bade ho jaana,symptom,hi
+palkein neeche latakna (drooping eyelids),palkein neeche latakna (drooping eyelids),symptom,hi
+periods bilkul na aana (absent periods),periods bilkul na aana (absent periods),symptom,hi
+pet mein dard hona (stomach pain),pet mein dard hona (stomach pain),symptom,hi
+puberty der se aana (delayed puberty),puberty der se aana (delayed puberty),symptom,hi
+purushon mein fertility ki dikkat,purushon mein fertility ki dikkat,symptom,hi
+purushon mein testicles chhote ho jaana,purushon mein testicles chhote ho jaana,symptom,hi
+sexual function mein badlav aana,sexual function mein badlav aana,symptom,hi
+sharir ka bekaabu hokar kaampna (convulsions),sharir ka bekaabu hokar kaampna (convulsions),symptom,hi
+sir dard hona (headache),sir dard hona (headache),symptom,hi
+sir ke baal jhadna (hair loss),sir ke baal jhadna (hair loss),symptom,hi
+skin aur aankhein peeli padna (jaundice),skin aur aankhein peeli padna (jaundice),symptom,hi
+skin ka rang feeka padna (pallor),skin ka rang feeka padna (pallor),symptom,hi
+skin ke neeche sujan aana,skin ke neeche sujan aana,symptom,hi
+skin moti aur oily ho jaana,skin moti aur oily ho jaana,symptom,hi
+skin par skin tags nikalna,skin par skin tags nikalna,symptom,hi
+skin patli ho jaana (thinning skin),skin patli ho jaana (thinning skin),symptom,hi
+sochne-samajhne aur yaaddasht mein dikkat,sochne-samajhne aur yaaddasht mein dikkat,symptom,hi
+sugar badh gaya hai,sugar badh gaya hai,symptom,hi
+sugar wale doctor.,sugar wale doctor.,symptom,hi
+sungh na paana (anosmia),sungh na paana (anosmia),symptom,hi
+sust aur dheema mehsoos hona (sluggishness),sust aur dheema mehsoos hona (sluggishness),symptom,hi
+thyroid hormone se judi dikkat,thyroid hormone se judi dikkat,symptom,hi
+thyroid wale doctor.,thyroid wale doctor.,symptom,hi
+udaasi ya depression rehna,udaasi ya depression rehna,symptom,hi
+ulti aana (vomiting),ulti aana (vomiting),symptom,hi
+wazan badhna (weight gain),wazan badhna (weight gain),symptom,hi
+yoni mein sookhapan hona (vaginal dryness),yoni mein sookhapan hona (vaginal dryness),symptom,hi
+aant (intestine) ki surgery wale doctor.,aant (intestine) ki surgery wale doctor.,symptom,hi
+pet ke operation wale doctor.,pet ke operation wale doctor.,symptom,hi
+gas aur liver wale doctor.,gas aur liver wale doctor.,symptom,hi
+pachan (digestion) ke specialist.,pachan (digestion) ke specialist.,symptom,hi
+acidity bahut ho rahi hai,acidity bahut ho rahi hai,symptom,hi
+badhazmi ho rahi hai,badhazmi ho rahi hai,symptom,hi
+gas ki problem hai,gas ki problem hai,symptom,hi
+khana nahi paach raha,khana nahi paach raha,symptom,hi
+loose motion ho raha hai,loose motion ho raha hai,symptom,hi
+motion nahi ho raha,motion nahi ho raha,symptom,hi
+pet dukh raha hai,pet dukh raha hai,symptom,hi
+pet phool gaya hai,pet phool gaya hai,symptom,hi
+bp check karwana hai routine mein.,bp check karwana hai routine mein.,symptom,hi
+badan dard ho raha hai,badan dard ho raha hai,symptom,hi
+bahut pasina aa raha hai,bahut pasina aa raha hai,symptom,hi
+bhookh nahi lag rahi,bhookh nahi lag rahi,symptom,hi
+do-teen din se aisa hi hai,do-teen din se aisa hi hai,symptom,hi
+family doctor.,family doctor.,symptom,hi
+fiver (fever) wale doctor.,fiver (fever) wale doctor.,symptom,hi
+general doctor saab.,general doctor saab.,symptom,hi
+kal se ho raha hai,kal se ho raha hai,symptom,hi
+muh ka swaad kadwa lagta hai,muh ka swaad kadwa lagta hai,symptom,hi
+neend nahi aati raat mein,neend nahi aati raat mein,symptom,hi
+raat ko paseena bahut aata hai,raat ko paseena bahut aata hai,symptom,hi
+sardi-khansi wale doctor.,sardi-khansi wale doctor.,symptom,hi
+ulti jaisa lag raha hai,ulti jaisa lag raha hai,symptom,hi
+zukaam aur gale mein kharash hai.,zukaam aur gale mein kharash hai.,symptom,hi
+kamzori lag rahi hai,kamzori lag rahi hai,symptom,hi
+tez bukhar aa raha hai,tez bukhar aa raha hai,symptom,hi
+beedi-cigarette peete hain,beedi-cigarette peete hain,symptom,hi
+andkosh mein kheenchav ya bhaaripan,andkosh mein kheenchav ya bhaaripan,symptom,hi
+bhaari vajan uthate hain,bhaari vajan uthate hain,symptom,hi
+kabz rehti hai,kabz rehti hai,symptom,hi
+ladka (bachcha),ladka (bachcha),symptom,hi
+cheera-faadi (surgery) wale doctor.,cheera-faadi (surgery) wale doctor.,symptom,hi
+operation wale doctor.,operation wale doctor.,symptom,hi
+boodhe logo ke specialist.,boodhe logo ke specialist.,symptom,hi
+buzurgon ke doctor.,buzurgon ke doctor.,symptom,hi
+umar-daraaz logo ke doctor.,umar-daraaz logo ke doctor.,symptom,hi
+pet ke neeche (pelvis) mein dard,pet ke neeche (pelvis) mein dard,symptom,hi
+chakkar aakar behosh ho jaana,chakkar aakar behosh ho jaana,symptom,hi
+ulti ya ji machlana,ulti ya ji machlana,symptom,hi
+periods mein khoon ke thakke,periods mein khoon ke thakke,symptom,hi
+baar baar peshab aana,baar baar peshab aana,symptom,hi
+neend kam aana,neend kam aana,symptom,hi
+pregnancy mein daura (fit) padna,pregnancy mein daura (fit) padna,symptom,hi
+pregnancy test positive,pregnancy test positive,symptom,hi
+yoni mein khujli,yoni mein khujli,symptom,hi
+yoni ke bahar gaanth,yoni ke bahar gaanth,symptom,hi
+do periods ke beech khoon aana,do periods ke beech khoon aana,symptom,hi
+garbh-nirodhak goli le rahi hain,garbh-nirodhak goli le rahi hain,symptom,hi
+copper-t laga hua hai,copper-t laga hua hai,symptom,hi
+machli jaisi badboo wala safed paani,machli jaisi badboo wala safed paani,symptom,hi
+sambandh (sex) ke baad khoon aana,sambandh (sex) ke baad khoon aana,symptom,hi
+safed paani (white discharge) aana,safed paani (white discharge) aana,symptom,hi
+sambandh ke dauraan andar gehra dard,sambandh ke dauraan andar gehra dard,symptom,hi
+thyroid ki bimari hai,thyroid ki bimari hai,symptom,hi
+breast mein bhaaripan ya dard,breast mein bhaaripan ya dard,symptom,hi
+periods mein bahut zyada khoon aana,periods mein bahut zyada khoon aana,symptom,hi
+thoda khaate hi pet bhar jaana,thoda khaate hi pet bhar jaana,symptom,hi
+pehle c-section (operation) se delivery hui,pehle c-section (operation) se delivery hui,symptom,hi
+vajan badhna,vajan badhna,symptom,hi
+pregnancy mein tez bukhar,pregnancy mein tez bukhar,symptom,hi
+chehre ya sharir par zyada baal,chehre ya sharir par zyada baal,symptom,hi
+pcod ya pcos bataya gaya hai,pcod ya pcos bataya gaya hai,symptom,hi
+periods mein potty karte waqt dard,periods mein potty karte waqt dard,symptom,hi
+jodon mein dard,jodon mein dard,symptom,hi
+"mood baar baar badalna, chidchidapan","mood baar baar badalna, chidchidapan",symptom,hi
+periods band ho chuke hain (menopause),periods band ho chuke hain (menopause),symptom,hi
+raat ko pasina aana,raat ko pasina aana,symptom,hi
+sex ki ichha kam hona,sex ki ichha kam hona,symptom,hi
+yoni mein sukhapan,yoni mein sukhapan,symptom,hi
+baar baar garbh girna (miscarriage),baar baar garbh girna (miscarriage),symptom,hi
+bachche ki koshish kar rahe hain,bachche ki koshish kar rahe hain,symptom,hi
+periods mein bahut tez pet dard,periods mein bahut tez pet dard,symptom,hi
+bachche ko doodh pila rahi hain,bachche ko doodh pila rahi hain,symptom,hi
+thakan rehti hai,thakan rehti hai,symptom,hi
+chehre par zyada muhanse,chehre par zyada muhanse,symptom,hi
+"gardan par kaali, moti chamdi","gardan par kaali, moti chamdi",symptom,hi
+sir ke baal patle hona,sir ke baal patle hona,symptom,hi
+kai mahino se periods nahi aaye,kai mahino se periods nahi aaye,symptom,hi
+dahi jaisa safed paani aur khujli,dahi jaisa safed paani aur khujli,symptom,hi
+kai normal delivery ho chuki hain,kai normal delivery ho chuki hain,symptom,hi
+purani khansi,purani khansi,symptom,hi
+mahine mein do baar periods aana,mahine mein do baar periods aana,symptom,hi
+bahut tanaav mein hain,bahut tanaav mein hain,symptom,hi
+pregnancy mein kamar dard,pregnancy mein kamar dard,symptom,hi
+pregnancy mein ulti aur ji machlana,pregnancy mein ulti aur ji machlana,symptom,hi
+pregnancy rokne (contraception) ki salah chahiye,pregnancy rokne (contraception) ki salah chahiye,symptom,hi
+sugar ki bimari hai,sugar ki bimari hai,symptom,hi
+bhaari saamaan uthati hain,bhaari saamaan uthati hain,symptom,hi
+auraton ki doctor.,auraton ki doctor.,symptom,hi
+delivery wali madam.,delivery wali madam.,symptom,hi
+periods mein bahut dard hota hai,periods mein bahut dard hota hai,symptom,hi
+periods miss ho gaye hain,periods miss ho gaye hain,symptom,hi
+pet mein hamesha bloating rehti hai.,pet mein hamesha bloating rehti hai.,symptom,hi
+unusual discharge aur pelvic pain hai.,unusual discharge aur pelvic pain hai.,symptom,hi
+white discharge ho raha hai,white discharge ho raha hai,symptom,hi
+zanana doctor.,zanana doctor.,symptom,hi
+pet mai baby movement kam hai,pet mai baby movement kam hai,symptom,hi
+gurde (kidney) wale doctor.,gurde (kidney) wale doctor.,symptom,hi
+peshaab mein jhaag aata hai zyada.,peshaab mein jhaag aata hai zyada.,symptom,hi
+peshab me jhaag aane wale doctor.,peshab me jhaag aane wale doctor.,symptom,hi
+thakaan aur kamzori rehti hai hamesha.,thakaan aur kamzori rehti hai hamesha.,symptom,hi
+haath pair kaanpte hain lagataar.,haath pair kaanpte hain lagataar.,symptom,hi
+mirgi (epilepsy) wale doctor.,mirgi (epilepsy) wale doctor.,symptom,hi
+naso (nerves) ke specialist.,naso (nerves) ke specialist.,symptom,hi
+haath sunn ho jata hai,haath sunn ho jata hai,symptom,hi
+head bahut dukh raha hai,head bahut dukh raha hai,symptom,hi
+migraine ho raha hai,migraine ho raha hai,symptom,hi
+sar mai dard hai,sar mai dard hai,symptom,hi
+seizure aaya tha,seizure aaya tha,symptom,hi
+sir dard ho raha hai,sir dard ho raha hai,symptom,hi
+yaddasht kamzor ho gayi hai,yaddasht kamzor ho gayi hai,symptom,hi
+brain tumor wale doctor.,brain tumor wale doctor.,symptom,hi
+dimaag ke operation wale doctor.,dimaag ke operation wale doctor.,symptom,hi
+reedh ki haddi (spine) ke surgeon.,reedh ki haddi (spine) ke surgeon.,symptom,hi
+achanak daure (seizure) aane lage hain.,achanak daure (seizure) aane lage hain.,symptom,hi
+armpit mein swelling ya lump hai.,armpit mein swelling ya lump hai.,symptom,hi
+baar baar infection ho jaata hai.,baar baar infection ho jaata hai.,symptom,hi
+cancer wale doctor.,cancer wale doctor.,symptom,hi
+ganth (tumor) wale doctor.,ganth (tumor) wale doctor.,symptom,hi
+hamesha thakaan mehsoos hoti hai.,hamesha thakaan mehsoos hoti hai.,symptom,hi
+khaansi mein khoon aa raha hai.,khaansi mein khoon aa raha hai.,symptom,hi
+motion mein khoon aa raha hai.,motion mein khoon aa raha hai.,symptom,hi
+nipple achanak andar mud gaya hai.,nipple achanak andar mud gaya hai.,symptom,hi
+peshaab karte waqt dard hota hai.,peshaab karte waqt dard hota hai.,symptom,hi
+sharir mein lagataar thakan rehti hai.,sharir mein lagataar thakan rehti hai.,symptom,hi
+stool mein blood dikh raha hai.,stool mein blood dikh raha hai.,symptom,hi
+aankh bahut sookhi rehti hai,aankh bahut sookhi rehti hai,symptom,hi
+aankh bhaari-bhaari lagti hai,aankh bhaari-bhaari lagti hai,symptom,hi
+aankh dabane par dard hota hai,aankh dabane par dard hota hai,symptom,hi
+aankh hilane par dard hota hai,aankh hilane par dard hota hai,symptom,hi
+aankh hilane par double dikhta hai,aankh hilane par double dikhta hai,symptom,hi
+aankh ke charon taraf sujan hai,aankh ke charon taraf sujan hai,symptom,hi
+aankh ke peeche dard hota hai,aankh ke peeche dard hota hai,symptom,hi
+aankh ki laali baar-baar aati hai,aankh ki laali baar-baar aati hai,symptom,hi
+aankh lal ho gayi hai,aankh lal ho gayi hai,symptom,hi
+aankh mein chot lag gayi hai,aankh mein chot lag gayi hai,symptom,hi
+aankh mein garmi jaisa lagta hai,aankh mein garmi jaisa lagta hai,symptom,hi
+aankh mein jalan hoti hai,aankh mein jalan hoti hai,symptom,hi
+aankh mein khujli hoti hai,aankh mein khujli hoti hai,symptom,hi
+aankh mein kuch gir gaya hai,aankh mein kuch gir gaya hai,symptom,hi
+aankh mein sui chubhne jaisa dard,aankh mein sui chubhne jaisa dard,symptom,hi
+aankh poori band nahi hoti,aankh poori band nahi hoti,symptom,hi
+aankh poori nahi khulti,aankh poori nahi khulti,symptom,hi
+aankh se baar-baar paani aata hai,aankh se baar-baar paani aata hai,symptom,hi
+aankh tedhi ho gayi hai,aankh tedhi ho gayi hai,symptom,hi
+aankhon se dhundhla dikhai deta hai,aankhon se dhundhla dikhai deta hai,symptom,hi
+aankhon wale doctor.,aankhon wale doctor.,symptom,hi
+achanak bahut saare floaters aa gaye,achanak bahut saare floaters aa gaye,symptom,hi
+baar-baar gudheri nikalti hai,baar-baar gudheri nikalti hai,symptom,hi
+bachcha aankh se aankh nahi milata,bachcha aankh se aankh nahi milata,symptom,hi
+bachcha aankhein bahut malta hai,bachcha aankhein bahut malta hai,symptom,hi
+bachcha roshni se bachta hai,bachcha roshni se bachta hai,symptom,hi
+bachcha sar tedha karke dekhta hai,bachcha sar tedha karke dekhta hai,symptom,hi
+bachpan se ek aankh kamzor hai,bachpan se ek aankh kamzor hai,symptom,hi
+chehre pehchaanne mein dikkat hoti hai,chehre pehchaanne mein dikkat hoti hai,symptom,hi
+dhoop mein aankhein chundhiya jaati hain,dhoop mein aankhein chundhiya jaati hain,symptom,hi
+door ki cheezein saaf nahi dikhti,door ki cheezein saaf nahi dikhti,symptom,hi
+ek cheez do-do dikhai deti hai,ek cheez do-do dikhai deti hai,symptom,hi
+eye specialist.,eye specialist.,symptom,hi
+gehraai ka andaaza nahi lagta,gehraai ka andaaza nahi lagta,symptom,hi
+padhte waqt line chhoot jaati hai,padhte waqt line chhoot jaati hai,symptom,hi
+palak baar-baar phadakti hai,palak baar-baar phadakti hai,symptom,hi
+palak kat gayi hai,palak kat gayi hai,symptom,hi
+palak ke andar safed daane hain,palak ke andar safed daane hain,symptom,hi
+palak sooj gayi hai,palak sooj gayi hai,symptom,hi
+palkein jhad rahi hain,palkein jhad rahi hain,symptom,hi
+palkon mein dandruff jaisa hai,palkon mein dandruff jaisa hai,symptom,hi
+pregnancy mein achanak dhundhla dikhne laga,pregnancy mein achanak dhundhla dikhne laga,symptom,hi
+rote waqt aansu nahi aate,rote waqt aansu nahi aate,symptom,hi
+subah aankhein phuli hui rehti hain,subah aankhein phuli hui rehti hain,symptom,hi
+tunnel jaisa vision ho gaya hai,tunnel jaisa vision ho gaya hai,symptom,hi
+upar ki palak latak gayi hai,upar ki palak latak gayi hai,symptom,hi
+aankh mai dard hai,aankh mai dard hai,symptom,hi
+aankhein lal ho gayi hain,aankhein lal ho gayi hain,symptom,hi
+dikhna kam ho gaya hai,dikhna kam ho gaya hai,symptom,hi
+najar kamzor ho gayi hai,najar kamzor ho gayi hai,symptom,hi
+pair mein jhunjhunahat ya sunnapan,pair mein jhunjhunahat ya sunnapan,symptom,hi
+dard ke saath bukhar,dard ke saath bukhar,symptom,hi
+diabetes hai,diabetes hai,symptom,hi
+kulhe mein dard,kulhe mein dard,symptom,hi
+buzurg gir gaye,buzurg gir gaye,symptom,hi
+chot ke baad neela nishaan,chot ke baad neela nishaan,symptom,hi
+jaangh ke jod (groin) mein dard,jaangh ke jod (groin) mein dard,symptom,hi
+chot wali jagah sooj gayi,chot wali jagah sooj gayi,symptom,hi
+chot ke baad sujan,chot ke baad sujan,symptom,hi
+"plaster bahut tight, ungliyan sooj gayi","plaster bahut tight, ungliyan sooj gayi",symptom,hi
+ghutne par chot lagi,ghutne par chot lagi,symptom,hi
+haath ke bal gire,haath ke bal gire,symptom,hi
+langda kar chalna,langda kar chalna,symptom,hi
+kalai ya haath par chot lagi,kalai ya haath par chot lagi,symptom,hi
+kandhe par chot lagi,kandhe par chot lagi,symptom,hi
+khel mein chot lagi,khel mein chot lagi,symptom,hi
+plaster ya slab laga hua hai,plaster ya slab laga hua hai,symptom,hi
+road accident ya bike se gire,road accident ya bike se gire,symptom,hi
+shaam ko bukhar aata hai,shaam ko bukhar aata hai,symptom,hi
+"pakad kamzor, cheezein haath se girna","pakad kamzor, cheezein haath se girna",symptom,hi
+bachcha bina wajah langda raha hai,bachcha bina wajah langda raha hai,symptom,hi
+haddi mein bina wajah lagatar dard,haddi mein bina wajah lagatar dard,symptom,hi
+bachcha panjon ke bal chalta hai,bachcha panjon ke bal chalta hai,symptom,hi
+lambe samay se steroid ki dawai,lambe samay se steroid ki dawai,symptom,hi
+pehle cancer ho chuka hai,pehle cancer ho chuka hai,symptom,hi
+kalai mein dard,kalai mein dard,symptom,hi
+menopause ho chuka hai,menopause ho chuka hai,symptom,hi
+edi mein dard,edi mein dard,symptom,hi
+pairon mein sunnapan,pairon mein sunnapan,symptom,hi
+edi ke peeche nas mein dard,edi ke peeche nas mein dard,symptom,hi
+poora ghuma ya hila nahi paate,poora ghuma ya hila nahi paate,symptom,hi
+roz sharab peete hain,roz sharab peete hain,symptom,hi
+"panja latakna, pair ghasit kar chalna","panja latakna, pair ghasit kar chalna",symptom,hi
+flat feet aur pairon mein dard,flat feet aur pairon mein dard,symptom,hi
+tight ya oonchi heel wale joote,tight ya oonchi heel wale joote,symptom,hi
+panje ke neeche dard,panje ke neeche dard,symptom,hi
+angoothe ki taraf kalai mein dard,angoothe ki taraf kalai mein dard,symptom,hi
+kalai par gaanth (ganglion),kalai par gaanth (ganglion),symptom,hi
+chhoti aur anamika ungli mein sunnapan,chhoti aur anamika ungli mein sunnapan,symptom,hi
+kohni ke andar ki taraf dard,kohni ke andar ki taraf dard,symptom,hi
+kad chhota hota ja raha hai,kad chhota hota ja raha hai,symptom,hi
+kursi se uthne mein dikkat,kursi se uthne mein dikkat,symptom,hi
+seedhi chadhne-utarne par dard,seedhi chadhne-utarne par dard,symptom,hi
+pakadne ya uthane par dard,pakadne ya uthane par dard,symptom,hi
+kandha baar baar utar jaata hai,kandha baar baar utar jaata hai,symptom,hi
+haath uthane mein kamzori,haath uthane mein kamzori,symptom,hi
+khatak ki awaaz,khatak ki awaaz,symptom,hi
+ghutna atak jaata hai,ghutna atak jaata hai,symptom,hi
+uthak-baithak ya palthi maarne par dard,uthak-baithak ya palthi maarne par dard,symptom,hi
+kohni ke bahar ki taraf dard,kohni ke bahar ki taraf dard,symptom,hi
+kamar se pair tak jaata dard,kamar se pair tak jaata dard,symptom,hi
+plaster ke andar khujli,plaster ke andar khujli,symptom,hi
+ghutna mudte waqt awaaz aati hai.,ghutna mudte waqt awaaz aati hai.,symptom,hi
+haath mein dard ho raha hai,haath mein dard ho raha hai,symptom,hi
+haddi wale doctor.,haddi wale doctor.,symptom,hi
+paanv mein dard ho raha hai,paanv mein dard ho raha hai,symptom,hi
+pair mein dard ho raha hai,pair mein dard ho raha hai,symptom,hi
+plaster wale doctor.,plaster wale doctor.,symptom,hi
+ghutne mai dard hai,ghutne mai dard hai,symptom,hi
+haath tut gaya hai,haath tut gaya hai,symptom,hi
+haddi mai dard hai,haddi mai dard hai,symptom,hi
+jodo mai dard hai,jodo mai dard hai,symptom,hi
+kamar dukh rahi hai,kamar dukh rahi hai,symptom,hi
+peeth mai dard hai,peeth mai dard hai,symptom,hi
+"bachcha bahut sust, dheela, jagaana mushkil","bachcha bahut sust, dheela, jagaana mushkil",symptom,hi
+bachche ko daura (fit) pada,bachche ko daura (fit) pada,symptom,hi
+"naal (nabhi) laal, peep ya badboo","naal (nabhi) laal, peep ya badboo",symptom,hi
+saans lete waqt pasliyan andar dhansna,saans lete waqt pasliyan andar dhansna,symptom,hi
+tez tez saans lena,tez tez saans lena,symptom,hi
+achanak andkosh mein tez dard,achanak andkosh mein tez dard,symptom,hi
+honth ya jeebh neeli padna,honth ya jeebh neeli padna,symptom,hi
+saans mein seeti ki awaaz,saans mein seeti ki awaaz,symptom,hi
+"pet phoolna, tight hona","pet phoolna, tight hona",symptom,hi
+potty mein laal jelly jaisa khoon-balgam,potty mein laal jelly jaisa khoon-balgam,symptom,hi
+bachche ko bukhar,bachche ko bukhar,symptom,hi
+"chamdi peeli-safed, chitti-dhabbedar ya neeli","chamdi peeli-safed, chitti-dhabbedar ya neeli",symptom,hi
+gardan akadna,gardan akadna,symptom,hi
+har saans par kraahne ki awaaz,har saans par kraahne ki awaaz,symptom,hi
+dast / patli potty,dast / patli potty,symptom,hi
+"bahut dubla, haddiyan dikhna","bahut dubla, haddiyan dikhna",symptom,hi
+button battery ya magnet nigal liya,button battery ya magnet nigal liya,symptom,hi
+"aankhein dhansi hui, munh sookha","aankhein dhansi hui, munh sookha",symptom,hi
+"dawai, kerosene ya zehar pi liya","dawai, kerosene ya zehar pi liya",symptom,hi
+dono pairon mein sujan (kuposhan),dono pairon mein sujan (kuposhan),symptom,hi
+vajan kam hona,vajan kam hona,symptom,hi
+hari (pitt wali) ulti,hari (pitt wali) ulti,symptom,hi
+"bachcha chidchida, bahut rota hai","bachcha chidchida, bahut rota hai",symptom,hi
+laal ubhre khujli wale chakatte (pitti),laal ubhre khujli wale chakatte (pitti),symptom,hi
+honth ya chehre par sujan,honth ya chehre par sujan,symptom,hi
+kutte ke bhaunkne jaisi khansi,kutte ke bhaunkne jaisi khansi,symptom,hi
+naya janma baby thanda pad gaya,naya janma baby thanda pad gaya,symptom,hi
+naye baby mein peeliya,naye baby mein peeliya,symptom,hi
+sir par chot,sir par chot,symptom,hi
+aankh tedhi (bheygapan),aankh tedhi (bheygapan),symptom,hi
+vajan nahi badh raha,vajan nahi badh raha,symptom,hi
+aankhein ya chamdi peeli (peeliya),aankhein ya chamdi peeli (peeliya),symptom,hi
+daane ya chakatte,daane ya chakatte,symptom,hi
+kapkapi ke saath bukhar,kapkapi ke saath bukhar,symptom,hi
+naak ke nathune phoolna,naak ke nathune phoolna,symptom,hi
+"baithne, chalne ya bolne mein der","baithne, chalne ya bolne mein der",symptom,hi
+haddiyon mein dard,haddiyon mein dard,symptom,hi
+raat ko pasina,raat ko pasina,symptom,hi
+cola jaisa laal peshab,cola jaisa laal peshab,symptom,hi
+daant nikal rahe hain,daant nikal rahe hain,symptom,hi
+potty mein khoon,potty mein khoon,symptom,hi
+gale mein dard,gale mein dard,symptom,hi
+bhai-behen ko bhi yahi takleef,bhai-behen ko bhi yahi takleef,symptom,hi
+"haath, pair aur munh mein chhale","haath, pair aur munh mein chhale",symptom,hi
+jod mein sujan aur dard,jod mein sujan aur dard,symptom,hi
+peshab karte waqt rona ya jalan,peshab karte waqt rona ya jalan,symptom,hi
+poore sharir par paani wale chhale,poore sharir par paani wale chhale,symptom,hi
+peshab mein jhaag,peshab mein jhaag,symptom,hi
+teeka lagne ke baad,teeka lagne ke baad,symptom,hi
+teeke wali jagah sujan,teeke wali jagah sujan,symptom,hi
+bahut gehri neend sota hai,bahut gehri neend sota hai,symptom,hi
+paani kam peeta hai,paani kam peeta hai,symptom,hi
+school ko lekar tanaav,school ko lekar tanaav,symptom,hi
+neend theek se nahi aati,neend theek se nahi aati,symptom,hi
+theek se nahi sunta,theek se nahi sunta,symptom,hi
+samay se pehle janma tha,samay se pehle janma tha,symptom,hi
+zyada mobile ya tv dekhta hai,zyada mobile ya tv dekhta hai,symptom,hi
+aankhein laal aur kichad,aankhein laal aur kichad,symptom,hi
+parivaar mein asthma ya allergy,parivaar mein asthma ya allergy,symptom,hi
+baarish ka mausam,baarish ka mausam,symptom,hi
+teeke poore nahi lage,teeke poore nahi lage,symptom,hi
+janm ke samay vajan kam tha,janm ke samay vajan kam tha,symptom,hi
+jaldi thak jaata hai,jaldi thak jaata hai,symptom,hi
+khaana theek se nahi khaata,khaana theek se nahi khaata,symptom,hi
+khaane ke saath chai peeta hai,khaane ke saath chai peeta hai,symptom,hi
+ghar mein paaltu jaanwar,ghar mein paaltu jaanwar,symptom,hi
+naya khaana shuru karne ke baad,naya khaana shuru karne ke baad,symptom,hi
+sardi mein zyada,sardi mein zyada,symptom,hi
+sookhi khujli wali chamdi (eczema),sookhi khujli wali chamdi (eczema),symptom,hi
+bahar ka ya ganda paani piya,bahar ka ya ganda paani piya,symptom,hi
+bahar ka khaana khaya,bahar ka khaana khaya,symptom,hi
+bottle ya formula doodh peeta hai,bottle ya formula doodh peeta hai,symptom,hi
+diaper rash,diaper rash,symptom,hi
+doodh ke baad ulat dena,doodh ke baad ulat dena,symptom,hi
+kaan dard / kaan kheenchna,kaan dard / kaan kheenchna,symptom,hi
+kaan behna,kaan behna,symptom,hi
+lete lete bottle peeta hai,lete lete bottle peeta hai,symptom,hi
+junk food zyada khaata hai,junk food zyada khaata hai,symptom,hi
+padhai mein peeche ho raha,padhai mein peeche ho raha,symptom,hi
+raat ko khansi badh jaati hai,raat ko khansi badh jaati hai,symptom,hi
+teeka (vaccine) ki salah chahiye,teeka (vaccine) ki salah chahiye,symptom,hi
+umar ke hisaab se kad chhota,umar ke hisaab se kad chhota,symptom,hi
+bahar khelna bahut kam,bahar khelna bahut kam,symptom,hi
+bacche ka pet phool gaya hai,bacche ka pet phool gaya hai,symptom,hi
+baccho wale doctor.,baccho wale doctor.,symptom,hi
+bache ko ulti ho rahi hai,bache ko ulti ho rahi hai,symptom,hi
+bachha baar baar kaan khinchta hai,bachha baar baar kaan khinchta hai,symptom,hi
+bachhe ki twacha pe peela-pan hai,bachhe ki twacha pe peela-pan hai,symptom,hi
+child specialist.,child specialist.,symptom,hi
+shishu rog visheshagya.,shishu rog visheshagya.,symptom,hi
+vaccination ka schedule poochna hai.,vaccination ka schedule poochna hai.,symptom,hi
+baby roti rehti hai,baby roti rehti hai,symptom,hi
+bacchi ko bukhar hai,bacchi ko bukhar hai,symptom,hi
+blood test ki report samajhni hai.,blood test ki report samajhni hai.,symptom,hi
+khoon jaanch wale doctor.,khoon jaanch wale doctor.,symptom,hi
+lab report mein values abnormal hain.,lab report mein values abnormal hain.,symptom,hi
+report wale doctor.,report wale doctor.,symptom,hi
+aaraam mein haath kaanpna,aaraam mein haath kaanpna,symptom,hi
+chalte chalte pair jam jaana,chalte chalte pair jam jaana,symptom,hi
+"chhote chhote kadam, pair ghasitna","chhote chhote kadam, pair ghasitna",symptom,hi
+har kaam dheere dheere hona,har kaam dheere dheere hona,symptom,hi
+daudne par pindli ke aage dard,daudne par pindli ke aage dard,symptom,hi
+dono pairon mein sunnapan ya jalan,dono pairon mein sunnapan ya jalan,symptom,hi
+baar baar gir jaana,baar baar gir jaana,symptom,hi
+subah ek ghante se zyada jakdan,subah ek ghante se zyada jakdan,symptom,hi
+chalne-phirne se aaram milta hai,chalne-phirne se aaram milta hai,symptom,hi
+kamzori lagatar badhti ja rahi hai,kamzori lagatar badhti ja rahi hai,symptom,hi
+delivery ke baad kamar dard,delivery ke baad kamar dard,symptom,hi
+poore sharir mein dard,poore sharir mein dard,symptom,hi
+maaspeshiyon mein akdan,maaspeshiyon mein akdan,symptom,hi
+bell's palsy mein chehre ki kamzori,bell's palsy mein chehre ki kamzori,symptom,hi
+girne ka darr,girne ka darr,symptom,hi
+abhi pregnancy chal rahi hai,abhi pregnancy chal rahi hai,symptom,hi
+mouse ya keyboard zyada chalana,mouse ya keyboard zyada chalana,symptom,hi
+chakkar ke saath ji machlana,chakkar ke saath ji machlana,symptom,hi
+computer par baithne wali naukri,computer par baithne wali naukri,symptom,hi
+aankhon mein thakan,aankhon mein thakan,symptom,hi
+nas chadhna / muscle cramp,nas chadhna / muscle cramp,symptom,hi
+nange pair sakht farsh par chalna,nange pair sakht farsh par chalna,symptom,hi
+khelte waqt achanak pindli mein khinchav,khelte waqt achanak pindli mein khinchav,symptom,hi
+din bhar khade rehne wala kaam,din bhar khade rehne wala kaam,symptom,hi
+dard se neend kharab hoti hai,dard se neend kharab hoti hai,symptom,hi
+ek kandhe par bhaari bag tangna,ek kandhe par bhaari bag tangna,symptom,hi
+thand mein zyada dard,thand mein zyada dard,symptom,hi
+ghanton mobile chalana,ghanton mobile chalana,symptom,hi
+ghutne mein kat-kat ki awaaz,ghutne mein kat-kat ki awaaz,symptom,hi
+zameen par baithna ya uthak-baithak zyada,zameen par baithna ya uthak-baithak zyada,symptom,hi
+"bhaari mehnat wala kaam (mazdoori, kheti)","bhaari mehnat wala kaam (mazdoori, kheti)",symptom,hi
+aage jhukne par dard badhta hai,aage jhukne par dard badhta hai,symptom,hi
+aaraam karne se theek lagta hai,aaraam karne se theek lagta hai,symptom,hi
+menopause ke baad,menopause ke baad,symptom,hi
+raat ko toilet ke liye uthna,raat ko toilet ke liye uthna,symptom,hi
+khelte waqt mud gaya,khelte waqt mud gaya,symptom,hi
+stroke ke baad haath-pair akad jaana,stroke ke baad haath-pair akad jaana,symptom,hi
+stroke ke baad kandhe mein dard,stroke ke baad kandhe mein dard,symptom,hi
+kai dawaiyan leta hai,kai dawaiyan leta hai,symptom,hi
+kam dikhta hai,kam dikhta hai,symptom,hi
+takhna baar baar mud jaata hai,takhna baar baar mud jaata hai,symptom,hi
+kasrat (exercise) wale doctor.,kasrat (exercise) wale doctor.,symptom,hi
+physiotherapy wale bhaiya/doctor.,physiotherapy wale bhaiya/doctor.,symptom,hi
+sekai (fomentation) wale doctor.,sekai (fomentation) wale doctor.,symptom,hi
+accident ke baad reconstruction surgery chahiye.,accident ke baad reconstruction surgery chahiye.,symptom,hi
+chehre ki cosmetic surgery karwani hai.,chehre ki cosmetic surgery karwani hai.,symptom,hi
+plastic surgery wale doctor.,plastic surgery wale doctor.,symptom,hi
+khud ko kaatna ya chot pahunchana,khud ko kaatna ya chot pahunchana,symptom,hi
+kai din se bilkul nahi soye,kai din se bilkul nahi soye,symptom,hi
+maar-peet ya dhamki dena,maar-peet ya dhamki dena,symptom,hi
+bachche ko nuksaan pahunchane ke khayal,bachche ko nuksaan pahunchane ke khayal,symptom,hi
+delivery ke baad udaasi aur rona,delivery ke baad udaasi aur rona,symptom,hi
+"logon se milna-julna band, akele rehna","logon se milna-julna band, akele rehna",symptom,hi
+"ajeeb, bina sar-pair ki baatein karna","ajeeb, bina sar-pair ki baatein karna",symptom,hi
+exam ka bahut tanaav,exam ka bahut tanaav,symptom,hi
+parivaar mein kisi ko mansik bimari,parivaar mein kisi ko mansik bimari,symptom,hi
+pehle bhi aisa ho chuka hai,pehle bhi aisa ho chuka hai,symptom,hi
+bahut tez aur lagatar bolna,bahut tez aur lagatar bolna,symptom,hi
+bina soche bahut paisa kharch karna,bina soche bahut paisa kharch karna,symptom,hi
+haal mein delivery hui hai,haal mein delivery hui hai,symptom,hi
+akelapan mehsoos hota hai,akelapan mehsoos hota hai,symptom,hi
+ghar mein maar-peet ya bura bartav,ghar mein maar-peet ya bura bartav,symptom,hi
+kam khaane se chakkar ya behoshi,kam khaane se chakkar ya behoshi,symptom,hi
+bure sapne aana,bure sapne aana,symptom,hi
+karz ya paison ki tangi,karz ya paison ki tangi,symptom,hi
+padhai kar rahe hain (student),padhai kar rahe hain (student),symptom,hi
+vajan bahut kam ho gaya,vajan bahut kam ho gaya,symptom,hi
+periods band ho gaye,periods band ho gaye,symptom,hi
+ghar mein jhagde ya tanaav,ghar mein jhagde ya tanaav,symptom,hi
+achanak bahut tez ghabrahat ke daure,achanak bahut tez ghabrahat ke daure,symptom,hi
+"bechaini, chain na milna","bechaini, chain na milna",symptom,hi
+daure mein haath-pair sunn ho jaana,daure mein haath-pair sunn ho jaana,symptom,hi
+ghabrahat mein dil tez dhadakna,ghabrahat mein dil tez dhadakna,symptom,hi
+ghabrahat mein saans ghutna,ghabrahat mein saans ghutna,symptom,hi
+ghabrahat mein seene mein dard,ghabrahat mein seene mein dard,symptom,hi
+kaam ka bahut tanaav,kaam ka bahut tanaav,symptom,hi
+pasina aana,pasina aana,symptom,hi
+apne baal noachna,apne baal noachna,symptom,hi
+bahut zyada gussa aur zid,bahut zyada gussa aur zid,symptom,hi
+raat ko der tak mobile chalana,raat ko der tak mobile chalana,symptom,hi
+nashe ki tez talab,nashe ki tez talab,symptom,hi
+baat baat par rona aana,baat baat par rona aana,symptom,hi
+"har waqt thakan, energy nahi","har waqt thakan, energy nahi",symptom,hi
+poore badan mein dard,poore badan mein dard,symptom,hi
+pet kharab ya acidity,pet kharab ya acidity,symptom,hi
+sir dard rehta hai,sir dard rehta hai,symptom,hi
+jaani-pehchaani jagah par raasta bhoolna,jaani-pehchaani jagah par raasta bhoolna,symptom,hi
+ek hi sawaal baar baar poochhna,ek hi sawaal baar baar poochhna,symptom,hi
+sharir mein tanaav aur dard,sharir mein tanaav aur dard,symptom,hi
+"lambi bimari (sugar, bp ya dard)","lambi bimari (sugar, bp ya dard)",symptom,hi
+bhookh kam lagna,bhookh kam lagna,symptom,hi
+rishta toot gaya ya talaq,rishta toot gaya ya talaq,symptom,hi
+subah uthte hi sharab ki talab,subah uthte hi sharab ki talab,symptom,hi
+bahut zyada sona,bahut zyada sona,symptom,hi
+zaroorat se zyada khaana,zaroorat se zyada khaana,symptom,hi
+kaafi samay se berozgaar,kaafi samay se berozgaar,symptom,hi
+bahut ghabrahat aur bechaini rehti hai.,bahut ghabrahat aur bechaini rehti hai.,symptom,hi
+concentration nahi ho pa raha,concentration nahi ho pa raha,symptom,hi
+dil ghabrata hai bina wajah,dil ghabrata hai bina wajah,symptom,hi
+dimaagi doctor.,dimaagi doctor.,symptom,hi
+main bahut zyada bolta rehta hoon,main bahut zyada bolta rehta hoon,symptom,hi
+main bahut zyada udaas rehta hoon,main bahut zyada udaas rehta hoon,symptom,hi
+main marna chahta hoon,main marna chahta hoon,symptom,hi
+neend aur neelam (psychiatric) wale doctor.,neend aur neelam (psychiatric) wale doctor.,symptom,hi
+panic attacks aate hain,panic attacks aate hain,symptom,hi
+tension aur ghabrahat wale doctor.,tension aur ghabrahat wale doctor.,symptom,hi
+bahut tension rehti hai,bahut tension rehti hai,symptom,hi
+gussa bahut aata hai,gussa bahut aata hai,symptom,hi
+mann udaas rehta hai,mann udaas rehta hai,symptom,hi
+sookhi khansi,sookhi khansi,symptom,hi
+kandhe ke upar dard,kandhe ke upar dard,symptom,hi
+khansi mein khoon aana,khansi mein khoon aana,symptom,hi
+saans phoolna,saans phoolna,symptom,hi
+balgam pehle se zyada,balgam pehle se zyada,symptom,hi
+bhram hona ya behoshi jaisi neend,bhram hona ya behoshi jaisi neend,symptom,hi
+balgam wali khansi,balgam wali khansi,symptom,hi
+jang jaisa bhoora balgam,jang jaisa bhoora balgam,symptom,hi
+seene mein jakdan,seene mein jakdan,symptom,hi
+pehle tb ho chuki hai,pehle tb ho chuki hai,symptom,hi
+roz bahut zyada balgam (katori bhar),roz bahut zyada balgam (katori bhar),symptom,hi
+balgam mein khoon ki dhaariyan,balgam mein khoon ki dhaariyan,symptom,hi
+bhookh na lagna,bhookh na lagna,symptom,hi
+ghar mein kisi ko tb hai,ghar mein kisi ko tb hai,symptom,hi
+shaam ko halka bukhar aana,shaam ko halka bukhar aana,symptom,hi
+seene mein lagatar halka dard,seene mein lagatar halka dard,symptom,hi
+badbudar balgam,badbudar balgam,symptom,hi
+khaate-peete waqt khansi / phanda lagna,khaate-peete waqt khansi / phanda lagna,symptom,hi
+peela ya hara balgam,peela ya hara balgam,symptom,hi
+ek karvat letne par saans phoolna,ek karvat letne par saans phoolna,symptom,hi
+"gaadha balgam, bhoore tukde","gaadha balgam, bhoore tukde",symptom,hi
+"dhool, parag ya mausam se allergy","dhool, parag ya mausam se allergy",symptom,hi
+badan dard,badan dard,symptom,hi
+subah uthte hi sir dard,subah uthte hi sir dard,symptom,hi
+khansi ke daure padna,khansi ke daure padna,symptom,hi
+khansi ke baad 'hoop' jaisi awaaz,khansi ke baad 'hoop' jaisi awaaz,symptom,hi
+jodon mein dard ya sujan,jodon mein dard ya sujan,symptom,hi
+aankhein aur munh sookhna,aankhein aur munh sookhna,symptom,hi
+ungliyon ki chamdi phatna,ungliyon ki chamdi phatna,symptom,hi
+kaala ya slaty balgam,kaala ya slaty balgam,symptom,hi
+"khansi kamzor, balgam nahi nikal pata","khansi kamzor, balgam nahi nikal pata",symptom,hi
+peshab mein khoon,peshab mein khoon,symptom,hi
+aankhein laal aur dard,aankhein laal aur dard,symptom,hi
+naak se khoon aana,naak se khoon aana,symptom,hi
+khansne se pasliyon mein dard,khansne se pasliyon mein dard,symptom,hi
+chalne/daudne ke baad khansi,chalne/daudne ke baad khansi,symptom,hi
+letne par khansi,letne par khansi,symptom,hi
+seene mein jalan / khatti dakar,seene mein jalan / khatti dakar,symptom,hi
+covid ke baad se takleef,covid ke baad se takleef,symptom,hi
+jaldi jaldi gehri saans lena,jaldi jaldi gehri saans lena,symptom,hi
+baar baar lambi saans bharna,baar baar lambi saans bharna,symptom,hi
+poori saans andar nahi jaati,poori saans andar nahi jaati,symptom,hi
+safed balgam,safed balgam,symptom,hi
+subah uthte hi khansi,subah uthte hi khansi,symptom,hi
+khansi ke baad ulti,khansi ke baad ulti,symptom,hi
+raat ko baar baar peshab,raat ko baar baar peshab,symptom,hi
+so kar uthne par bhi thakan,so kar uthne par bhi thakan,symptom,hi
+vajan zyada / motapa,vajan zyada / motapa,symptom,hi
+pindli par laal dardnaak gaanth,pindli par laal dardnaak gaanth,symptom,hi
+seene mein ghar-ghar,seene mein ghar-ghar,symptom,hi
+har saal mausam badalne par takleef,har saal mausam badalne par takleef,symptom,hi
+saans aur dama (asthma) wale doctor.,saans aur dama (asthma) wale doctor.,symptom,hi
+t.b. aur fefde wale doctor.,t.b. aur fefde wale doctor.,symptom,hi
+city-scan (ct scan) wale doctor.,city-scan (ct scan) wale doctor.,symptom,hi
+ultrasound wale doctor.,ultrasound wale doctor.,symptom,hi
+gathiya (arthritis) wale doctor.,gathiya (arthritis) wale doctor.,symptom,hi
+kamar mein akkadan rehti hai hamesha.,kamar mein akkadan rehti hai hamesha.,symptom,hi
+kandha baar baar khisak jaata hai.,kandha baar baar khisak jaata hai.,symptom,hi
+khel-kood ki chot wale doctor.,khel-kood ki chot wale doctor.,symptom,hi
+ligament mein khichaav aa gaya hai.,ligament mein khichaav aa gaya hai.,symptom,hi
+mujhe achanak bahut tez dard hua,mujhe achanak bahut tez dard hua,symptom,hi
+sports injury wale doctor.,sports injury wale doctor.,symptom,hi
+naabhi ke neeche pet mein dard,naabhi ke neeche pet mein dard,symptom,hi
+kapkapi ke saath tez bukhar,kapkapi ke saath tez bukhar,symptom,hi
+baar baar peshab ka infection,baar baar peshab ka infection,symptom,hi
+peshab ki dhaar patli ya kamzor,peshab ki dhaar patli ya kamzor,symptom,hi
+peshab shuru hone mein der lagna,peshab shuru hone mein der lagna,symptom,hi
+peshab mein khoon ke thakke,peshab mein khoon ke thakke,symptom,hi
+andkosh (testicle) mein gaanth ya sakhti,andkosh (testicle) mein gaanth ya sakhti,symptom,hi
+psa report badha hua aaya,psa report badha hua aaya,symptom,hi
+budhape mein haddiyon mein dard,budhape mein haddiyon mein dard,symptom,hi
+parivaar mein prostate cancer,parivaar mein prostate cancer,symptom,hi
+erection na aana ya na tikna,erection na aana ya na tikna,symptom,hi
+pehle catheter lag chuka hai,pehle catheter lag chuka hai,symptom,hi
+peshab gandla ya badbudar,peshab gandla ya badbudar,symptom,hi
+paani kam peete hain,paani kam peete hain,symptom,hi
+parivaar mein pathri ki bimari,parivaar mein pathri ki bimari,symptom,hi
+pehle pathri ho chuki hai,pehle pathri ho chuki hai,symptom,hi
+peshab gaadha peela,peshab gaadha peela,symptom,hi
+peshab mein pathri ya kankad nikla,peshab mein pathri ya kankad nikla,symptom,hi
+aage ki chamdi peeche nahi khisakti,aage ki chamdi peeche nahi khisakti,symptom,hi
+pet ke side mein gaanth,pet ke side mein gaanth,symptom,hi
+veerya mein khoon,veerya mein khoon,symptom,hi
+diabetes (sugar) hai,diabetes (sugar) hai,symptom,hi
+semen report mein shukranu kam,semen report mein shukranu kam,symptom,hi
+zyada cycle ya bike chalana,zyada cycle ya bike chalana,symptom,hi
+erection mein ling tedha ya dard,erection mein ling tedha ya dard,symptom,hi
+ghanton baithe rehte hain,ghanton baithe rehte hain,symptom,hi
+kamar mein dard,kamar mein dard,symptom,hi
+veerya nikalte waqt dard,veerya nikalte waqt dard,symptom,hi
+chai ya coffee bahut peete hain,chai ya coffee bahut peete hain,symptom,hi
+bp ki dawai lete hain,bp ki dawai lete hain,symptom,hi
+jaldi discharge ho jaana (sheeghrapatan),jaldi discharge ho jaana (sheeghrapatan),symptom,hi
+peshab apne aap nikal jaana,peshab apne aap nikal jaana,symptom,hi
+pehle lakwa (stroke) ho chuka hai,pehle lakwa (stroke) ho chuka hai,symptom,hi
+peshab ke baad boond boond tapakna,peshab ke baad boond boond tapakna,symptom,hi
+peshab beech beech mein rukna,peshab beech beech mein rukna,symptom,hi
+baar baar peshab aata hai,baar baar peshab aata hai,symptom,hi
+gupt rog wale doctor.,gupt rog wale doctor.,symptom,hi
+mutra rog visheshagya.,mutra rog visheshagya.,symptom,hi
+peshaab karte waqt jalan hoti hai.,peshaab karte waqt jalan hoti hai.,symptom,hi
+peshab mein jalan ho rahi hai,peshab mein jalan ho rahi hai,symptom,hi
+peshab mein khoon aa raha hai,peshab mein khoon aa raha hai,symptom,hi
+prostate wale doctor.,prostate wale doctor.,symptom,hi
+naso (veins) ke operation wale doctor.,naso (veins) ke operation wale doctor.,symptom,hi
+phooli hui naso (varicose) wale doctor.,phooli hui naso (varicose) wale doctor.,symptom,hi
