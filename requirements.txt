@@ -1,16 +1,7 @@
-fastapi==0.115.6
-uvicorn[standard]==0.32.1
-scikit-learn==1.7.1
-pydantic==2.10.3
-pandas==2.3.3
-joblib==1.4.2
-slowapi==0.1.10
-# POST /route-symptom-audio (server-side transcription of uploaded audio --
-# see speech/transcription.py). NOT for live microphone capture: that's
-# voice/'s job, needs PyAudio, and stays out of the deployed API image (see
-# requirements-voice.txt).
-python-multipart==0.0.20
-SpeechRecognition==3.10.4
-indic-transliteration==2.3.59
-pydub==0.25.1
-groq==1.1.2
+redis>=5.0
+rapidfuzz>=3.0
+indic-transliteration>=2.3
+numpy
+# dev / tests
+pytest
+fakeredis
