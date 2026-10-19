@@ -1,0 +1,7 @@
+# Optional: LangGraph orchestration (hms_router/orchestration) and LLM providers (hms_router/adapters/llm).
+# Not needed to serve /chat or /route-symptom. Pin versions when you adopt them.
+-r requirements.txt
+langgraph>=1.0
+langchain-core>=1.0
+# one of, only after the patient-data decision is recorded (see docs/route_symptom.md):
+# langchain-groq / langchain-anthropic / langchain-openai

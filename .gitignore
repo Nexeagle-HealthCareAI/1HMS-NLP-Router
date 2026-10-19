@@ -8,3 +8,6 @@ venv/
 novel_symptoms_review.csv
 lid.176.bin
 .DS_Store
+
+# built by `python -m hms_router.rag.model_bundle build` (or on first API start)
+hms_router/data/route_model.joblib

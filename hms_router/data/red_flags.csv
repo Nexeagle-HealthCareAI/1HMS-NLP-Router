@@ -1,0 +1,95 @@
+phrase,english,canonical,flag,origin
+seene dard,Chest pain,chest pain,EMERGENCY,severity.py
+seena dard,Chest pain,chest pain,EMERGENCY,severity.py
+sine dard,Chest pain,chest pain,EMERGENCY,severity.py
+sina dard,Chest pain,chest pain,EMERGENCY,severity.py
+chest pain,Chest pain,chest pain,EMERGENCY,severity.py
+saans nahi aa,Breathlessness,breathlessness,EMERGENCY,severity.py
+saans nai aa,Breathlessness,breathlessness,EMERGENCY,severity.py
+saans takleef,Breathlessness,breathlessness,EMERGENCY,severity.py
+saans phoolna,Breathlessness,breathlessness,EMERGENCY,severity.py
+short breath,Breathlessness,breathlessness,EMERGENCY,severity.py
+difficulty breathing,Breathlessness,breathlessness,EMERGENCY,severity.py
+behosh,Lost consciousness,unconscious,EMERGENCY,severity.py
+unconscious,Lost consciousness,unconscious,EMERGENCY,severity.py
+zyada khoon aa,Excessive bleeding,excessive bleeding,EMERGENCY,severity.py
+bahut khoon,Excessive bleeding,excessive bleeding,EMERGENCY,severity.py
+heavy bleeding,Excessive bleeding,excessive bleeding,EMERGENCY,severity.py
+laqwa,Stroke,stroke,EMERGENCY,severity.py
+muh tedha,Facial drooping / stroke,facial droop,EMERGENCY,severity.py
+face drooping,Facial drooping / stroke,facial droop,EMERGENCY,severity.py
+aankhon aage andhera,Vision loss / blackout,vision loss,EMERGENCY,severity.py
+vision loss,Vision loss / blackout,vision loss,EMERGENCY,severity.py
+haath pair sune,Limb numbness,numbness,EMERGENCY,severity.py
+haath pair sunn,Limb numbness,numbness,EMERGENCY,severity.py
+numbness,Limb numbness,numbness,EMERGENCY,severity.py
+sar achanak tez dard,Sudden severe headache,sudden severe headache,EMERGENCY,severity.py
+sir achanak tez dard,Sudden severe headache,sudden severe headache,EMERGENCY,severity.py
+sar mein achanak tez dard,Sudden severe headache,sudden severe headache,EMERGENCY,severity.py
+sir mein achanak tez dard,Sudden severe headache,sudden severe headache,EMERGENCY,severity.py
+sudden severe headache,Sudden severe headache,sudden severe headache,EMERGENCY,severity.py
+ulti khoon,Blood in vomit,blood in vomit,EMERGENCY,severity.py
+khoon ulti,Blood in vomit,blood in vomit,EMERGENCY,severity.py
+blood vomit,Blood in vomit,blood in vomit,EMERGENCY,severity.py
+vomiting blood,Blood in vomit,blood in vomit,EMERGENCY,severity.py
+vomit blood,Blood in vomit,blood in vomit,EMERGENCY,severity.py
+chhaati dard,Chest pain,chest pain,EMERGENCY,severity.py
+chhati dard,Chest pain,chest pain,EMERGENCY,severity.py
+saans lene takleef,Breathlessness,breathlessness,EMERGENCY,severity.py
+can t breathe,Breathlessness,breathlessness,EMERGENCY,severity.py
+cant breathe,Breathlessness,breathlessness,EMERGENCY,severity.py
+cannot breathe,Breathlessness,breathlessness,EMERGENCY,severity.py
+trouble breathing,Breathlessness,breathlessness,EMERGENCY,severity.py
+khud ko maar,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+khudkushi,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+aatmhatya,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+suicide,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+kill myself,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+end my life,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+marna chahta,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+marna chahti,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+jeena nahi chahta,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+jeena nahi chahti,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+daura,Seizure or heart attack ('daura'),daura,EMERGENCY,route-symptom 2026-10-19
+jhatke aa,Seizure / convulsions,seizure,EMERGENCY,route-symptom 2026-10-19
+mirgi,Seizure / convulsions,seizure,EMERGENCY,route-symptom 2026-10-19
+seizure,Seizure / convulsions,seizure,EMERGENCY,route-symptom 2026-10-19
+convulsion,Seizure / convulsions,seizure,EMERGENCY,route-symptom 2026-10-19
+heart attack,Heart attack,heart attack,EMERGENCY,route-symptom 2026-10-19
+zeher,Poisoning,poisoning,EMERGENCY,route-symptom 2026-10-19
+zehar,Poisoning,poisoning,EMERGENCY,route-symptom 2026-10-19
+poison,Poisoning,poisoning,EMERGENCY,route-symptom 2026-10-19
+overdose,Poisoning / overdose,poisoning,EMERGENCY,route-symptom 2026-10-19
+keetnashak,Poisoning (pesticide),poisoning,EMERGENCY,route-symptom 2026-10-19
+saanp kaat,Snake bite,snake bite,EMERGENCY,route-symptom 2026-10-19
+saap kaat,Snake bite,snake bite,EMERGENCY,route-symptom 2026-10-19
+snake bite,Snake bite,snake bite,EMERGENCY,route-symptom 2026-10-19
+khoon nahi ruk,Bleeding that won't stop,uncontrolled bleeding,EMERGENCY,route-symptom 2026-10-19
+khoon ruk persist,Bleeding that won't stop,uncontrolled bleeding,EMERGENCY,route-symptom 2026-10-19
+khoon band persist,Bleeding that won't stop,uncontrolled bleeding,EMERGENCY,route-symptom 2026-10-19
+bleeding not stopping,Bleeding that won't stop,uncontrolled bleeding,EMERGENCY,route-symptom 2026-10-19
+pregnancy khoon,Bleeding in pregnancy,bleeding in pregnancy,EMERGENCY,route-symptom 2026-10-19
+pregnancy bleeding,Bleeding in pregnancy,bleeding in pregnancy,EMERGENCY,route-symptom 2026-10-19
+garbh khoon,Bleeding in pregnancy,bleeding in pregnancy,EMERGENCY,route-symptom 2026-10-19
+road accident,Road accident / trauma,trauma,EMERGENCY,route-symptom 2026-10-19
+aag jal,Burn injury,burn,EMERGENCY,route-symptom 2026-10-19
+tezaab,Acid / chemical burn,burn,EMERGENCY,route-symptom 2026-10-19
+gala band,Throat closing (severe allergic reaction),anaphylaxis,EMERGENCY,route-symptom 2026-10-19
+throat closing,Throat closing (severe allergic reaction),anaphylaxis,EMERGENCY,route-symptom 2026-10-19
+zubaan ladkhada,Slurred speech / stroke,stroke,EMERGENCY,route-symptom 2026-10-19
+slurred speech,Slurred speech / stroke,stroke,EMERGENCY,route-symptom 2026-10-19
+chest tight,Chest pain,chest pain,EMERGENCY,route-symptom 2026-10-19
+khud maarne,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+khud khatam,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+apni jaan le,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+jaan dena chahta,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+jaan dena chahti,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+marne mann,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+mar jana chahta,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+mar jana chahti,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+zindagi khatam,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+want to die,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+hurt myself,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symptom 2026-10-19
+fainted,Lost consciousness,unconscious,EMERGENCY,route-symptom 2026-10-19
+passed out,Lost consciousness,unconscious,EMERGENCY,route-symptom 2026-10-19
+lost consciousness,Lost consciousness,unconscious,EMERGENCY,route-symptom 2026-10-19

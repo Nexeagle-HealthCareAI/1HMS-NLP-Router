@@ -1,0 +1,1713 @@
+{
+ "emergency_chest_pain": {
+  "replies": [
+   {
+    "body": {
+     "card": {
+      "after_stabilisation": [
+       "Cardiologist",
+       "General Physician"
+      ],
+      "alert": "EMERGENCY: Turant 112 par call karein ya nearest ER jaayein. / Call 112 or go to the nearest ER now.",
+      "disclaimer": "Triage support only - not a diagnosis.",
+      "disposition": "ER / Ambulance NOW",
+      "emergency_reasons": [
+       "Chest pain"
+      ],
+      "kind": "emergency",
+      "low_confidence": false,
+      "outputs": [
+       {
+        "cluster_id": null,
+        "confidence": 1.0,
+        "matched_symptoms": [
+         "chest pain"
+        ],
+        "reason": "Emergency red flag detected",
+        "role": "EMERGENCY",
+        "specialist": "Emergency Medicine"
+       }
+      ],
+      "red_flags": [],
+      "severity_level": "EMERGENCY",
+      "severity_score": 90,
+      "summary": "chest pain",
+      "watch_for": []
+     },
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "chest pain",
+       "discriminative": true,
+       "idf": 4.610917912644224,
+       "level": "CRITICAL",
+       "token": "seene mein dard"
+      },
+      {
+       "canonical": "ho",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "ho"
+      },
+      {
+       "canonical": "raha",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "raha"
+      },
+      {
+       "canonical": "hai",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "hai"
+      }
+     ],
+     "kind": "emergency",
+     "language": "hinglish",
+     "message": "[!] EMERGENCY\nEMERGENCY: Turant 112 par call karein ya nearest ER jaayein. / Call 112 or go to the nearest ER now.\n\nChest pain\nAapke symptoms: chest pain\nAfter the ER: Cardiologist, General Physician\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "question": null,
+     "severity": {
+      "alert": "EMERGENCY: Turant 112 par call karein ya nearest ER jaayein. / Call 112 or go to the nearest ER now.",
+      "disposition": "ER / Ambulance NOW",
+      "emergency": true,
+      "emergency_hits": [
+       {
+        "canonical": "chest pain",
+        "english": "Chest pain",
+        "flag": "EMERGENCY",
+        "via": "symptom"
+       }
+      ],
+      "factors": [
+       "no scorable symptoms",
+       "hardcoded emergency phrase/symptom: Chest pain"
+      ],
+      "level": "EMERGENCY",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 0,
+      "score": 90,
+      "triggered_by": "safety_net"
+     },
+     "state": {
+      "body_parts": [
+       "chest"
+      ],
+      "duration": null,
+      "durations": [],
+      "first_seen_turn": {
+       "chest pain": 1
+      },
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": null,
+      "ready": true,
+      "ready_reason": "emergency_safety_net",
+      "symptoms": [
+       "chest pain"
+      ],
+      "turn": 1
+     },
+     "turn": 1
+    },
+    "status": 200
+   }
+  ],
+  "session": {
+   "body": {
+    "body_parts": [
+     "chest"
+    ],
+    "duration": null,
+    "durations": [],
+    "first_seen_turn": {
+     "chest pain": 1
+    },
+    "intensity": null,
+    "language": "hinglish",
+    "negated_symptoms": [],
+    "next_question": null,
+    "ready": false,
+    "ready_reason": "",
+    "symptoms": [
+     "chest pain"
+    ],
+    "turn": 1
+   },
+   "status": 200
+  }
+ },
+ "emergency_devanagari": {
+  "replies": [
+   {
+    "body": {
+     "card": {
+      "after_stabilisation": [
+       "Pulmonologist",
+       "Cardiologist"
+      ],
+      "alert": "EMERGENCY: Turant 112 par call karein ya nearest ER jaayein. / Call 112 or go to the nearest ER now.",
+      "disclaimer": "Triage support only - not a diagnosis.",
+      "disposition": "ER / Ambulance NOW",
+      "emergency_reasons": [
+       "Breathlessness"
+      ],
+      "kind": "emergency",
+      "low_confidence": false,
+      "outputs": [
+       {
+        "cluster_id": null,
+        "confidence": 1.0,
+        "matched_symptoms": [
+         "breathlessness"
+        ],
+        "reason": "Emergency red flag detected",
+        "role": "EMERGENCY",
+        "specialist": "Emergency Medicine"
+       }
+      ],
+      "red_flags": [],
+      "severity_level": "EMERGENCY",
+      "severity_score": 90,
+      "summary": "breathlessness",
+      "watch_for": []
+     },
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "breathlessness",
+       "discriminative": true,
+       "idf": 4.20545280453606,
+       "level": "CRITICAL",
+       "token": "saans"
+      },
+      {
+       "canonical": "nahin",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "nahin"
+      },
+      {
+       "canonical": "aa",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "aa"
+      },
+      {
+       "canonical": "rahi",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "rahi"
+      }
+     ],
+     "kind": "emergency",
+     "language": "hindi",
+     "message": "[!] EMERGENCY\nEMERGENCY: Turant 112 par call karein ya nearest ER jaayein. / Call 112 or go to the nearest ER now.\n\nBreathlessness\nAapke symptoms: breathlessness\nAfter the ER: Pulmonologist, Cardiologist\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "question": null,
+     "severity": {
+      "alert": "EMERGENCY: Turant 112 par call karein ya nearest ER jaayein. / Call 112 or go to the nearest ER now.",
+      "disposition": "ER / Ambulance NOW",
+      "emergency": true,
+      "emergency_hits": [
+       {
+        "canonical": "breathlessness",
+        "english": "Breathlessness",
+        "flag": "EMERGENCY",
+        "via": "symptom"
+       }
+      ],
+      "factors": [
+       "no scorable symptoms",
+       "hardcoded emergency phrase/symptom: Breathlessness"
+      ],
+      "level": "EMERGENCY",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 0,
+      "score": 90,
+      "triggered_by": "safety_net"
+     },
+     "state": {
+      "body_parts": [],
+      "duration": null,
+      "durations": [],
+      "first_seen_turn": {
+       "breathlessness": 1
+      },
+      "intensity": null,
+      "language": "hindi",
+      "negated_symptoms": [],
+      "next_question": null,
+      "ready": true,
+      "ready_reason": "emergency_safety_net",
+      "symptoms": [
+       "breathlessness"
+      ],
+      "turn": 1
+     },
+     "turn": 1
+    },
+    "status": 200
+   }
+  ],
+  "session": {
+   "body": {
+    "body_parts": [],
+    "duration": null,
+    "durations": [],
+    "first_seen_turn": {
+     "breathlessness": 1
+    },
+    "intensity": null,
+    "language": "hindi",
+    "negated_symptoms": [],
+    "next_question": null,
+    "ready": false,
+    "ready_reason": "",
+    "symptoms": [
+     "breathlessness"
+    ],
+    "turn": 1
+   },
+   "status": 200
+  }
+ },
+ "english_multi": {
+  "replies": [
+   {
+    "body": {
+     "card": null,
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "i"
+      },
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "have"
+      },
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "a"
+      },
+      {
+       "canonical": "headache",
+       "discriminative": true,
+       "idf": 4.20545280453606,
+       "level": "HIGH",
+       "token": "headache"
+      },
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "and"
+      },
+      {
+       "canonical": "dizziness",
+       "discriminative": true,
+       "idf": 4.20545280453606,
+       "level": "HIGH",
+       "token": "dizziness"
+      },
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "for"
+      },
+      {
+       "canonical": "2",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "2"
+      },
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "weeks"
+      }
+     ],
+     "kind": "follow_up",
+     "language": "english",
+     "message": "Koi aur symptoms hain?",
+     "question": "Koi aur symptoms hain?",
+     "severity": {
+      "alert": null,
+      "disposition": "GP / Family Physician",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 42 from headache, dizziness",
+       "+6 headache with dizziness",
+       "+10 persisting about 14 days"
+      ],
+      "level": "MODERATE",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 58,
+      "score": 58,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [
+       "head"
+      ],
+      "duration": "for 2 weeks",
+      "durations": [
+       "for 2 weeks"
+      ],
+      "first_seen_turn": {
+       "dizziness": 1,
+       "headache": 1
+      },
+      "intensity": null,
+      "language": "english",
+      "negated_symptoms": [],
+      "next_question": "Koi aur symptoms hain?",
+      "ready": false,
+      "ready_reason": "",
+      "symptoms": [
+       "headache",
+       "dizziness"
+      ],
+      "turn": 1
+     },
+     "turn": 1
+    },
+    "status": 200
+   },
+   {
+    "body": {
+     "card": {
+      "after_stabilisation": [],
+      "alert": null,
+      "disclaimer": "Triage support only - not a diagnosis.",
+      "disposition": "GP / Family Physician",
+      "emergency_reasons": [],
+      "kind": "recommendation",
+      "low_confidence": false,
+      "outputs": [
+       {
+        "cluster_id": "NEU1",
+        "confidence": 0.657,
+        "matched_symptoms": [
+         "headache",
+         "dizziness"
+        ],
+        "reason": "Neurological symptoms including headache and dizziness",
+        "role": "PRIMARY",
+        "specialist": "Neurologist"
+       },
+       {
+        "cluster_id": "CARD1",
+        "confidence": 0.296,
+        "matched_symptoms": [
+         "dizziness"
+        ],
+        "reason": "Cardiac symptoms including chest pain and breathlessness",
+        "role": "SECONDARY",
+        "specialist": "Cardiologist"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "Start with a general / tele-consult first",
+        "role": "ALTERNATIVE",
+        "specialist": "General Physician"
+       }
+      ],
+      "red_flags": [],
+      "severity_level": "MODERATE",
+      "severity_score": 58,
+      "summary": "headache + dizziness (for 2 weeks)",
+      "watch_for": [
+       "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately"
+      ]
+     },
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "nothing"
+      },
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "else"
+      }
+     ],
+     "kind": "recommendation",
+     "language": "english",
+     "message": "Symptom summary: headache + dizziness (for 2 weeks)\nSeverity: YELLOW MODERATE - GP / Family Physician\n\nRecommended specialists:\n  1. NEUROLOGIST            (Primary) -> Neurological symptoms including headache and dizziness\n  2. CARDIOLOGIST           (Secondary) -> Cardiac symptoms including chest pain and breathlessness\n  3. GENERAL PHYSICIAN      (Alternative) -> Start with a general / tele-consult first\n\nWatch for:\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately\n\nTriage support only - not a diagnosis.",
+     "question": null,
+     "severity": {
+      "alert": null,
+      "disposition": "GP / Family Physician",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 42 from headache, dizziness",
+       "+6 headache with dizziness",
+       "+10 persisting about 14 days"
+      ],
+      "level": "MODERATE",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 58,
+      "score": 58,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [
+       "head"
+      ],
+      "duration": "for 2 weeks",
+      "durations": [
+       "for 2 weeks"
+      ],
+      "first_seen_turn": {
+       "dizziness": 1,
+       "headache": 1
+      },
+      "intensity": null,
+      "language": "english",
+      "negated_symptoms": [],
+      "next_question": null,
+      "ready": true,
+      "ready_reason": "user_done",
+      "symptoms": [
+       "headache",
+       "dizziness"
+      ],
+      "turn": 2
+     },
+     "turn": 2
+    },
+    "status": 200
+   }
+  ],
+  "session": {
+   "body": {
+    "body_parts": [
+     "head"
+    ],
+    "duration": "for 2 weeks",
+    "durations": [
+     "for 2 weeks"
+    ],
+    "first_seen_turn": {
+     "dizziness": 1,
+     "headache": 1
+    },
+    "intensity": null,
+    "language": "english",
+    "negated_symptoms": [],
+    "next_question": null,
+    "ready": false,
+    "ready_reason": "",
+    "symptoms": [
+     "headache",
+     "dizziness"
+    ],
+    "turn": 2
+   },
+   "status": 200
+  }
+ },
+ "errors": {
+  "empty_text": 422,
+  "too_long": 422,
+  "unknown_session": 404
+ },
+ "feedback": {
+  "bad_kind": 422,
+  "new_phrase": {
+   "accepted": true
+  }
+ },
+ "fever": {
+  "replies": [
+   {
+    "body": {
+     "card": {
+      "after_stabilisation": [],
+      "alert": null,
+      "disclaimer": "Triage support only - not a diagnosis.",
+      "disposition": "GP / Family Physician",
+      "emergency_reasons": [],
+      "kind": "recommendation",
+      "low_confidence": false,
+      "outputs": [
+       {
+        "cluster_id": "GI1",
+        "confidence": 0.578,
+        "matched_symptoms": [
+         "fever"
+        ],
+        "reason": "Gastrointestinal symptoms including abdominal pain, vomiting and fever",
+        "role": "PRIMARY",
+        "specialist": "Gastroenterologist"
+       },
+       {
+        "cluster_id": "GP1",
+        "confidence": 0.528,
+        "matched_symptoms": [
+         "fever"
+        ],
+        "reason": "General symptoms for primary assessment",
+        "role": "SECONDARY",
+        "specialist": "General Physician"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "Start with a general / tele-consult first",
+        "role": "ALTERNATIVE",
+        "specialist": "Telemedicine consult"
+       }
+      ],
+      "red_flags": [],
+      "severity_level": "MODERATE",
+      "severity_score": 49,
+      "summary": "fever (for 3 days)",
+      "watch_for": [
+       "Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately",
+       "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
+       "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately"
+      ]
+     },
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "fever",
+       "discriminative": true,
+       "idf": 4.20545280453606,
+       "level": "HIGH",
+       "token": "bukhar"
+      },
+      {
+       "canonical": "hai",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "hai"
+      },
+      {
+       "canonical": "3",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "3"
+      },
+      {
+       "canonical": "day",
+       "discriminative": true,
+       "idf": 0.0,
+       "level": "TEMPORAL",
+       "token": "din"
+      },
+      {
+       "canonical": "se",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "se"
+      },
+      {
+       "canonical": "very",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "MODIFIER",
+       "token": "bahut"
+      },
+      {
+       "canonical": "severe",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "MODIFIER",
+       "token": "tez"
+      }
+     ],
+     "kind": "recommendation",
+     "language": "hinglish",
+     "message": "Aapke symptoms: fever (for 3 days)\nGambhirta: YELLOW MODERATE - GP / Family Physician\n\nKin doctors ko dikhayein:\n  1. GASTROENTEROLOGIST     (Pehla option) -> Gastrointestinal symptoms including abdominal pain, vomiting and fever\n  2. GENERAL PHYSICIAN      (Doosra option) -> General symptoms for primary assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "question": null,
+     "severity": {
+      "alert": null,
+      "disposition": "GP / Family Physician",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 35 from fever",
+       "intensity 'severe' x1.25",
+       "+5 persisting about 3 days"
+      ],
+      "level": "MODERATE",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 49,
+      "score": 49,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [],
+      "duration": "for 3 days",
+      "durations": [
+       "for 3 days"
+      ],
+      "first_seen_turn": {
+       "fever": 1
+      },
+      "intensity": "severe",
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": null,
+      "ready": true,
+      "ready_reason": "complete",
+      "symptoms": [
+       "fever"
+      ],
+      "turn": 1
+     },
+     "turn": 1
+    },
+    "status": 200
+   }
+  ],
+  "session": {
+   "body": {
+    "body_parts": [],
+    "duration": "for 3 days",
+    "durations": [
+     "for 3 days"
+    ],
+    "first_seen_turn": {
+     "fever": 1
+    },
+    "intensity": "severe",
+    "language": "hinglish",
+    "negated_symptoms": [],
+    "next_question": null,
+    "ready": false,
+    "ready_reason": "",
+    "symptoms": [
+     "fever"
+    ],
+    "turn": 1
+   },
+   "status": 200
+  }
+ },
+ "followup_then_recommend": {
+  "replies": [
+   {
+    "body": {
+     "card": null,
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "stomach pain",
+       "discriminative": true,
+       "idf": 4.20545280453606,
+       "level": "HIGH",
+       "token": "pet mein dard"
+      },
+      {
+       "canonical": "hai",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "hai"
+      }
+     ],
+     "kind": "follow_up",
+     "language": "hinglish",
+     "message": "Koi aur symptoms hain?",
+     "question": "Koi aur symptoms hain?",
+     "severity": {
+      "alert": null,
+      "disposition": "GP / Family Physician",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 40 from stomach pain"
+      ],
+      "level": "MODERATE",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 40,
+      "score": 40,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [
+       "stomach"
+      ],
+      "duration": null,
+      "durations": [],
+      "first_seen_turn": {
+       "stomach pain": 1
+      },
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": "Koi aur symptoms hain?",
+      "ready": false,
+      "ready_reason": "",
+      "symptoms": [
+       "stomach pain"
+      ],
+      "turn": 1
+     },
+     "turn": 1
+    },
+    "status": 200
+   },
+   {
+    "body": {
+     "card": null,
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "hain",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "haan"
+      },
+      {
+       "canonical": "vomiting",
+       "discriminative": true,
+       "idf": 4.20545280453606,
+       "level": "HIGH",
+       "token": "ulti"
+      },
+      {
+       "canonical": "bhi",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "bhi"
+      }
+     ],
+     "kind": "follow_up",
+     "language": "hinglish",
+     "message": "Kitne time se?",
+     "question": "Kitne time se?",
+     "severity": {
+      "alert": null,
+      "disposition": "GP / Family Physician",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 49 from stomach pain, vomiting"
+      ],
+      "level": "MODERATE",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 49,
+      "score": 49,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [
+       "stomach"
+      ],
+      "duration": null,
+      "durations": [],
+      "first_seen_turn": {
+       "stomach pain": 1,
+       "vomiting": 2
+      },
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": "Kitne time se?",
+      "ready": false,
+      "ready_reason": "",
+      "symptoms": [
+       "stomach pain",
+       "vomiting"
+      ],
+      "turn": 2
+     },
+     "turn": 2
+    },
+    "status": 200
+   },
+   {
+    "body": {
+     "card": {
+      "after_stabilisation": [],
+      "alert": null,
+      "disclaimer": "Triage support only - not a diagnosis.",
+      "disposition": "GP / Family Physician",
+      "emergency_reasons": [],
+      "kind": "recommendation",
+      "low_confidence": false,
+      "outputs": [
+       {
+        "cluster_id": "GI1",
+        "confidence": 0.744,
+        "matched_symptoms": [
+         "stomach pain",
+         "vomiting"
+        ],
+        "reason": "Gastrointestinal symptoms including abdominal pain, vomiting and fever",
+        "role": "PRIMARY",
+        "specialist": "Gastroenterologist"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "No closer match - start with a general assessment",
+        "role": "SECONDARY",
+        "specialist": "General Physician"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "Start with a general / tele-consult first",
+        "role": "ALTERNATIVE",
+        "specialist": "Telemedicine consult"
+       }
+      ],
+      "red_flags": [],
+      "severity_level": "MODERATE",
+      "severity_score": 49,
+      "summary": "stomach pain + vomiting (for 2 days)",
+      "watch_for": [
+       "Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately",
+       "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
+       "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately"
+      ]
+     },
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "2",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "2"
+      },
+      {
+       "canonical": "day",
+       "discriminative": true,
+       "idf": 0.0,
+       "level": "TEMPORAL",
+       "token": "din"
+      },
+      {
+       "canonical": "se",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "se"
+      }
+     ],
+     "kind": "recommendation",
+     "language": "hinglish",
+     "message": "Aapke symptoms: stomach pain + vomiting (for 2 days)\nGambhirta: YELLOW MODERATE - GP / Family Physician\n\nKin doctors ko dikhayein:\n  1. GASTROENTEROLOGIST     (Pehla option) -> Gastrointestinal symptoms including abdominal pain, vomiting and fever\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "question": null,
+     "severity": {
+      "alert": null,
+      "disposition": "GP / Family Physician",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 49 from stomach pain, vomiting"
+      ],
+      "level": "MODERATE",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 49,
+      "score": 49,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [
+       "stomach"
+      ],
+      "duration": "for 2 days",
+      "durations": [
+       "for 2 days"
+      ],
+      "first_seen_turn": {
+       "stomach pain": 1,
+       "vomiting": 2
+      },
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": null,
+      "ready": true,
+      "ready_reason": "max_turns",
+      "symptoms": [
+       "stomach pain",
+       "vomiting"
+      ],
+      "turn": 3
+     },
+     "turn": 3
+    },
+    "status": 200
+   },
+   {
+    "body": {
+     "card": {
+      "after_stabilisation": [],
+      "alert": null,
+      "disclaimer": "Triage support only - not a diagnosis.",
+      "disposition": "Specialist - Urgent",
+      "emergency_reasons": [],
+      "kind": "recommendation",
+      "low_confidence": false,
+      "outputs": [
+       {
+        "cluster_id": "GI1",
+        "confidence": 0.744,
+        "matched_symptoms": [
+         "stomach pain",
+         "vomiting"
+        ],
+        "reason": "Gastrointestinal symptoms including abdominal pain, vomiting and fever",
+        "role": "PRIMARY",
+        "specialist": "Gastroenterologist"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "No closer match - start with a general assessment",
+        "role": "SECONDARY",
+        "specialist": "General Physician"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "Start with a general / tele-consult first",
+        "role": "ALTERNATIVE",
+        "specialist": "Telemedicine consult"
+       }
+      ],
+      "red_flags": [],
+      "severity_level": "SEVERE",
+      "severity_score": 61,
+      "summary": "stomach pain + vomiting (for 2 days)",
+      "watch_for": [
+       "Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately",
+       "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
+       "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately"
+      ]
+     },
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "very",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "MODIFIER",
+       "token": "bahut"
+      },
+      {
+       "canonical": "severe",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "MODIFIER",
+       "token": "tez"
+      }
+     ],
+     "kind": "recommendation",
+     "language": "hinglish",
+     "message": "Aapke symptoms: stomach pain + vomiting (for 2 days)\nGambhirta: ORANGE SEVERE - Specialist - Urgent\n\nKin doctors ko dikhayein:\n  1. GASTROENTEROLOGIST     (Pehla option) -> Gastrointestinal symptoms including abdominal pain, vomiting and fever\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "question": null,
+     "severity": {
+      "alert": null,
+      "disposition": "Specialist - Urgent",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 49 from stomach pain, vomiting",
+       "intensity 'severe' x1.25"
+      ],
+      "level": "SEVERE",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 61,
+      "score": 61,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [
+       "stomach"
+      ],
+      "duration": "for 2 days",
+      "durations": [
+       "for 2 days"
+      ],
+      "first_seen_turn": {
+       "stomach pain": 1,
+       "vomiting": 2
+      },
+      "intensity": "severe",
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": null,
+      "ready": true,
+      "ready_reason": "max_turns",
+      "symptoms": [
+       "stomach pain",
+       "vomiting"
+      ],
+      "turn": 4
+     },
+     "turn": 4
+    },
+    "status": 200
+   }
+  ],
+  "session": {
+   "body": {
+    "body_parts": [
+     "stomach"
+    ],
+    "duration": "for 2 days",
+    "durations": [
+     "for 2 days"
+    ],
+    "first_seen_turn": {
+     "stomach pain": 1,
+     "vomiting": 2
+    },
+    "intensity": "severe",
+    "language": "hinglish",
+    "negated_symptoms": [],
+    "next_question": null,
+    "ready": false,
+    "ready_reason": "",
+    "symptoms": [
+     "stomach pain",
+     "vomiting"
+    ],
+    "turn": 4
+   },
+   "status": 200
+  }
+ },
+ "health": {
+  "redis": "ok",
+  "status": "ok"
+ },
+ "negation": {
+  "replies": [
+   {
+    "body": {
+     "card": null,
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "chest pain",
+       "discriminative": true,
+       "idf": 4.610917912644224,
+       "level": "CRITICAL",
+       "token": "chest pain"
+      },
+      {
+       "canonical": "nahi",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "nahi"
+      },
+      {
+       "canonical": "hai",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "hai"
+      },
+      {
+       "canonical": "bas",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "bas"
+      },
+      {
+       "canonical": "cough",
+       "discriminative": true,
+       "idf": 3.917770732084279,
+       "level": "HIGH",
+       "token": "khansi"
+      },
+      {
+       "canonical": "hai",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "hai"
+      }
+     ],
+     "kind": "follow_up",
+     "language": "hinglish",
+     "message": "Koi aur symptoms hain?",
+     "question": "Koi aur symptoms hain?",
+     "severity": {
+      "alert": null,
+      "disposition": "Self-care / OPD",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 20 from cough"
+      ],
+      "level": "MILD",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 20,
+      "score": 20,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [],
+      "duration": null,
+      "durations": [],
+      "first_seen_turn": {
+       "cough": 1
+      },
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [
+       "chest pain"
+      ],
+      "next_question": "Koi aur symptoms hain?",
+      "ready": false,
+      "ready_reason": "",
+      "symptoms": [
+       "cough"
+      ],
+      "turn": 1
+     },
+     "turn": 1
+    },
+    "status": 200
+   },
+   {
+    "body": {
+     "card": null,
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "3",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "3"
+      },
+      {
+       "canonical": "day",
+       "discriminative": true,
+       "idf": 0.0,
+       "level": "TEMPORAL",
+       "token": "din"
+      },
+      {
+       "canonical": "se",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "se"
+      }
+     ],
+     "kind": "follow_up",
+     "language": "hinglish",
+     "message": "Takleef kitni hai - halki, theek-thaak ya bahut tez?",
+     "question": "Takleef kitni hai - halki, theek-thaak ya bahut tez?",
+     "severity": {
+      "alert": null,
+      "disposition": "Self-care / OPD",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 20 from cough",
+       "+5 persisting about 3 days"
+      ],
+      "level": "MILD",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 25,
+      "score": 25,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [],
+      "duration": "for 3 days",
+      "durations": [
+       "for 3 days"
+      ],
+      "first_seen_turn": {
+       "cough": 1
+      },
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [
+       "chest pain"
+      ],
+      "next_question": "Takleef kitni hai - halki, theek-thaak ya bahut tez?",
+      "ready": false,
+      "ready_reason": "",
+      "symptoms": [
+       "cough"
+      ],
+      "turn": 2
+     },
+     "turn": 2
+    },
+    "status": 200
+   },
+   {
+    "body": {
+     "card": {
+      "after_stabilisation": [],
+      "alert": null,
+      "disclaimer": "Triage support only - not a diagnosis.",
+      "disposition": "Self-care / OPD",
+      "emergency_reasons": [],
+      "kind": "recommendation",
+      "low_confidence": false,
+      "outputs": [
+       {
+        "cluster_id": "PULM1",
+        "confidence": 0.62,
+        "matched_symptoms": [
+         "cough"
+        ],
+        "reason": "Respiratory symptoms including cough and breathlessness",
+        "role": "PRIMARY",
+        "specialist": "Pulmonologist"
+       },
+       {
+        "cluster_id": "ENT1",
+        "confidence": 0.537,
+        "matched_symptoms": [
+         "cough"
+        ],
+        "reason": "Ear, nose and throat symptoms",
+        "role": "SECONDARY",
+        "specialist": "ENT Specialist"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "Start with a general / tele-consult first",
+        "role": "ALTERNATIVE",
+        "specialist": "General Physician"
+       }
+      ],
+      "red_flags": [],
+      "severity_level": "MILD",
+      "severity_score": 21,
+      "summary": "cough (for 3 days)",
+      "watch_for": [
+       "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately"
+      ]
+     },
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": "mild",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "MODIFIER",
+       "token": "halki"
+      }
+     ],
+     "kind": "recommendation",
+     "language": "english",
+     "message": "Symptom summary: cough (for 3 days)\nSeverity: GREEN MILD - Self-care / OPD\n\nRecommended specialists:\n  1. PULMONOLOGIST          (Primary) -> Respiratory symptoms including cough and breathlessness\n  2. ENT SPECIALIST         (Secondary) -> Ear, nose and throat symptoms\n  3. GENERAL PHYSICIAN      (Alternative) -> Start with a general / tele-consult first\n\nWatch for:\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately\n\nTriage support only - not a diagnosis.",
+     "question": null,
+     "severity": {
+      "alert": null,
+      "disposition": "Self-care / OPD",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 20 from cough",
+       "intensity 'mild' x0.8",
+       "+5 persisting about 3 days"
+      ],
+      "level": "MILD",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 21,
+      "score": 21,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [],
+      "duration": "for 3 days",
+      "durations": [
+       "for 3 days"
+      ],
+      "first_seen_turn": {
+       "cough": 1
+      },
+      "intensity": "mild",
+      "language": "english",
+      "negated_symptoms": [
+       "chest pain"
+      ],
+      "next_question": null,
+      "ready": true,
+      "ready_reason": "max_turns",
+      "symptoms": [
+       "cough"
+      ],
+      "turn": 3
+     },
+     "turn": 3
+    },
+    "status": 200
+   }
+  ],
+  "session": {
+   "body": {
+    "body_parts": [],
+    "duration": "for 3 days",
+    "durations": [
+     "for 3 days"
+    ],
+    "first_seen_turn": {
+     "cough": 1
+    },
+    "intensity": "mild",
+    "language": "english",
+    "negated_symptoms": [
+     "chest pain"
+    ],
+    "next_question": null,
+    "ready": false,
+    "ready_reason": "",
+    "symptoms": [
+     "cough"
+    ],
+    "turn": 3
+   },
+   "status": 200
+  }
+ },
+ "unknown_words": {
+  "replies": [
+   {
+    "body": {
+     "card": null,
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "aankh"
+      },
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "laal"
+      },
+      {
+       "canonical": "hai",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "hai"
+      }
+     ],
+     "kind": "follow_up",
+     "language": "hinglish",
+     "message": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+     "question": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+     "severity": {
+      "alert": null,
+      "disposition": "Self-care / OPD",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "no scorable symptoms"
+      ],
+      "level": "MILD",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 0,
+      "score": 0,
+      "triggered_by": "none"
+     },
+     "state": {
+      "body_parts": [],
+      "duration": null,
+      "durations": [],
+      "first_seen_turn": {},
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+      "ready": false,
+      "ready_reason": "no_symptoms",
+      "symptoms": [],
+      "turn": 1
+     },
+     "turn": 1
+    },
+    "status": 200
+   },
+   {
+    "body": {
+     "card": null,
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "aankh"
+      },
+      {
+       "canonical": "in",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "mein"
+      },
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "khujli"
+      }
+     ],
+     "kind": "follow_up",
+     "language": "hinglish",
+     "message": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+     "question": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+     "severity": {
+      "alert": null,
+      "disposition": "Self-care / OPD",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "no scorable symptoms"
+      ],
+      "level": "MILD",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 0,
+      "score": 0,
+      "triggered_by": "none"
+     },
+     "state": {
+      "body_parts": [],
+      "duration": null,
+      "durations": [],
+      "first_seen_turn": {},
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+      "ready": false,
+      "ready_reason": "no_symptoms",
+      "symptoms": [],
+      "turn": 2
+     },
+     "turn": 2
+    },
+    "status": 200
+   },
+   {
+    "body": {
+     "card": {
+      "after_stabilisation": [],
+      "alert": null,
+      "disclaimer": "Triage support only - not a diagnosis.",
+      "disposition": "Self-care / OPD",
+      "emergency_reasons": [],
+      "kind": "recommendation",
+      "low_confidence": false,
+      "outputs": [
+       {
+        "cluster_id": "ORTH1",
+        "confidence": 0.668,
+        "matched_symptoms": [
+         "pain"
+        ],
+        "reason": "Musculoskeletal pain and joint symptoms",
+        "role": "PRIMARY",
+        "specialist": "Orthopedist"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "No closer match - start with a general assessment",
+        "role": "SECONDARY",
+        "specialist": "General Physician"
+       },
+       {
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "Start with a general / tele-consult first",
+        "role": "ALTERNATIVE",
+        "specialist": "Telemedicine consult"
+       }
+      ],
+      "red_flags": [],
+      "severity_level": "MILD",
+      "severity_score": 25,
+      "summary": "pain",
+      "watch_for": [
+       "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
+       "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately"
+      ]
+     },
+     "degraded": [],
+     "keywords": [
+      {
+       "canonical": null,
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "UNKNOWN",
+       "token": "aankh"
+      },
+      {
+       "canonical": "se",
+       "discriminative": false,
+       "idf": 0.0,
+       "level": "FILLER",
+       "token": "se"
+      },
+      {
+       "canonical": "pain",
+       "discriminative": true,
+       "idf": 4.610917912644224,
+       "level": "HIGH",
+       "token": "paani"
+      }
+     ],
+     "kind": "recommendation",
+     "language": "hinglish",
+     "message": "Aapke symptoms: pain\nGambhirta: GREEN MILD - Self-care / OPD\n\nKin doctors ko dikhayein:\n  1. ORTHOPEDIST            (Pehla option) -> Musculoskeletal pain and joint symptoms\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "question": null,
+     "severity": {
+      "alert": null,
+      "disposition": "Self-care / OPD",
+      "emergency": false,
+      "emergency_hits": [],
+      "factors": [
+       "base 25 from pain"
+      ],
+      "level": "MILD",
+      "ml_score": null,
+      "note": "Triage support only - not a diagnosis.",
+      "red_flags": [],
+      "rule_score": 25,
+      "score": 25,
+      "triggered_by": "rules"
+     },
+     "state": {
+      "body_parts": [],
+      "duration": null,
+      "durations": [],
+      "first_seen_turn": {
+       "pain": 3
+      },
+      "intensity": null,
+      "language": "hinglish",
+      "negated_symptoms": [],
+      "next_question": null,
+      "ready": true,
+      "ready_reason": "max_turns",
+      "symptoms": [
+       "pain"
+      ],
+      "turn": 3
+     },
+     "turn": 3
+    },
+    "status": 200
+   }
+  ],
+  "session": {
+   "body": {
+    "body_parts": [],
+    "duration": null,
+    "durations": [],
+    "first_seen_turn": {
+     "pain": 3
+    },
+    "intensity": null,
+    "language": "hinglish",
+    "negated_symptoms": [],
+    "next_question": null,
+    "ready": false,
+    "ready_reason": "",
+    "symptoms": [
+     "pain"
+    ],
+    "turn": 3
+   },
+   "status": 200
+  }
+ }
+}

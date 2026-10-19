@@ -10,7 +10,7 @@ python -m pytest            # run the test-suite (requires the generated package
 python demo.py --debug      # interactive; type "quit" to exit
 ```
 
-Run the HTTP API with `uvicorn api:app --reload`. By default it uses in-memory
+Run the HTTP API with `uvicorn api:app --reload --port 5005`. By default it uses in-memory
 `fakeredis` for local development; set `REDIS_URL` to connect to Redis.
 ```python
 import redis
@@ -21,6 +21,28 @@ reply.kind      # follow_up | emergency | recommendation
 reply.message   # ready-to-send text (Hinglish labels for Hinglish users)
 reply.session_id  # pass back on the next message
 ```
+
+## Two ways to call it
+
+| Endpoint | Use when | State |
+|---|---|---|
+| `POST /chat` | Conversational triage: asks follow-ups, then 3 specialists or an emergency card | Redis session |
+| `POST /v1/route-symptom` (alias `/route-symptom`) | Search box / bot needs specialties for one text now | Stateless |
+
+`/v1/route-symptom` is a grounded RAG pipeline (labelled-sentence retrieval fused with a classifier,
+red-flag safety net first, optional fenced LLM reasoner). It returns top-k specialties with
+confidences and evidence, an emergency flag, and `answer` / `clarify` / `abstain`. Full guide:
+[docs/route_symptom.md](docs/route_symptom.md).
+
+```
+pip install -r requirements.txt
+python -m hms_router.rag.model_bundle build     # ~40 s; also built on first start if missing
+uvicorn api:app --port 5005                     # dev defaults: no auth, in-memory Redis, LLM off
+pytest -q
+```
+
+`api_legacy/` is the old nlp_brain HTTP layer (needs the deleted `nlp_brain` package). It was renamed
+from `api/` because a folder named `api` shadows `api.py`, so `uvicorn api:app` could not start.
 
 ## Repository layout
 
