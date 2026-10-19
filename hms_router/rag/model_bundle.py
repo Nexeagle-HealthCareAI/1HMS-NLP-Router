@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from .corpus import LabelledExample, load_examples
+from .corpus import LabelledExample, load_examples, load_validation_texts
 from .encoder import build_vectorizer, content_text, l2_normalize_rows
 
 MODEL_PATH = Path(__file__).resolve().parent.parent / "data" / "route_model.joblib"
@@ -32,9 +32,11 @@ class ModelBundle:
     # ------------------------------------------------------------------ training
     @classmethod
     def train(cls, examples: list[LabelledExample] | None = None) -> "ModelBundle":
+        """Default corpus = the repo's datasets minus the held-out validation sentences."""
         from sklearn.linear_model import LogisticRegression
 
-        examples = examples if examples is not None else load_examples()
+        held_out = examples is None
+        examples = examples if examples is not None else load_examples(holdout=load_validation_texts())
         if not examples:
             raise ValueError("no training examples")
         vectorizer = build_vectorizer()
@@ -51,7 +53,10 @@ class ModelBundle:
                               .encode()).hexdigest()[:8]
         meta = {"schema": BUNDLE_SCHEMA, "modelVersion": time.strftime("%Y-%m-%d-%H%M%S") + "-" + digest,
                 "trainedAt": time.time(), "trainingRows": len(examples), "emergencyRows": len(triaged),
-                "sources": {s: sum(e.source == s for e in examples) for s in ("dataset", "legacy", "seed")}}
+                "sources": {s: n for s in ("dataset", "legacy", "seed", "cms")
+                            if (n := sum(e.source == s for e in examples))},
+                "cmsExampleIds": [e.id[4:] for e in examples if e.source == "cms"],
+                "validationHeldOut": held_out}
         return cls(vectorizer, clf, emerg, l2_normalize_rows(X),
                    [(e.id, e.text, e.specialtyId) for e in examples], meta)
 

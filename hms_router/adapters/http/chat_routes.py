@@ -6,10 +6,13 @@ problem+json error bodies. Status codes and success bodies are exactly as before
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, Field
+
+from ...telemetry import DECISIONS, FEEDBACK, chat_record, feedback_record
 
 log = logging.getLogger("hms_router.api")
 
@@ -46,6 +49,7 @@ def build_router(guard) -> APIRouter:
         """Conversational triage. Omit `session_id` on the first message, echo it back after; sessions
         expire after 30 minutes idle."""
         svc = service(request)
+        t0 = time.perf_counter()
         try:
             reply = svc.handle(req.text.strip(), req.session_id)
         except ValueError as exc:
@@ -53,13 +57,30 @@ def build_router(guard) -> APIRouter:
         except Exception as exc:
             log.exception("Unhandled error in /chat")
             raise HTTPException(status_code=500, detail="Internal routing error") from exc
-        return reply.to_dict()
+        out = reply.to_dict()
+        rec = getattr(request.app.state, "telemetry", None)
+        if rec is not None and rec.enabled:
+            try:
+                rec.record(DECISIONS, chat_record(out, recorder=rec, caller=getattr(request.state, "client", "unknown"),
+                                                  latency_ms=(time.perf_counter() - t0) * 1000, text=req.text.strip(),
+                                                  model_version="chat-agent"))
+            except Exception:
+                log.exception("telemetry record failed")
+        return out
 
     @router.post("/feedback", tags=["Router"], summary="Submit user feedback", status_code=status.HTTP_200_OK)
     def feedback(req: FeedbackRequest, request: Request, _client=Depends(guard)) -> dict[str, Any]:
         """correct_match (cluster_id) | wrong_specialist (cluster_id, specialist, symptoms) |
         new_symptom_phrase (phrase). Duplicate votes within the same session+kind are ignored."""
         svc = service(request)
+        rec = getattr(request.app.state, "telemetry", None)
+        if rec is not None and rec.enabled and req.kind in ("wrong_specialist", "new_symptom_phrase", "correct_match"):
+            try:
+                rec.record(FEEDBACK, feedback_record(req.kind, recorder=rec, caller=getattr(request.state, "client", "unknown"),
+                                                     specialist=req.specialist, suggested_specialist=req.suggested_specialist,
+                                                     symptoms=req.symptoms, phrase=req.phrase))
+            except Exception:
+                log.exception("telemetry record failed")
         try:
             return svc.feedback(req.kind, session_id=req.session_id, cluster_id=req.cluster_id,
                                 specialist=req.specialist, symptoms=req.symptoms, phrase=req.phrase,

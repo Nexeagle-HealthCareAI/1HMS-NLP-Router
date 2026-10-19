@@ -12,6 +12,13 @@
     HMS_LLM_PROVIDER        empty (default, reasoner OFF) | groq | anthropic | openai
     HMS_LLM_MODEL           provider model name; HMS_LLM_TIMEOUT seconds (default 2.0)
     REDIS_URL               required when HMS_ENV=production (sessions, rate limits)
+    HMS_CMS_API_URL         CMS API base incl. version, e.g. https://cms-api.example.com/api/v1 - enables the
+                            AI Agents dashboard feed (decision telemetry) and training on CMS-approved examples
+    HMS_CMS_SERVICE_KEY     the CMS's ServiceAuth:SymptomRouterServiceKey (sent as X-Service-Key)
+    HMS_TELEMETRY_HASH_KEY  key for the query hashes in telemetry (default: the service key)
+    HMS_REBUILD_ON_START    1 (default when the CMS is configured) | 0 - rebuild once after start-up so a new
+                            deployment includes examples approved since the image was built
+    API key scope "admin"   POST/GET /admin/rebuild and GET /admin/telemetry (give it to the CMS's key)
 """
 from __future__ import annotations
 
@@ -50,7 +57,15 @@ class ServiceSettings:
     llm_model: str | None = None
     llm_timeout: float = 2.0
     redis_url: str | None = None
+    cms_api_url: str | None = None
+    cms_service_key: str | None = None
+    telemetry_hash_key: str | None = None
+    rebuild_on_start: bool = True
     extra: dict = field(default_factory=dict)
+
+    @property
+    def cms_configured(self) -> bool:
+        return bool(self.cms_api_url and self.cms_service_key)
 
     @property
     def production(self) -> bool:
@@ -75,6 +90,10 @@ class ServiceSettings:
             llm_model=e.get("HMS_LLM_MODEL") or None,
             llm_timeout=float(e.get("HMS_LLM_TIMEOUT", "2.0")),
             redis_url=e.get("REDIS_URL") or None,
+            cms_api_url=(e.get("HMS_CMS_API_URL") or "").strip() or None,
+            cms_service_key=(e.get("HMS_CMS_SERVICE_KEY") or "").strip() or None,
+            telemetry_hash_key=(e.get("HMS_TELEMETRY_HASH_KEY") or "").strip() or None,
+            rebuild_on_start=(e.get("HMS_REBUILD_ON_START") or "1").strip() not in ("0", "false", "no"),
         )
         s.validate()
         return s

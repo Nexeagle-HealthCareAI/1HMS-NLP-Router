@@ -15,6 +15,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from ...domain.models import RouteDecision
 from ...domain.taxonomy import SPECIALTY_NAMES
+from ...telemetry import DECISIONS, route_record
+from ...textnorm import preprocess
 
 log = logging.getLogger("hms_router.route_symptom")
 
@@ -111,6 +113,15 @@ def build_router(guard) -> APIRouter:
         t0 = time.perf_counter()
         d = svc.route(req.query, req.topK, age_group=req.context.ageGroup if req.context else None)
         rid = getattr(request.state, "request_id", None)
+        latency = (time.perf_counter() - t0) * 1000
+        rec = getattr(request.app.state, "telemetry", None)
+        if rec is not None and rec.enabled:
+            try:
+                rec.record(DECISIONS, route_record(d, recorder=rec, caller=getattr(request.state, "client", "unknown"),
+                                                   latency_ms=latency, request_id=rid, normalized=preprocess(req.query),
+                                                   raw_text=req.query, decisive_min_conf=svc.policy.decisive_min_conf))
+            except Exception:
+                log.exception("telemetry record failed")
         log.info("route rid=%s client=%s decision=%s ids=%s conf=%s emergency=%s method=%s ms=%.1f%s",
                  rid, getattr(request.state, "client", "-"), d.decision.value, d.specialtyIds,
                  d.candidates[0].confidence if d.candidates else None, d.emergency.flag, d.method,
@@ -139,7 +150,11 @@ def build_router(guard) -> APIRouter:
     @router.get("/model-info", tags=["Specialty"], summary="Model version, training stats and routing policy")
     def model_info(request: Request, _client=Depends(guard)) -> dict:
         svc = service(request)
-        return {**getattr(request.app.state, "route_meta", {}), "policy": svc.policy.as_dict(),
-                "reasoner": type(svc.reasoner).__name__}
+        meta = {k: v for k, v in (getattr(request.app.state, "route_meta", {}) or {}).items() if k != "cmsExampleIds"}
+        rec = getattr(request.app.state, "telemetry", None)
+        rt = getattr(request.app.state, "retrainer", None)
+        return {**meta, "policy": svc.policy.as_dict(), "reasoner": type(svc.reasoner).__name__,
+                "telemetry": rec.snapshot() if rec else {"enabled": False},
+                "rebuild": rt.status if rt else None}
 
     return router
