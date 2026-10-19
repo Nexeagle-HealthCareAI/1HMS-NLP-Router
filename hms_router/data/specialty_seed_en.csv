@@ -1,0 +1,205 @@
+text,specialtyId
+fever,general
+cold and cough,general
+body ache,general
+weakness and tiredness,general
+viral fever,general
+general checkup,general
+flu symptoms,general
+typhoid,general
+dengue fever,general
+malaria,general
+child fever,pediatrics
+baby not feeding well,pediatrics
+newborn jaundice,pediatrics
+child vaccination,pediatrics
+kid has diarrhea,pediatrics
+toddler cough and cold,pediatrics
+child not gaining weight,pediatrics
+infant rash,pediatrics
+chest pain,cardiology
+heart palpitations,cardiology
+high blood pressure,cardiology
+hypertension,cardiology
+heart attack,cardiology
+irregular heartbeat,cardiology
+breathless while walking,cardiology
+swelling in legs heart,cardiology
+cholesterol,cardiology
+skin rash,dermatology
+itching skin,dermatology
+acne pimples,dermatology
+hair fall,dermatology
+dandruff,dermatology
+fungal infection skin,dermatology
+eczema,dermatology
+psoriasis,dermatology
+white patches on skin,dermatology
+dark spots on face,dermatology
+joint pain,orthopedics
+knee pain,orthopedics
+back pain,orthopedics
+lower back pain,orthopedics
+neck pain,orthopedics
+shoulder pain,orthopedics
+fracture,orthopedics
+bone pain,orthopedics
+hip pain,orthopedics
+elbow pain,orthopedics
+wrist pain,orthopedics
+irregular periods,gynecology
+missed period,gynecology
+pregnancy checkup,gynecology
+white discharge,gynecology
+heavy menstrual bleeding,gynecology
+pcos,gynecology
+infertility,gynecology
+menopause problems,gynecology
+period pain,gynecology
+toothache,dentistry
+tooth pain,dentistry
+bleeding gums,dentistry
+tooth cavity,dentistry
+root canal,dentistry
+bad breath,dentistry
+wisdom tooth pain,dentistry
+sensitive teeth,dentistry
+ear pain,ent
+hearing loss,ent
+ringing in ears,ent
+sore throat,ent
+tonsils,ent
+sinus,ent
+blocked nose,ent
+nose bleeding,ent
+ear discharge,ent
+hoarse voice,ent
+eye pain,ophthalmology
+red eyes,ophthalmology
+blurred vision,ophthalmology
+watery eyes,ophthalmology
+itchy eyes,ophthalmology
+cataract,ophthalmology
+weak eyesight,ophthalmology
+eye infection,ophthalmology
+headache,neurology
+migraine,neurology
+dizziness,neurology
+numbness in hands,neurology
+tingling in feet,neurology
+memory loss,neurology
+fits seizures,neurology
+tremors shaking hands,neurology
+vertigo,neurology
+anxiety,psychiatry
+depression,psychiatry
+feeling sad,psychiatry
+cannot sleep,psychiatry
+insomnia,psychiatry
+stress,psychiatry
+panic attack,psychiatry
+mood swings,psychiatry
+addiction,psychiatry
+overthinking,psychiatry
+burning urination,urology
+frequent urination,urology
+kidney stone,urology
+blood in urine,urology
+prostate problem,urology
+urine infection,urology
+difficulty passing urine,urology
+erectile problem,urology
+stomach pain,gastroenterology
+acidity,gastroenterology
+gas and bloating,gastroenterology
+constipation,gastroenterology
+loose motions,gastroenterology
+diarrhea,gastroenterology
+vomiting,gastroenterology
+indigestion,gastroenterology
+jaundice liver,gastroenterology
+piles,gastroenterology
+diabetes,endocrinology
+high sugar,endocrinology
+thyroid,endocrinology
+weight gain hormones,endocrinology
+excessive thirst,endocrinology
+hormonal imbalance,endocrinology
+sugar level high,endocrinology
+cough,pulmonology
+breathing problem,pulmonology
+shortness of breath,pulmonology
+asthma,pulmonology
+wheezing,pulmonology
+chronic cough,pulmonology
+tuberculosis,pulmonology
+lung infection,pulmonology
+kidney problem,nephrology
+kidney failure,nephrology
+dialysis,nephrology
+high creatinine,nephrology
+swelling in face and feet,nephrology
+cancer,oncology
+lump in body,oncology
+tumor,oncology
+chemotherapy,oncology
+unexplained weight loss,oncology
+breast lump,oncology
+arthritis,rheumatology
+joint swelling,rheumatology
+morning stiffness,rheumatology
+gout,rheumatology
+rheumatoid arthritis,rheumatology
+lupus,rheumatology
+physiotherapy,physiotherapy
+muscle stiffness,physiotherapy
+rehabilitation after injury,physiotherapy
+frozen shoulder,physiotherapy
+posture problem,physiotherapy
+exercise therapy,physiotherapy
+hernia,generalsurgery
+appendix,generalsurgery
+gallbladder stone,generalsurgery
+surgery needed,generalsurgery
+abscess,generalsurgery
+brain tumor,neurosurgery
+spine surgery,neurosurgery
+slipped disc,neurosurgery
+head injury,neurosurgery
+cosmetic surgery,plasticsurgery
+burn scar,plasticsurgery
+nose reshaping,plasticsurgery
+cleft lip,plasticsurgery
+varicose veins,vascularsurgery
+blocked blood vessels,vascularsurgery
+leg ulcer not healing,vascularsurgery
+blood clot in leg,vascularsurgery
+heart surgery,cardiothoracicsurgery
+bypass surgery,cardiothoracicsurgery
+valve replacement,cardiothoracicsurgery
+lung surgery,cardiothoracicsurgery
+anesthesia,anesthesiology
+pain management,anesthesiology
+x ray,radiology
+mri scan,radiology
+ct scan,radiology
+ultrasound,radiology
+blood test,pathology
+lab test,pathology
+biopsy report,pathology
+urine test,pathology
+emergency,emergencymedicine
+accident,emergencymedicine
+unconscious,emergencymedicine
+severe bleeding,emergencymedicine
+poisoning,emergencymedicine
+snake bite,emergencymedicine
+elderly care,geriatrics
+old age problems,geriatrics
+frequent falls in elderly,geriatrics
+dementia,geriatrics
+sports injury,sportsmedicine
+ligament tear,sportsmedicine
+sprained ankle,sportsmedicine
+muscle pull,sportsmedicine
+running injury,sportsmedicine
