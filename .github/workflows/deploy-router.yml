@@ -29,6 +29,9 @@
 #   DEV_CMS_API_URL         default http://151.185.45.77:5002/api/v1
 #   PROD_CMS_API_URL        default https://cms-api.nexeagle.com/api/v1
 #   DEV_HMS_ENV             default development (production on dev also requires REDIS_URL)
+#
+# To redeploy after changing a secret: Actions -> "HMS NLP Router — CI/CD" -> Run workflow. An empty commit
+# does not start it (paths-ignore drops a push with no changed files).
 # ═══════════════════════════════════════════════════════════════════════════════
 
 name: HMS NLP Router — CI/CD
