@@ -35,8 +35,9 @@ class ModelBundle:
         """Default corpus = the repo's datasets minus the held-out validation sentences."""
         from sklearn.linear_model import LogisticRegression
 
-        held_out = examples is None
-        examples = examples if examples is not None else load_examples(holdout=load_validation_texts())
+        holdout = load_validation_texts() if examples is None else set()
+        held_out = examples is None and bool(holdout)      # False when the validation file is missing
+        examples = examples if examples is not None else load_examples(holdout=holdout)
         if not examples:
             raise ValueError("no training examples")
         vectorizer = build_vectorizer()

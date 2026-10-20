@@ -9,6 +9,8 @@ RUN grep -vE '^(chromadb|fasttext-wheel)' requirements.txt > /tmp/req.txt && pip
 
 COPY hms_router/ hms_router/
 COPY Datasets/ Datasets/
+# Held-out test set: removed from training and used to score every rebuild (rag/evaluation.py).
+COPY data_pipeline/validation_set.csv data_pipeline/validation_set.csv
 COPY api.py .
 
 # Train the /route-symptom model at build time so containers start in seconds and every replica

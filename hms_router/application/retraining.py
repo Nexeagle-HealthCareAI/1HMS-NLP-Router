@@ -82,13 +82,16 @@ class Retrainer:
                 cms_error = f"CMS training rows not loaded: {type(exc).__name__}: {exc}"[:300]
                 log.warning(cms_error)
 
+        rows = load_validation()
+        if not rows:   # without a test set every score is 0 and any model would "pass"
+            raise RuntimeError("validation set not found (data_pipeline/validation_set.csv); rebuild refused")
+
         self._step("training the candidate model")
         examples = load_examples(extra=cms_rows, holdout=load_validation_texts())
         bundle = ModelBundle.train(examples)
         bundle.meta["validationHeldOut"] = True
 
         self._step("testing candidate and current model on the validation set")
-        rows = load_validation()
         candidate = evaluate(self.build_service(bundle, False), rows)
         current_svc, current_meta = self.get_current()
         current: EvalResult | None = None

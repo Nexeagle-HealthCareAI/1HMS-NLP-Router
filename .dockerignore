@@ -7,6 +7,7 @@
 venv
 .env
 data_pipeline
+!data_pipeline/validation_set.csv
 api_legacy
 voice
 speech

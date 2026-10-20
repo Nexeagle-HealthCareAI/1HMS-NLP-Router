@@ -127,7 +127,7 @@ def test_retrainer_keeps_current_when_worse(monkeypatch):
 
     monkeypatch.setattr(rt.ModelBundle, "train", classmethod(lambda cls, ex: FakeBundle()))
     monkeypatch.setattr(rt, "load_examples", lambda extra, holdout: [])
-    monkeypatch.setattr(rt, "load_validation", lambda: [])
+    monkeypatch.setattr(rt, "load_validation", lambda: [("x", "general")])
     monkeypatch.setattr(rt, "load_validation_texts", lambda: set())
     scores = {"new": _ev(0.70, 0.05), "old": _ev(0.80, 0.03)}
     monkeypatch.setattr(rt, "evaluate", lambda svc, rows: scores[svc.tag])
@@ -139,6 +139,22 @@ def test_retrainer_keeps_current_when_worse(monkeypatch):
                   cms_url=None, cms_key=None)
     out = r.run("manual")
     assert not out["promoted"] and not promoted and "kept the current model" in out["verdict"]
+
+
+def test_retrainer_refuses_without_validation_set(monkeypatch):
+    """No test set (e.g. a Docker image without data_pipeline/validation_set.csv): every score would be 0
+    and any model would pass the gate, so the rebuild must stop instead of promoting blindly."""
+    import hms_router.application.retraining as rt
+
+    monkeypatch.setattr(rt, "load_validation", lambda: [])
+    promoted = []
+    r = Retrainer(build_service=lambda b, llm: FakeService("new"),
+                  get_current=lambda: (FakeService("old"), {"modelVersion": "v1"}),
+                  promote=promoted.append, recorder=DecisionRecorder(ListSink(), "k"),
+                  cms_url=None, cms_key=None)
+    with pytest.raises(RuntimeError, match="validation set"):
+        r.run("manual")
+    assert not promoted
 
 
 # ----------------------------------------------------------------------------- HTTP wiring
