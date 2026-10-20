@@ -1,0 +1,293 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# HMS NLP ROUTER — CI/CD  (api.py / hms_router -> GHCR -> VM)
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# STAGES:
+#   Stage 1 — Test         pytest on Python 3.12
+#   Stage 2 — Docker       build & push image to GHCR (the route model is trained at build time)
+#   Stage 3 — Deploy Dev   develop -> Dev VM  (container nlp-router-dev,  port 5003)
+#   Stage 4 — Deploy Prod  main    -> Prod VM (container nlp-router-prod, port 5003)
+#
+# Replaces main's deploy-nlp.yml (api_legacy). Same container names and port 5003, so the old container is
+# swapped out in place and nothing that calls the router changes (Doctor Dekho NLP_ROUTER_BASE_URL, the CMS's
+# NlpRouter:BaseUrl, Caddy for nlp-api.nexeagle.com). The settings are written to an env file on the VM
+# (/opt/nlp-router/<env>.env, mode 600). If the new container is not ready within ~60 s the previous
+# container's image is started again and the job fails.
+#
+# Secrets (repo-level, or per GitHub environment to differ between dev and prod):
+#   GHCR_TOKEN                                        GitHub PAT (write:packages + repo)
+#   DEV_SSH_HOST / DEV_SSH_USER / DEV_SSH_PASSWORD    Dev VM (151.185.45.77)
+#   PROD_SSH_HOST / PROD_SSH_USER / PROD_SSH_KEY_B64  Prod App VM (151.185.45.67)
+#   HMS_API_KEYS            client:scope1|scope2:sha256hex, comma-separated (python3 scripts/make_api_key.py).
+#                           Must include the CMS key (cms:route|admin:...) and the Doctor Dekho key
+#                           (doctordekho:route:...). Unset on dev = auth off. Required on prod.
+#   HMS_CMS_SERVICE_KEY     = NexeagleCMSAPI's SYMPTOM_ROUTER_SERVICE_KEY. Unset = no AI Agents telemetry and no
+#                           training on CMS-approved examples (the router still serves).
+#   REDIS_URL               sessions + rate limits. Required on prod; dev falls back to in-memory without it.
+#   HMS_TELEMETRY_HASH_KEY  optional; defaults to HMS_CMS_SERVICE_KEY
+# Variables (optional):
+#   DEV_CMS_API_URL         default http://151.185.45.77:5002/api/v1
+#   PROD_CMS_API_URL        default https://cms-api.nexeagle.com/api/v1
+#   DEV_HMS_ENV             default development (production on dev also requires REDIS_URL)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: HMS NLP Router — CI/CD
+
+on:
+  push:
+    branches: [develop, main]
+    paths-ignore:
+      - "location_API/**"
+      - "docs/**"
+      - "**/*.md"
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+concurrency:
+  group: hms-nlp-router-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hms-nlp-router
+  HMS_PORT: '5003'
+
+jobs:
+# ═══════════════════════════════════════════════════════════════════════════════
+  test:
+    name: "Stage 1 — Test"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
+# ═══════════════════════════════════════════════════════════════════════════════
+  docker:
+    name: "Stage 2 — Docker Build & Push"
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request'
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=,suffix=,format=short
+            type=ref,event=branch
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+# ═══════════════════════════════════════════════════════════════════════════════
+  deploy-dev:
+    name: "Stage 3 — Deploy → Dev"
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/develop'
+    environment: development
+
+    steps:
+      - name: Deploy to Dev VM
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          IMAGE: ${{ env.IMAGE_NAME }}:${{ needs.docker.outputs.image_tag }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          HMS_ENV: ${{ vars.DEV_HMS_ENV || 'development' }}
+          HMS_API_KEYS: ${{ secrets.HMS_API_KEYS }}
+          HMS_CMS_API_URL: ${{ vars.DEV_CMS_API_URL || 'http://151.185.45.77:5002/api/v1' }}
+          HMS_CMS_SERVICE_KEY: ${{ secrets.HMS_CMS_SERVICE_KEY }}
+          HMS_TELEMETRY_HASH_KEY: ${{ secrets.HMS_TELEMETRY_HASH_KEY }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          HMS_PORT: ${{ env.HMS_PORT }}
+        with:
+          host: ${{ secrets.DEV_SSH_HOST }}
+          username: ${{ secrets.DEV_SSH_USER }}
+          password: ${{ secrets.DEV_SSH_PASSWORD }}
+          port: 22
+          command_timeout: 15m
+          envs: IMAGE,GHCR_TOKEN,ACTOR,HMS_ENV,HMS_API_KEYS,HMS_CMS_API_URL,HMS_CMS_SERVICE_KEY,HMS_TELEMETRY_HASH_KEY,REDIS_URL,HMS_PORT
+          script: |
+            set -e
+            NAME=nlp-router-dev
+            mkdir -p /opt/nlp-router
+            ENVFILE=/opt/nlp-router/dev.env
+            ( umask 077
+              {
+                printf 'HMS_ENV=%s\n'                "$HMS_ENV"
+                printf 'HMS_PORT=%s\n'               "$HMS_PORT"
+                printf 'HMS_API_KEYS=%s\n'           "${HMS_API_KEYS:-}"
+                printf 'HMS_CMS_API_URL=%s\n'        "${HMS_CMS_API_URL:-}"
+                printf 'HMS_CMS_SERVICE_KEY=%s\n'    "${HMS_CMS_SERVICE_KEY:-}"
+                printf 'HMS_TELEMETRY_HASH_KEY=%s\n' "${HMS_TELEMETRY_HASH_KEY:-}"
+                printf 'REDIS_URL=%s\n'              "${REDIS_URL:-}"
+              } > "$ENVFILE" )
+
+            IMAGE_LC=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+
+            PULLED=0
+            for i in 1 2 3; do
+              if docker pull "$IMAGE_LC"; then PULLED=1; break; fi
+              echo "docker pull attempt $i failed, retrying in 5s..."
+              sleep 5
+            done
+            if [ "$PULLED" != 1 ]; then
+              echo "docker pull failed after 3 attempts — aborting without touching the running container" >&2
+              exit 1
+            fi
+
+            PREV=$(docker inspect -f '{{.Config.Image}}' "$NAME" 2>/dev/null || true)
+            docker rm -f "$NAME" 2>/dev/null || true
+            docker run -d --name "$NAME" --restart unless-stopped \
+              --network host --env-file "$ENVFILE" "$IMAGE_LC"
+
+            # /ready is probed from inside the container (python is always there; curl may not be on the VM).
+            for i in $(seq 1 12); do
+              sleep 5
+              if docker exec "$NAME" python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$HMS_PORT/ready', timeout=4)" 2>/dev/null; then
+                echo "✅ NLP Router (dev) is ready"; docker image prune -f || true; exit 0
+              fi
+              echo "Ready attempt $i — not yet"
+            done
+
+            echo "❌ $NAME not ready — last logs:" >&2
+            docker logs --tail 60 "$NAME" >&2 || true
+            if [ -n "$PREV" ]; then
+              echo "Rolling back to $PREV" >&2
+              docker rm -f "$NAME" 2>/dev/null || true
+              docker run -d --name "$NAME" --restart unless-stopped \
+                --network host --env-file "$ENVFILE" "$PREV"
+            fi
+            exit 1
+
+# ═══════════════════════════════════════════════════════════════════════════════
+  deploy-prod:
+    name: "Stage 4 — Deploy → Prod"
+    runs-on: ubuntu-latest
+    needs: docker
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Prepare SSH key
+        run: |
+          echo "${{ secrets.PROD_SSH_KEY_B64 }}" | base64 -d > /tmp/deploy_key
+          chmod 600 /tmp/deploy_key
+
+      - name: Write prod.env
+        env:
+          HMS_API_KEYS: ${{ secrets.HMS_API_KEYS }}
+          HMS_CMS_API_URL: ${{ vars.PROD_CMS_API_URL || 'https://cms-api.nexeagle.com/api/v1' }}
+          HMS_CMS_SERVICE_KEY: ${{ secrets.HMS_CMS_SERVICE_KEY }}
+          HMS_TELEMETRY_HASH_KEY: ${{ secrets.HMS_TELEMETRY_HASH_KEY }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+        run: |
+          # The app refuses to start in production without these; stop before touching the running container.
+          : "${HMS_API_KEYS:?HMS_API_KEYS is empty}"
+          : "${REDIS_URL:?REDIS_URL is empty}"
+          umask 077
+          {
+            printf 'HMS_ENV=%s\n'                'production'
+            printf 'HMS_PORT=%s\n'               "$HMS_PORT"
+            printf 'HMS_API_KEYS=%s\n'           "$HMS_API_KEYS"
+            printf 'HMS_CMS_API_URL=%s\n'        "${HMS_CMS_API_URL:-}"
+            printf 'HMS_CMS_SERVICE_KEY=%s\n'    "${HMS_CMS_SERVICE_KEY:-}"
+            printf 'HMS_TELEMETRY_HASH_KEY=%s\n' "${HMS_TELEMETRY_HASH_KEY:-}"
+            printf 'REDIS_URL=%s\n'              "$REDIS_URL"
+          } > /tmp/nlp-router-prod.env
+
+      - name: Copy prod.env to Prod VM
+        run: |
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }} 'mkdir -p /opt/nlp-router'
+          scp -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              /tmp/nlp-router-prod.env \
+              ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }}:/opt/nlp-router/prod.env
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }} 'chmod 600 /opt/nlp-router/prod.env'
+          rm -f /tmp/nlp-router-prod.env
+
+      - name: Pull, restart, wait for ready (roll back on failure)
+        env:
+          IMAGE: "${{ env.IMAGE_NAME }}:${{ needs.docker.outputs.image_tag }}"
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          IMAGE_LC=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')
+          cat > /tmp/deploy.sh <<'EOF'
+          set -e
+          NAME=nlp-router-prod
+          ENVFILE=/opt/nlp-router/prod.env
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          PULLED=0
+          for i in 1 2 3; do
+            if docker pull "$IMAGE_LC"; then PULLED=1; break; fi
+            sleep 5
+          done
+          if [ "$PULLED" != 1 ]; then echo 'docker pull failed after 3 attempts, aborting without touching the running container' >&2; exit 1; fi
+
+          PREV=$(docker inspect -f '{{.Config.Image}}' "$NAME" 2>/dev/null || true)
+          docker rm -f "$NAME" 2>/dev/null || true
+          docker run -d --name "$NAME" --restart unless-stopped \
+            --network host --env-file "$ENVFILE" "$IMAGE_LC"
+
+          # /ready is probed from inside the container (python is always there; curl may not be on the VM).
+          for i in $(seq 1 12); do
+            sleep 5
+            if docker exec "$NAME" python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:$HMS_PORT/ready', timeout=4)" 2>/dev/null; then
+              echo "✅ NLP Router (prod) is ready"; docker image prune -f || true; exit 0
+            fi
+            echo "Ready attempt $i — not yet"
+          done
+
+          echo "❌ $NAME not ready — last logs:" >&2
+          docker logs --tail 60 "$NAME" >&2 || true
+          if [ -n "$PREV" ]; then
+            echo "Rolling back to $PREV" >&2
+            docker rm -f "$NAME" 2>/dev/null || true
+            docker run -d --name "$NAME" --restart unless-stopped \
+              --network host --env-file "$ENVFILE" "$PREV"
+          fi
+          exit 1
+          EOF
+          ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+              ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }} \
+              "GHCR_TOKEN='$GHCR_TOKEN' ACTOR='$ACTOR' IMAGE_LC='$IMAGE_LC' HMS_PORT='$HMS_PORT' bash -s" < /tmp/deploy.sh
+
+      - name: Write summary
+        if: always()
+        run: |
+          echo "## 🧠 HMS NLP Router — Prod" >> $GITHUB_STEP_SUMMARY
+          [ "${{ job.status }}" = "success" ] \
+            && echo "**Status:** ✅ Deployed" >> $GITHUB_STEP_SUMMARY \
+            || echo "**Status:** ❌ Failed (previous container restored if there was one)" >> $GITHUB_STEP_SUMMARY
+          echo "| Image tag | \`${{ needs.docker.outputs.image_tag }}\` |" >> $GITHUB_STEP_SUMMARY

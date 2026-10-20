@@ -20,6 +20,8 @@ RUN python -m hms_router.rag.model_bundle build
 RUN useradd --create-home --uid 10001 app && chown -R app /app
 USER app
 
+# HMS_PORT: the VMs run with --network host on 5003, the port every caller already uses (deploy-router.yml).
+ENV HMS_PORT=5005
 EXPOSE 5005
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:5005/ready', timeout=4).status == 200 else 1)"
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "5005", "--proxy-headers", "--forwarded-allow-ips", "127.0.0.1"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s CMD python -c "import os,urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:%s/ready' % os.environ.get('HMS_PORT', '5005'), timeout=4).status == 200 else 1)"
+CMD ["sh", "-c", "exec uvicorn api:app --host 0.0.0.0 --port \"${HMS_PORT:-5005}\" --proxy-headers --forwarded-allow-ips 127.0.0.1"]
