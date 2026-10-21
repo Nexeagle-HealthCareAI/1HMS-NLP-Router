@@ -10,7 +10,7 @@ Not served over HTTP yet (design doc phase 5); build it in a worker or a test:
     graph = build_triage_graph(build_route_symptom_service())
     graph.invoke({"messages": ["pet mein dard aur ulti"]}, {"configurable": {"thread_id": "p-123"}})
 
-Requires the optional dependency `langgraph` (requirements-agents.txt).
+Requires the optional dependency `langgraph` (pip install "langgraph>=1.0" "langchain-core>=1.0").
 """
 from __future__ import annotations
 

@@ -61,7 +61,7 @@ resend the same query with `context.ageGroup` set to the chosen option id.
 ## Run, build, measure
 
 ```
-pip install -r requirements.txt                       # + requirements-agents.txt for LangGraph
+pip install -r requirements.txt                       # + pip install "langgraph>=1.0" "langchain-core>=1.0" for LangGraph
 python -m hms_router.rag.model_bundle build           # ~40 s -> hms_router/data/route_model.joblib
 uvicorn api:app --port 5005                           # dev: no auth, in-memory Redis, LLM off
 pytest -q                                             # legacy nlp_brain tests are skipped (tests/conftest.py)
