@@ -25,8 +25,9 @@
 #                           training on CMS-approved examples (the router still serves).
 #   REDIS_URL               sessions + rate limits. Required on prod; dev falls back to in-memory without it.
 #   HMS_TELEMETRY_HASH_KEY  optional; defaults to HMS_CMS_SERVICE_KEY
-#   HMS_DOCTORS_MCP_KEY     this router's key in 1HMSAPI's DEV_/PROD_MCP_SERVICE_KEYS (set it per GitHub environment
-#                           so dev and prod differ). Unset = /chat lists no doctors (nothing else changes).
+#   DEV_HMS_DOCTORS_MCP_KEY  this router's key in 1HMSAPI's DEV_MCP_SERVICE_KEYS  (dev router)
+#   PROD_HMS_DOCTORS_MCP_KEY this router's key in 1HMSAPI's PROD_MCP_SERVICE_KEYS (prod router)
+#                           Unset = /chat lists no doctors (nothing else changes).
 # Variables (optional):
 #   DEV_CMS_API_URL         default http://151.185.45.77:5002/api/v1
 #   PROD_CMS_API_URL        default https://cms-api.nexeagle.com/api/v1
@@ -134,7 +135,7 @@ jobs:
           HMS_CMS_SERVICE_KEY: ${{ secrets.HMS_CMS_SERVICE_KEY }}
           HMS_TELEMETRY_HASH_KEY: ${{ secrets.HMS_TELEMETRY_HASH_KEY }}
           HMS_DOCTORS_MCP_URL: ${{ vars.DEV_DOCTORS_MCP_URL || 'https://1hms-dev-api.nexeagle.com/mcp' }}
-          HMS_DOCTORS_MCP_KEY: ${{ secrets.HMS_DOCTORS_MCP_KEY }}
+          HMS_DOCTORS_MCP_KEY: ${{ secrets.DEV_HMS_DOCTORS_MCP_KEY }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           HMS_PORT: ${{ env.HMS_PORT }}
         with:
@@ -221,7 +222,7 @@ jobs:
           HMS_CMS_SERVICE_KEY: ${{ secrets.HMS_CMS_SERVICE_KEY }}
           HMS_TELEMETRY_HASH_KEY: ${{ secrets.HMS_TELEMETRY_HASH_KEY }}
           HMS_DOCTORS_MCP_URL: ${{ vars.PROD_DOCTORS_MCP_URL || 'https://1hms-api.nexeagle.com/mcp' }}
-          HMS_DOCTORS_MCP_KEY: ${{ secrets.HMS_DOCTORS_MCP_KEY }}
+          HMS_DOCTORS_MCP_KEY: ${{ secrets.PROD_HMS_DOCTORS_MCP_KEY }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
         run: |
           # The app refuses to start in production without these; stop before touching the running container.
