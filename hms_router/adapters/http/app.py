@@ -15,6 +15,7 @@ from ...agent import HMSRouterAgent
 from ...application.chat import ChatService
 from ...application.container import build_route_symptom_service
 from ...application.retraining import Retrainer
+from ...doctors import build_directory
 from ...rag.model_bundle import MODEL_PATH, ModelBundle
 from ...telemetry import build_recorder
 from ..llm.factory import build_llm_completion
@@ -60,6 +61,8 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         log.info("HMSRouterAgent ready")
         app.state.telemetry = build_recorder(settings.cms_api_url, settings.cms_service_key, settings.telemetry_hash_key)
         app.state.telemetry.start()
+        app.state.doctors = build_directory(settings.doctors_mcp_url, settings.doctors_mcp_key,
+                                            limit=settings.doctors_limit, timeout=settings.doctors_timeout)
         llm_complete = build_llm_completion(settings)
 
         def promote(bundle: ModelBundle) -> None:

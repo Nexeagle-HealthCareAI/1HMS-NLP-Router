@@ -29,9 +29,12 @@ def build_router(guard) -> APIRouter:
     def rebuild_status(request: Request, _client=Depends(guard)) -> dict:
         return retrainer(request).status
 
-    @router.get("/telemetry", summary="Decision telemetry queue: pending, sent, dropped, last error")
+    @router.get("/telemetry", summary="Decision telemetry queue: pending, sent, dropped, last error; doctor lookups")
     def telemetry(request: Request, _client=Depends(guard)) -> dict:
         rec = getattr(request.app.state, "telemetry", None)
-        return rec.snapshot() if rec else {"enabled": False}
+        out = rec.snapshot() if rec else {"enabled": False}
+        directory = getattr(request.app.state, "doctors", None)
+        out["doctors"] = {"enabled": bool(directory and directory.enabled), **(directory.stats if directory else {})}
+        return out
 
     return router

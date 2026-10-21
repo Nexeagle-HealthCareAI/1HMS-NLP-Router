@@ -18,6 +18,10 @@
     HMS_TELEMETRY_HASH_KEY  key for the query hashes in telemetry (default: the service key)
     HMS_REBUILD_ON_START    1 (default when the CMS is configured) | 0 - rebuild once after start-up so a new
                             deployment includes examples approved since the image was built
+    HMS_DOCTORS_MCP_URL     1HMSAPI's MCP endpoint, e.g. https://1hms-api.nexeagle.com/mcp - with the key, a
+                            confident /chat recommendation also lists bookable doctors (hms_router/doctors.py)
+    HMS_DOCTORS_MCP_KEY     this router's key in 1HMSAPI's Mcp:ServiceKeys (sent as X-Service-Key)
+    HMS_DOCTORS_LIMIT       doctors per reply, 1-10 (default 3); HMS_DOCTORS_TIMEOUT seconds (default 2.0)
     API key scope "admin"   POST/GET /admin/rebuild and GET /admin/telemetry (give it to the CMS's key)
 """
 from __future__ import annotations
@@ -61,11 +65,19 @@ class ServiceSettings:
     cms_service_key: str | None = None
     telemetry_hash_key: str | None = None
     rebuild_on_start: bool = True
+    doctors_mcp_url: str | None = None
+    doctors_mcp_key: str | None = None
+    doctors_limit: int = 3
+    doctors_timeout: float = 2.0
     extra: dict = field(default_factory=dict)
 
     @property
     def cms_configured(self) -> bool:
         return bool(self.cms_api_url and self.cms_service_key)
+
+    @property
+    def doctors_configured(self) -> bool:
+        return bool(self.doctors_mcp_url and self.doctors_mcp_key)
 
     @property
     def production(self) -> bool:
@@ -94,6 +106,10 @@ class ServiceSettings:
             cms_service_key=(e.get("HMS_CMS_SERVICE_KEY") or "").strip() or None,
             telemetry_hash_key=(e.get("HMS_TELEMETRY_HASH_KEY") or "").strip() or None,
             rebuild_on_start=(e.get("HMS_REBUILD_ON_START") or "1").strip() not in ("0", "false", "no"),
+            doctors_mcp_url=(e.get("HMS_DOCTORS_MCP_URL") or "").strip() or None,
+            doctors_mcp_key=(e.get("HMS_DOCTORS_MCP_KEY") or "").strip() or None,
+            doctors_limit=int(e.get("HMS_DOCTORS_LIMIT") or "3"),
+            doctors_timeout=float(e.get("HMS_DOCTORS_TIMEOUT") or "2.0"),
         )
         s.validate()
         return s
@@ -107,3 +123,5 @@ class ServiceSettings:
             raise RuntimeError("HMS_CORS_ORIGINS='*' is not allowed in production")
         if self.rate_limit_route < 1 or self.rate_limit_chat < 1:
             raise RuntimeError("rate limits must be >= 1 per minute")
+        if not 1 <= self.doctors_limit <= 10:
+            raise RuntimeError("HMS_DOCTORS_LIMIT must be 1-10")

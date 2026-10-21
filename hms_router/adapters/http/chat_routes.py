@@ -1,7 +1,9 @@
 """/chat, /feedback, /session - moved here from api.py unchanged in behaviour (tests/test_chat_contract.py).
 
-Only additions: the auth + rate-limit guard (scope "chat"; a no-op while HMS_API_KEYS is unset) and
-problem+json error bodies. Status codes and success bodies are exactly as before.
+Only additions: the auth + rate-limit guard (scope "chat"; a no-op while HMS_API_KEYS is unset),
+problem+json error bodies, and - only while HMS_DOCTORS_MCP_URL/KEY are set - a `doctors` block on a
+confident recommendation (optional city / lat+lng narrow it). Otherwise status codes and success
+bodies are exactly as before.
 """
 from __future__ import annotations
 
@@ -21,6 +23,9 @@ class ChatRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=1000, description="Patient message in Hinglish / Hindi / English")
     session_id: str | None = Field(None, description="Session token returned by a previous /chat call. "
                                                      "Omit (or pass null) to start a new session.")
+    city: str | None = Field(None, max_length=100, description="Patient's city, for the doctors list (optional)")
+    lat: float | None = Field(None, ge=-90, le=90, description="Patient latitude, with lng: nearest doctors first")
+    lng: float | None = Field(None, ge=-180, le=180, description="Patient longitude, with lat")
 
 
 class FeedbackRequest(BaseModel):
@@ -31,6 +36,20 @@ class FeedbackRequest(BaseModel):
     symptoms: list[str] | None = Field(None, description="Symptoms that were active (for wrong_specialist)")
     suggested_specialist: str | None = Field(None, description="What the user thinks would be correct")
     phrase: str | None = Field(None, description="The unrecognised phrase (for new_symptom_phrase)")
+
+
+def _doctors_for(request: Request, out: dict, req: ChatRequest) -> dict | None:
+    """Bookable doctors for the PRIMARY specialist of a confident recommendation; None otherwise
+    (follow-up, emergency, low confidence, lookups off or failed)."""
+    directory = getattr(request.app.state, "doctors", None)
+    card = out.get("card") or {}
+    if directory is None or not directory.enabled or out.get("kind") != "recommendation" or card.get("low_confidence"):
+        return None
+    primary = next((o for o in card.get("outputs") or [] if o.get("role") == "PRIMARY"), None)
+    if primary is None:
+        return None
+    lat, lng = (req.lat, req.lng) if req.lat is not None and req.lng is not None else (None, None)
+    return directory.for_specialist(primary["specialist"], city=req.city, lat=lat, lng=lng)
 
 
 def build_router(guard) -> APIRouter:
@@ -66,6 +85,9 @@ def build_router(guard) -> APIRouter:
                                                   model_version="chat-agent"))
             except Exception:
                 log.exception("telemetry record failed")
+        doctors = _doctors_for(request, out, req)
+        if doctors is not None:
+            out["doctors"] = doctors
         return out
 
     @router.post("/feedback", tags=["Router"], summary="Submit user feedback", status_code=status.HTTP_200_OK)

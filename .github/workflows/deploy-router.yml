@@ -25,10 +25,14 @@
 #                           training on CMS-approved examples (the router still serves).
 #   REDIS_URL               sessions + rate limits. Required on prod; dev falls back to in-memory without it.
 #   HMS_TELEMETRY_HASH_KEY  optional; defaults to HMS_CMS_SERVICE_KEY
+#   HMS_DOCTORS_MCP_KEY     this router's key in 1HMSAPI's DEV_/PROD_MCP_SERVICE_KEYS (set it per GitHub environment
+#                           so dev and prod differ). Unset = /chat lists no doctors (nothing else changes).
 # Variables (optional):
 #   DEV_CMS_API_URL         default http://151.185.45.77:5002/api/v1
 #   PROD_CMS_API_URL        default https://cms-api.nexeagle.com/api/v1
 #   DEV_HMS_ENV             default development (production on dev also requires REDIS_URL)
+#   DEV_DOCTORS_MCP_URL     default https://1hms-dev-api.nexeagle.com/mcp
+#   PROD_DOCTORS_MCP_URL    default https://1hms-api.nexeagle.com/mcp
 #
 # To redeploy after changing a secret: Actions -> "HMS NLP Router — CI/CD" -> Run workflow. An empty commit
 # does not start it (paths-ignore drops a push with no changed files).
@@ -129,6 +133,8 @@ jobs:
           HMS_CMS_API_URL: ${{ vars.DEV_CMS_API_URL || 'http://151.185.45.77:5002/api/v1' }}
           HMS_CMS_SERVICE_KEY: ${{ secrets.HMS_CMS_SERVICE_KEY }}
           HMS_TELEMETRY_HASH_KEY: ${{ secrets.HMS_TELEMETRY_HASH_KEY }}
+          HMS_DOCTORS_MCP_URL: ${{ vars.DEV_DOCTORS_MCP_URL || 'https://1hms-dev-api.nexeagle.com/mcp' }}
+          HMS_DOCTORS_MCP_KEY: ${{ secrets.HMS_DOCTORS_MCP_KEY }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           HMS_PORT: ${{ env.HMS_PORT }}
         with:
@@ -137,7 +143,7 @@ jobs:
           password: ${{ secrets.DEV_SSH_PASSWORD }}
           port: 22
           command_timeout: 15m
-          envs: IMAGE,GHCR_TOKEN,ACTOR,HMS_ENV,HMS_API_KEYS,HMS_CMS_API_URL,HMS_CMS_SERVICE_KEY,HMS_TELEMETRY_HASH_KEY,REDIS_URL,HMS_PORT
+          envs: IMAGE,GHCR_TOKEN,ACTOR,HMS_ENV,HMS_API_KEYS,HMS_CMS_API_URL,HMS_CMS_SERVICE_KEY,HMS_TELEMETRY_HASH_KEY,REDIS_URL,HMS_PORT,HMS_DOCTORS_MCP_URL,HMS_DOCTORS_MCP_KEY
           script: |
             set -e
             NAME=nlp-router-dev
@@ -151,6 +157,8 @@ jobs:
                 printf 'HMS_CMS_API_URL=%s\n'        "${HMS_CMS_API_URL:-}"
                 printf 'HMS_CMS_SERVICE_KEY=%s\n'    "${HMS_CMS_SERVICE_KEY:-}"
                 printf 'HMS_TELEMETRY_HASH_KEY=%s\n' "${HMS_TELEMETRY_HASH_KEY:-}"
+                printf 'HMS_DOCTORS_MCP_URL=%s\n'    "${HMS_DOCTORS_MCP_URL:-}"
+                printf 'HMS_DOCTORS_MCP_KEY=%s\n'    "${HMS_DOCTORS_MCP_KEY:-}"
                 printf 'REDIS_URL=%s\n'              "${REDIS_URL:-}"
               } > "$ENVFILE" )
 
@@ -212,6 +220,8 @@ jobs:
           HMS_CMS_API_URL: ${{ vars.PROD_CMS_API_URL || 'https://cms-api.nexeagle.com/api/v1' }}
           HMS_CMS_SERVICE_KEY: ${{ secrets.HMS_CMS_SERVICE_KEY }}
           HMS_TELEMETRY_HASH_KEY: ${{ secrets.HMS_TELEMETRY_HASH_KEY }}
+          HMS_DOCTORS_MCP_URL: ${{ vars.PROD_DOCTORS_MCP_URL || 'https://1hms-api.nexeagle.com/mcp' }}
+          HMS_DOCTORS_MCP_KEY: ${{ secrets.HMS_DOCTORS_MCP_KEY }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
         run: |
           # The app refuses to start in production without these; stop before touching the running container.
@@ -225,6 +235,8 @@ jobs:
             printf 'HMS_CMS_API_URL=%s\n'        "${HMS_CMS_API_URL:-}"
             printf 'HMS_CMS_SERVICE_KEY=%s\n'    "${HMS_CMS_SERVICE_KEY:-}"
             printf 'HMS_TELEMETRY_HASH_KEY=%s\n' "${HMS_TELEMETRY_HASH_KEY:-}"
+            printf 'HMS_DOCTORS_MCP_URL=%s\n'    "${HMS_DOCTORS_MCP_URL:-}"
+            printf 'HMS_DOCTORS_MCP_KEY=%s\n'    "${HMS_DOCTORS_MCP_KEY:-}"
             printf 'REDIS_URL=%s\n'              "$REDIS_URL"
           } > /tmp/nlp-router-prod.env
 
