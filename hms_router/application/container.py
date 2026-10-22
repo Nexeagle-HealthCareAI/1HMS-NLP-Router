@@ -15,6 +15,7 @@ from ..rag.model_bundle import ModelBundle
 from ..rag.vocabulary import MedicalVocabulary
 from ..reasoning.llm_reasoner import LlmReasoner
 from ..reasoning.protocols import NoReasoner
+from ..reasoning.verifier import Verifier
 from ..safety.denial import DenialAware
 from ..safety.detectors import AnyOf, ModelDetector, RuleDetector
 from ..safety.rules import RED_FLAGS_PATH, load_red_flags
@@ -54,10 +55,13 @@ def build_route_symptom_service(bundle: ModelBundle | None = None, *, model_path
         RuleDetector(load_red_flags(red_flags_path), extract),
         ModelDetector(EmergencyModelScore(encoder, bundle.emergency_model), policy.emergency_min_score),
     ]))
+    vocabulary = MedicalVocabulary.from_data()
     return RouteSymptomService(
         retriever=ExampleRetriever(encoder, bundle.index, bundle.examples),
         scorer=ClassifierScorer(encoder, bundle.classifier),
         detector=detector, policy=policy,
         reasoner=LlmReasoner(llm_complete) if llm_complete else NoReasoner(),
+        # the LLM's reason may only name symptoms the patient used (test plan H-03)
+        verifier=Verifier(medical_terms=vocabulary.terms_in),
         language_of=language_of, model_version=bundle.meta.get("modelVersion"),
-        medical_signal=MedicalVocabulary.from_data().has_signal)
+        medical_signal=vocabulary.has_signal)

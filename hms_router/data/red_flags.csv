@@ -93,3 +93,12 @@ hurt myself,Suicidal thoughts / self-harm,suicidal thoughts,EMERGENCY,route-symp
 fainted,Lost consciousness,unconscious,EMERGENCY,route-symptom 2026-10-19
 passed out,Lost consciousness,unconscious,EMERGENCY,route-symptom 2026-10-19
 lost consciousness,Lost consciousness,unconscious,EMERGENCY,route-symptom 2026-10-19
+sir chot ulti,Head injury with vomiting,head injury,EMERGENCY,analysis-2026-10-22
+sar chot ulti,Head injury with vomiting,head injury,EMERGENCY,analysis-2026-10-22
+sir chot lagi ulti,Head injury with vomiting,head injury,EMERGENCY,analysis-2026-10-22
+sar chot lagi ulti,Head injury with vomiting,head injury,EMERGENCY,analysis-2026-10-22
+sir chot behosh,Head injury with fainting,head injury,EMERGENCY,analysis-2026-10-22
+sar chot behosh,Head injury with fainting,head injury,EMERGENCY,analysis-2026-10-22
+head injury vomiting,Head injury with vomiting,head injury,EMERGENCY,analysis-2026-10-22
+head injury unconscious,Head injury with fainting,head injury,EMERGENCY,analysis-2026-10-22
+hit head vomiting,Head injury with vomiting,head injury,EMERGENCY,analysis-2026-10-22

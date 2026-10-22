@@ -77,6 +77,10 @@ class RouteSymptomService:
         match = evidence[0].similarity if evidence else 0.0
         top_conf = ranked[0][1] if ranked else 0.0
 
+        if emergency.flag:                                                   # 2b: an emergency is never a question
+            candidates = self._candidates(ranked, evidence, top_k) if ranked else []
+            return self._emergency_answer(query, candidates, emergency, match)
+
         if not ranked or self.policy.is_no_match(match, top_conf):          # 4
             return self._abstain(query, emergency, match)
         if self.policy.is_off_topic(self._has_signal(query.normalized), match, emergency.flag):
@@ -93,7 +97,7 @@ class RouteSymptomService:
 
         proposal = self.reasoner.decide(query, candidates)                   # 6
         if proposal is not None:
-            verdict = self.verifier.check(proposal, candidates)
+            verdict = self.verifier.check(proposal, candidates, patient_text=query.raw)
             if verdict.ok:
                 chosen = self._reorder(candidates, proposal.choices)
                 ranked_ids = [c.specialtyId for c in chosen]
@@ -146,6 +150,24 @@ class RouteSymptomService:
             matchScore=round(match, 4), emergency=emergency, clarify=None,
             reason=reason or self.explainer.reason(query, candidates[0] if candidates else None),
             method=method, modelVersion=self.model_version, notes=notes)
+
+    def _emergency_answer(self, query: Query, candidates: list[Candidate], emergency: EmergencyAssessment,
+                          match: float) -> RouteDecision:
+        """emergency.flag set: answer with the detector's recommended specialties (Emergency Medicine first),
+        never a clarifying question - so even a caller that reads only `decision` / `specialtyIds` sends the
+        patient to emergency care. `specialties` still carries the ranked candidates for context."""
+        ids = [s for s in emergency.recommendedSpecialtyIds if s] or ["emergencymedicine"]
+        if "emergencymedicine" in ids:
+            ids = ["emergencymedicine"] + [s for s in ids if s != "emergencymedicine"]
+        else:
+            ids = ["emergencymedicine"] + ids
+        signs = ", ".join(emergency.reasons[:3]) or "emergency signs"
+        reason = (f"Emergency ke lakshan: {signs}. Turant emergency madad lein." if query.language in ("hinglish", "hindi")
+                  else f"Emergency signs: {signs}. Get emergency help now.")
+        return RouteDecision(
+            query=query.raw, decision=Decision.ANSWER, candidates=candidates, specialtyIds=ids[: self.policy.max_shortlist],
+            decisive=True, noMatch=False, matchScore=round(match, 4), emergency=emergency, clarify=None,
+            reason=reason, method="emergency", modelVersion=self.model_version, notes=["emergency: answered directly"])
 
     def _abstain(self, query: Query, emergency: EmergencyAssessment, match: float,
                  notes: list[str] | None = None) -> RouteDecision:
