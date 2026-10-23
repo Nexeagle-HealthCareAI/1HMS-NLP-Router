@@ -102,10 +102,11 @@ def test_lookup_maps_specialist_to_api_category():
 
 
 def test_location_sorts_by_distance():
+    # a wide radius: the tool's 5 km default would hide every doctor further away on a symptom answer
     server = FakeMcp()
     directory(server).for_specialist("Cardiologist", lat=22.58, lng=88.42)
     assert server.calls[-1][1] == {"specialtyIds": ["Cardiologist (Heart)"], "limit": 3,
-                                   "lat": 22.58, "lng": 88.42, "sort": "distance"}
+                                   "lat": 22.58, "lng": 88.42, "maxDistanceKm": 50.0, "sort": "distance"}
 
 
 def test_specialties_are_cached():

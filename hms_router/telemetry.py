@@ -194,6 +194,7 @@ def chat_record(reply: dict, *, recorder: DecisionRecorder, caller: str, latency
     low_conf = bool(card.get("low_confidence"))
     needs_review = kind == "emergency" or low_conf or (kind == "recommendation" and not outputs)
     sid = reply.get("session_id") or ""
+    doctors = reply.get("doctors") or {}
     return {
         "decisionId": str(uuid.uuid4()),
         "occurredAt": now_iso(),
@@ -219,6 +220,12 @@ def chat_record(reply: dict, *, recorder: DecisionRecorder, caller: str, latency
         "turn": reply.get("turn"),
         "degraded": "|".join(reply.get("degraded") or []) or None,
         "reviewText": _clip(text) if needs_review else None,
+        # Vita doctor search (VITA-13): filters and counts only, never what the patient typed
+        "searchMode": "|".join(doctors.get("mode") or []) or None,
+        "doctorsShown": len(doctors.get("items") or []) if doctors else None,
+        "doctorSelected": reply.get("selectedDoctorId"),
+        "lookupMs": doctors.get("lookupMs"),
+        "doctorFallbackUsed": doctors.get("fallbackUsed") if doctors else None,
     }
 
 
