@@ -5,6 +5,7 @@ editing another endpoint's code.
 """
 from __future__ import annotations
 
+import dataclasses
 import logging
 from contextlib import asynccontextmanager
 
@@ -20,7 +21,7 @@ from ...rag.model_bundle import MODEL_PATH, ModelBundle
 from ...telemetry import build_recorder
 from ..llm.factory import build_llm_completion
 from ..settings import ServiceSettings
-from . import admin_routes, chat_routes, errors, health_routes, route_routes
+from . import admin_routes, agent_routes, chat_routes, errors, health_routes, route_routes
 from .security import ApiKeyAuth, Guard, RateLimiter, RequestContextMiddleware
 
 log = logging.getLogger("hms_router.api")
@@ -64,6 +65,12 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
             app.state.redis,
             emergency_detector=lambda: getattr(getattr(app.state, "route", None), "detector", None)))
         log.info("HMSRouterAgent ready")
+        # Vita (/v2/agent/chat): the same triage agent and models, but at most two follow-up questions
+        # before showing something (vision: "never more than two questions before showing something useful")
+        base = app.state.chat.agent
+        app.state.vita_agent = HMSRouterAgent(
+            app.state.redis, settings=dataclasses.replace(base.cfg, followup_max_turns=2), lexicon=base.pipeline.lex,
+            retriever=base.retriever, classifier=base.classifier, emergency_detector=base.emergency_detector)
         app.state.telemetry = build_recorder(settings.cms_api_url, settings.cms_service_key, settings.telemetry_hash_key)
         app.state.telemetry.start()
         app.state.doctors = build_directory(settings.doctors_mcp_url, settings.doctors_mcp_key,
@@ -112,6 +119,7 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
     limiter = _LazyLimiter(app)
     app.include_router(health_routes.build_router())
     app.include_router(chat_routes.build_router(Guard(auth, limiter, "chat")))
+    app.include_router(agent_routes.build_router(Guard(auth, limiter, "chat")))
     app.include_router(route_routes.build_router(Guard(auth, limiter, "route")))
     app.include_router(admin_routes.build_router(Guard(auth, limiter, "admin")))
     app.state.settings = settings

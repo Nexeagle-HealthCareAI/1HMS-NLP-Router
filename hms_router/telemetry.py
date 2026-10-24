@@ -192,9 +192,13 @@ def chat_record(reply: dict, *, recorder: DecisionRecorder, caller: str, latency
     top = outputs[0] if outputs else {}
     kind = reply.get("kind")
     low_conf = bool(card.get("low_confidence"))
-    needs_review = kind == "emergency" or low_conf or (kind == "recommendation" and not outputs)
-    sid = reply.get("session_id") or ""
     doctors = reply.get("doctors") or {}
+    clarify_kind = (reply.get("clarify") or {}).get("kind")
+    # Vita dead ends go to the CMS review queue so the router learns the phrase (vision: "No match at all")
+    dead_end = ((kind == "doctor_list" and not doctors.get("items") and "doctor_lookup" not in (reply.get("degraded") or []))
+                or kind == "handoff" or clarify_kind in ("ask_kind", "no_match"))
+    needs_review = kind == "emergency" or low_conf or (kind == "recommendation" and not outputs) or dead_end
+    sid = reply.get("session_id") or ""
     return {
         "decisionId": str(uuid.uuid4()),
         "occurredAt": now_iso(),
@@ -208,7 +212,7 @@ def chat_record(reply: dict, *, recorder: DecisionRecorder, caller: str, latency
         "confidence": round(float(top["confidence"]), 4) if top.get("confidence") is not None else None,
         "matchScore": None,
         "isEmergency": kind == "emergency",
-        "clarifyKind": "follow_up" if kind == "follow_up" else None,
+        "clarifyKind": clarify_kind or ("follow_up" if kind == "follow_up" else None),
         "noMatch": kind == "recommendation" and not outputs,
         "method": "agent",
         "usedReasoner": False,

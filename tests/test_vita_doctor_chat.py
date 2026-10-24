@@ -17,25 +17,33 @@ from hms_router.doctors import DoctorDirectory, DoctorLookupError, McpClient
 from tests.test_doctor_directory import API_CATEGORIES
 
 H1, H2 = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
+H3 = "33333333-3333-3333-3333-333333333333"
 HOSPITALS = {H1: {"hospitalId": H1, "name": "Salt Lake Care", "city": "Kolkata", "lat": 22.58, "lng": 88.41},
-             H2: {"hospitalId": H2, "name": "Howrah General", "city": "Kolkata", "lat": 22.59, "lng": 88.31}}
+             H2: {"hospitalId": H2, "name": "Howrah General", "city": "Kolkata", "lat": 22.59, "lng": 88.31},
+             H3: {"hospitalId": H3, "name": "Sadar Hospital", "city": "Purnia", "lat": 25.78, "lng": 87.47}}
+ON_LEAVE_TODAY = {"00000000-0000-0000-0000-000000000001"}          # Dr. Neha Sharma
+WORKS_ON = {0, 1, 2, 3, 4, 5}                                      # nobody works on Sunday in this fake
 
 
-def _doc(n, name, cat, degrees, hosp, exp, fee):
-    return {"doctorId": f"00000000-0000-0000-0000-0000000000{n:02d}", "name": name, "degrees": degrees,
+def _doc(n, name, cat, degrees, hosp, exp, fee, gender="F"):
+    return {"_gender": gender, "doctorId": f"00000000-0000-0000-0000-0000000000{n:02d}", "name": name, "degrees": degrees,
             "specialtyId": cat, "specialtyName": cat, "experienceYears": exp, "consultFee": fee,
             "discountedFee": None, "hospital": HOSPITALS[hosp], "availableToday": True}
 
 
 DOCTORS = [
     _doc(1, "Dr. Neha Sharma", "Cardiologist (Heart)", "MBBS, MD (Medicine), DM (Cardiology)", H1, 14, 900),
-    _doc(2, "Dr. Rakesh Sharma", "Orthopaedic Surgeon (Bone)", "MBBS, MS (Ortho)", H2, 20, 700),
+    _doc(2, "Dr. Rakesh Sharma", "Orthopaedic Surgeon (Bone)", "MBBS, MS (Ortho)", H2, 20, 700, "M"),
     _doc(3, "Dr. Anita Sen", "Dermatologist (Skin)", "MBBS, MD (Dermatology)", H1, 9, 600),
-    _doc(4, "Dr. Amit Das", "Cardiologist (Heart)", "MBBS, MD (Medicine)", H2, 6, 500),
+    _doc(4, "Dr. Amit Das", "Cardiologist (Heart)", "MBBS, MD (Medicine)", H2, 6, 500, "M"),
     _doc(5, "Dr. Priya Bose", "Dermatologist (Skin)", "MBBS, DNB (Dermatology)", H2, 4, 400),
-    _doc(6, "Dr. S. Roy", "General Physician", "MBBS", H1, 25, 300),
-    _doc(7, "Dr. Kunal Ghosh", "Orthopaedic Surgeon (Bone)", "MBBS, DNB (Ortho)", H1, 11, 800),
+    _doc(6, "Dr. S. Roy", "General Physician", "MBBS", H1, 25, 300, "M"),
+    _doc(7, "Dr. Kunal Ghosh", "Orthopaedic Surgeon (Bone)", "MBBS, DNB (Ortho)", H1, 11, 800, "M"),
 ]
+
+
+def _public(d):
+    return {k: v for k, v in d.items() if not k.startswith("_")}
 
 
 def _km(lat1, lng1, lat2, lng2):
@@ -44,8 +52,9 @@ def _km(lat1, lng1, lat2, lng2):
 
 def _name_score(query, name):
     import difflib
-    q = query.lower().replace("dr", "").strip()
-    return max(difflib.SequenceMatcher(None, q, t).ratio() for t in name.lower().replace(".", "").split())
+    tokens = name.lower().replace(".", "").split()
+    words = [w for w in query.lower().replace(".", "").split() if w != "dr"]
+    return sum(max(difflib.SequenceMatcher(None, w, t).ratio() for t in tokens) for w in words) / max(len(words), 1)
 
 
 class Fake1Hms:
@@ -61,9 +70,15 @@ class Fake1Hms:
             rows = [d for d in rows if a["degree"].lower() in d["degrees"].lower().replace(",", " ").split()]
         if a.get("city"):
             rows = [d for d in rows if d["hospital"]["city"].lower() == a["city"].lower()]
+        if a.get("onlyAtHospital"):
+            rows = [d for d in rows if d["hospital"]["hospitalId"] == a["hospitalId"]]
+        if a.get("gender"):
+            rows = [d for d in rows if d["_gender"] == a["gender"][0].upper()]
+        if a.get("availableToday"):
+            rows = [d for d in rows if d["doctorId"] not in ON_LEAVE_TODAY]
         out = []
         for d in rows:
-            d = dict(d, distanceKm=None, sameHospital=None, nameMatchScore=None)
+            d = dict(_public(d), distanceKm=None, sameHospital=None, nameMatchScore=None)
             if a.get("query"):
                 d["nameMatchScore"] = round(_name_score(a["query"], d["name"]), 2)
                 if d["nameMatchScore"] < 0.72:
@@ -84,7 +99,44 @@ class Fake1Hms:
             out.sort(key=lambda d: -d["nameMatchScore"])
         if a.get("hospitalId"):
             out.sort(key=lambda d: not d["sameHospital"])
-        return {"doctors": out[: a.get("limit", 5)], "total": len(out)}
+        off = a.get("offset", 0)
+        return {"doctors": out[off: off + a.get("limit", 5)], "total": len(out)}
+
+    @staticmethod
+    def _hospitals(a):
+        out = []
+        for h in HOSPITALS.values():
+            if a.get("city") and h["city"].lower() != a["city"].lower():
+                continue
+            score = None
+            if a.get("query"):
+                words = [w for w in a["query"].lower().split() if w not in ("hospital", "clinic", "haspatal")]
+                import difflib
+                targets = h["name"].lower().split() + [h["city"].lower()]
+                score = sum(max(difflib.SequenceMatcher(None, w, t).ratio() for t in targets) for w in words) / max(len(words), 1)
+                if score < 0.72:
+                    continue
+            out.append(dict(h, contact=h.get("contact"), nameMatchScore=score,
+                            doctorCount=sum(d["hospital"]["hospitalId"] == h["hospitalId"] for d in DOCTORS)))
+        out.sort(key=lambda h: -(h["nameMatchScore"] or 0))
+        return {"hospitals": out[: a.get("limit", 5)], "total": len(out)}
+
+    @staticmethod
+    def _availability(a):
+        import datetime as dt
+        if not any(d["doctorId"] == a["doctorId"] for d in DOCTORS):
+            return {"found": False}
+        start = dt.date.fromisoformat(a["fromDate"]) if a.get("fromDate") else \
+            (dt.datetime.now(dt.timezone.utc) + dt.timedelta(minutes=330)).date()
+        days = []
+        for i in range(a.get("days", 7)):
+            d = start + dt.timedelta(days=i)
+            ok = d.weekday() in WORKS_ON
+            days.append({"date": d.isoformat(), "isAvailable": ok,
+                         "shifts": [{"name": "Morning", "start": "09:00", "end": "13:00"}] if ok else []})
+        nxt = next((x["date"] for x in days if x["isAvailable"]), None)
+        return {"found": True, "doctorId": a["doctorId"], "days": days, "nextAvailableDate": nxt,
+                "note": "Working days and shift hours only; the hospital confirms the exact appointment time."}
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         if request.headers.get("X-Service-Key") != self.key:
@@ -109,7 +161,11 @@ class Fake1Hms:
                 data = self._search(args)
             elif name == "get_doctor":
                 d = next((d for d in DOCTORS if d["doctorId"] == args["doctorId"]), None)
-                data = {"found": d is not None, "doctor": d}
+                data = {"found": d is not None, "doctor": _public(d) if d else None}
+            elif name == "search_hospitals":
+                data = self._hospitals(args)
+            elif name == "get_doctor_availability":
+                data = self._availability(args)
             elif name == "list_doctor_names":
                 data = {"doctors": [{"doctorId": d["doctorId"], "name": d["name"], "city": "Kolkata"} for d in DOCTORS]}
             else:
@@ -137,8 +193,11 @@ def hms(client):
     client.app.state.doctors = DoctorDirectory(None)
 
 
+URL = "/v2/agent/chat"
+
+
 def chat(client, text, **kw):
-    r = client.post("/chat", json={"text": text, **kw})
+    r = client.post(URL, json={"text": text, **kw})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -157,7 +216,7 @@ def searches(server):
     ("MD medicine wala doctor", ["specialty", "degree"]),
     ("paas mein koi doctor", ["distance"]),
     ("5 km ke andar", ["distance"]),
-    ("MD cardiologist near Salt Lake", ["specialty", "degree", "distance"]),
+    ("MD cardiologist near Salt Lake", ["specialty", "degree", "place", "distance"]),
     ("2 din se bukhar aur khansi", ["symptom"]),
     ("pet mein dard", ["symptom"]),
     ("skin pe daane", ["symptom"]),
@@ -205,10 +264,17 @@ def test_symptom_fallback_to_general_physician():
 
 
 # ============================================================================ /chat journeys
-def test_off_means_original_chat(client):
+def test_chat_v1_is_unchanged_with_lookups_on(client, hms):
+    """/chat keeps its pre-Vita contract; doctor search lives on /v2/agent/chat (vision: /chat unchanged)."""
+    r = client.post("/chat", json={"text": "skin ka doctor chahiye", "city": "Kolkata"})
+    assert r.status_code == 200 and r.json()["kind"] in ("follow_up", "recommendation", "emergency")
+    assert client.post("/chat", json={"text": "x", "select_doctor_id": DOCTORS[0]["doctorId"]}).status_code == 200
+
+
+def test_v2_with_lookups_off_says_so(client):
     client.app.state.doctors = DoctorDirectory(None)
     body = chat(client, "skin ka doctor chahiye")
-    assert body["kind"] != "doctor_list" and "doctors" not in body
+    assert body["kind"] == "doctor_list" and body["degraded"] == ["doctor_lookup"] and body["message"]
 
 
 def test_specialty_ask_lists_doctors_same_turn(client, hms):            # VITA-3
@@ -232,14 +298,13 @@ def test_misspelt_name_finds_the_doctor(client, hms):                   # VITA-4
     assert body["doctors"]["items"][0]["name"].endswith("Sharma")
 
 
-def test_equal_name_matches_ask_one_narrowing_question(client, hms):    # VITA-4
+def test_equal_name_matches_are_told_apart_by_hospital_and_city(client, hms):   # VITA-4 / vision
     body = chat(client, "dr sharma")
-    assert body["clarify"]["kind"] == "narrow"
+    assert body["clarify"]["kind"] == "which_doctor"
     labels = [o["label"] for o in body["clarify"]["options"]]
-    assert set(labels) == {"Cardiologist (Heart)", "Orthopaedic Surgeon (Bone)"}
-    nxt = chat(client, "Orthopaedic", session_id=body["session_id"])
-    assert [d["name"] for d in nxt["doctors"]["items"]] == ["Dr. Rakesh Sharma"]
-    assert searches(hms)[-1]["query"] == "sharma"
+    assert labels == ["Dr. Neha Sharma · Salt Lake Care, Kolkata", "Dr. Rakesh Sharma · Howrah General, Kolkata"]
+    nxt = chat(client, "howrah wale", session_id=body["session_id"])        # typed answer picks one
+    assert nxt["kind"] == "doctor_selected" and nxt["doctor"]["name"] == "Dr. Rakesh Sharma"
 
 
 def test_unknown_name_says_so_and_offers_specialty(client, hms):
@@ -296,7 +361,7 @@ def test_refine_nearby_after_specialty(client, hms):                    # VITA-7
 
 def test_combined_ask_in_one_turn(client, hms):                         # VITA-7
     body = chat(client, "MD cardiologist near Salt Lake", lat=22.58, lng=88.41)
-    assert set(body["doctors"]["mode"]) == {"specialty", "degree", "distance"}
+    assert set(body["doctors"]["mode"]) == {"specialty", "degree", "place", "distance"}
     a = searches(hms)[-1]
     assert a["degree"] == "MD" and a["specialtyIds"] == ["Cardiologist (Heart)"] and "lat" in a
 
@@ -306,16 +371,16 @@ def test_select_doctor_and_session_shows_it(client, hms):               # VITA-8
     pick = first["doctors"]["items"][1]["doctorId"]
     body = chat(client, "Choose", session_id=first["session_id"], select_doctor_id=pick)
     assert body["kind"] == "doctor_selected" and body["doctor"]["doctorId"] == pick
-    snap = client.get(f"/session/{first['session_id']}").json()
+    snap = client.get(f"/v2/agent/session/{first['session_id']}").json()
     assert snap["selectedDoctorId"] == pick
 
 
 def test_select_doctor_not_shown_is_422(client, hms):                    # VITA-8
     first = chat(client, "skin specialist", city="Kolkata")
     cardio = DOCTORS[0]["doctorId"]
-    r = client.post("/chat", json={"text": "Choose", "session_id": first["session_id"], "select_doctor_id": cardio})
+    r = client.post(URL, json={"text": "Choose", "session_id": first["session_id"], "select_doctor_id": cardio})
     assert r.status_code == 422
-    r = client.post("/chat", json={"text": "Choose", "select_doctor_id": cardio})
+    r = client.post(URL, json={"text": "Choose", "select_doctor_id": cardio})
     assert r.status_code == 422
 
 
@@ -391,3 +456,200 @@ def test_telemetry_fields(client, hms):                                 # VITA-1
     rec = chat_record(body, recorder=Rec, caller="t", latency_ms=1, text="skin ka doctor", model_version=None)
     assert rec["searchMode"] == "specialty" and rec["doctorsShown"] == 2 and rec["lookupMs"] is not None
     assert rec["reviewText"] is None
+
+
+# ============================================================================ Phase 1 gaps (vision, "How Vita talks")
+def test_two_questions_at_most_before_showing_something(client, hms):
+    body = chat(client, "dard hai")
+    turns = 1
+    while body["kind"] == "follow_up" and turns < 5:
+        body = chat(client, "pata nahi", session_id=body["session_id"])
+        turns += 1
+    assert turns <= 3, "Vita asked more than two follow-up questions"
+
+
+def test_plain_words_first(client, hms):
+    body = chat(client, "I need an orthopaedic doctor", city="Kolkata")
+    assert "bone doctors (Orthopaedic)" in body["message"]
+    hi = chat(client, "mujhe haddi ka doctor chahiye", city="Kolkata")
+    assert "haddi ke doctor (Orthopaedic)" in hi["message"]
+
+
+@pytest.mark.parametrize("text", ["Dr Sharma ka number do", "dr anita sen ka mobile number chahiye"])
+def test_never_shares_a_private_number(client, hms, text):
+    body = chat(client, text, city="Kolkata")
+    assert body["kind"] == "info" and "personal number" in body["message"]
+    assert not any(ch.isdigit() for ch in body["message"].replace("98", ""))  # no phone digits made up
+    assert "doctors" not in body
+
+
+def test_front_desk_number_only_from_1hms(client, hms):
+    import copy
+    from tests import test_vita_doctor_chat as me
+    saved = copy.deepcopy(me.HOSPITALS[H1])
+    me.HOSPITALS[H1]["contact"] = "033-4000-1234"
+    try:
+        body = chat(client, "dr anita sen ka number do", city="Kolkata")
+        assert "033-4000-1234" in body["message"]
+    finally:
+        me.HOSPITALS[H1].clear()
+        me.HOSPITALS[H1].update(saved)
+
+
+@pytest.mark.parametrize("text", ["bas dekh raha tha", "no thanks", "thank you"])
+def test_just_looking_is_fine(client, hms, text):
+    body = chat(client, text)
+    assert body["kind"] == "info" and "No problem" in body["message"] or "Koi baat nahi" in body["message"]
+    assert searches(hms) == []
+
+
+def test_greeting_offers_the_five_ways(client, hms):
+    body = chat(client, "namaste")
+    assert body["clarify"]["kind"] == "ask_kind" and len(body["clarify"]["options"]) == 5
+
+
+def test_short_answer_mid_triage_stays_with_triage(client, hms):
+    first = chat(client, "dard hai")
+    assert first["kind"] == "follow_up"
+    second = chat(client, "nahi", session_id=first["session_id"])
+    assert second["kind"] != "info"
+
+
+def test_talk_to_a_person(client, hms):
+    body = chat(client, "mujhe kisi insaan se baat karni hai")
+    assert body["kind"] == "handoff" and body["handoff"]["reason"] == "asked"
+
+
+def test_repeated_confusion_offers_a_person(client, hms):
+    first = chat(client, "doctor chahiye")
+    second = chat(client, "koi doctor batao", session_id=first["session_id"])
+    assert "human" in [o["id"] for o in second["clarify"]["options"]]
+
+
+def test_show_more_doctors(client, hms):
+    hms_dir = client.app.state.doctors
+    hms_dir.limit = 1
+    try:
+        first = chat(client, "cardiologist", city="Kolkata")
+        assert len(first["doctors"]["items"]) == 1 and first["doctors"]["hasMore"]
+        more = chat(client, "aur doctor dikhao", session_id=first["session_id"], city="Kolkata")
+        assert more["doctors"]["page"] == 2 and more["doctors"]["items"][0]["name"] == "Dr. Amit Das"
+        assert not more["doctors"]["hasMore"]
+        end = chat(client, "show more", session_id=first["session_id"], city="Kolkata")
+        assert end["clarify"]["kind"] == "no_more"
+    finally:
+        hms_dir.limit = 3
+
+
+def test_emergency_beats_a_conversation_move(client, hms):
+    body = chat(client, "hello, seene mein bahut dard aur saans nahi aa rahi")
+    assert body["kind"] == "emergency"
+
+
+def test_dead_ends_reach_the_review_queue(client, hms):
+    from hms_router.telemetry import chat_record
+
+    class Rec:
+        @staticmethod
+        def query_hash(t):
+            return "h"
+
+    body = chat(client, "dr zzyzxq")
+    rec = chat_record(body, recorder=Rec, caller="t", latency_ms=1, text="dr zzyzxq", model_version=None)
+    assert rec["reviewText"] == "dr zzyzxq" and rec["clarifyKind"] == "no_match"
+
+
+# ============================================================================ hospital, lady doctor, today, availability
+def test_hospital_ask_lists_that_hospitals_doctors(client, hms):
+    body = chat(client, "Sadar Hospital Purnia ke doctor")
+    assert body["kind"] == "doctor_list" and "hospital" in body["doctors"]["mode"]
+    assert body["doctors"]["filters"]["hospital"]["name"] == "Sadar Hospital"
+    assert ("search_hospitals", {"limit": 4, "query": "sadar hospital purnia"}) in hms.calls
+    a = searches(hms)[-1]
+    assert a["hospitalId"] == H3 and a["onlyAtHospital"] is True
+    assert "Sadar Hospital" in body["message"]
+
+
+def test_hospital_and_specialty_together(client, hms):
+    body = chat(client, "Howrah General hospital mein cardiologist")
+    assert [d["name"] for d in body["doctors"]["items"]] == ["Dr. Amit Das"]
+
+
+def test_unknown_hospital_says_so(client, hms):
+    body = chat(client, "Zzyzx Hospital ke doctor")
+    assert body["kind"] == "doctor_list" and body["doctors"]["items"] == [] and "zzyzx" in body["message"].lower()
+    assert body["clarify"]["kind"] == "no_match"
+
+
+def test_lady_doctor_refines_the_list(client, hms):                 # vision: "a lady doctor"
+    first = chat(client, "cardiologist", city="Kolkata")
+    assert len(first["doctors"]["items"]) == 2
+    second = chat(client, "inme se koi lady doctor", session_id=first["session_id"], city="Kolkata")
+    assert [d["name"] for d in second["doctors"]["items"]] == ["Dr. Neha Sharma"]
+    assert second["doctors"]["filters"]["gender"] == "female" and searches(hms)[-1]["gender"] == "female"
+
+
+def test_lady_doctor_on_its_own(client, hms):
+    body = chat(client, "mahila doctor chahiye", city="Kolkata")
+    assert body["kind"] == "doctor_list" and all(d["name"] in ("Dr. Neha Sharma", "Dr. Anita Sen", "Dr. Priya Bose")
+                                                 for d in body["doctors"]["items"])
+
+
+def test_available_today(client, hms):                              # vision: "available today"
+    body = chat(client, "aaj available cardiologist", city="Kolkata")
+    assert [d["name"] for d in body["doctors"]["items"]] == ["Dr. Amit Das"]       # Dr Neha Sharma is on leave
+    assert searches(hms)[-1]["availableToday"] is True
+
+
+def test_place_without_location_is_the_city(client, hms):           # "MD gynaecologist near Purnia"
+    body = chat(client, "skin doctor kolkata mein")
+    assert body["kind"] == "doctor_list" and searches(hms)[-1]["city"] == "kolkata"
+    assert body["doctors"]["filters"]["city"] == "kolkata" and "Kolkata" in body["message"]
+
+
+def test_show_more_uses_1hms_offset(client, hms):
+    hms_dir = client.app.state.doctors
+    hms_dir.limit = 1
+    try:
+        first = chat(client, "dermatologist", city="Kolkata")
+        chat(client, "aur doctor dikhao", session_id=first["session_id"], city="Kolkata")
+        assert searches(hms)[-1]["offset"] == 1 and searches(hms)[-1]["limit"] == 1
+    finally:
+        hms_dir.limit = 3
+
+
+@pytest.mark.parametrize("text", ["Is Dr Neha Sharma available on Monday?", "dr neha sharma somvar ko baithti hain?"])
+def test_availability_on_a_working_day(client, hms, text):         # vision: "is Dr Sharma available Sunday?"
+    body = chat(client, text)
+    assert body["kind"] == "info" and body["doctor"]["name"] == "Dr. Neha Sharma"
+    assert "09:00-13:00" in body["message"]
+    assert [o["id"] for o in body["clarify"]["options"]] == [DOCTORS[0]["doctorId"], "no"]
+    assert body["availability"]["note"]
+    dow = [n for n, a in hms.calls if n == "get_doctor_availability"]
+    assert dow and "doctors" not in body                             # answered, no list pushed
+
+
+def test_availability_on_a_day_off_gives_next_day(client, hms):
+    body = chat(client, "is Dr Neha Sharma available Sunday?")
+    assert "not available" in body["message"] and "Next working day" in body["message"]
+
+
+def test_book_offer_can_be_taken_or_declined(client, hms):
+    q = chat(client, "is Dr Neha Sharma available Monday?")
+    pick = chat(client, "Yes, book", session_id=q["session_id"], select_doctor_id=q["clarify"]["options"][0]["id"])
+    assert pick["kind"] == "doctor_selected"
+    q2 = chat(client, "is Dr Neha Sharma available Monday?")
+    no = chat(client, "No, just checking", session_id=q2["session_id"])
+    assert no["kind"] == "info" and "No problem" in no["message"]
+
+
+def test_parser_hospital_gender_today_when():
+    a = parse("Sadar Hospital Purnia ke doctor")
+    assert a.hospital_query == "sadar hospital purnia" and a.direct
+    assert parse("lady doctor chahiye").gender == "female"
+    assert parse("mahila rog ka doctor").specialty_key == "gynaecology" and parse("mahila rog ka doctor").gender is None
+    assert parse("aaj available skin doctor").available_today
+    assert parse("dr sen kal milenge").when == "+1"
+    assert parse("is Dr Sharma available Sunday?").when == "dow:6"
+    assert parse("dr sharma kab baithte hain").when == "next"
+    assert parse("hospital mein bahut bheed hai").hospital_query is None
