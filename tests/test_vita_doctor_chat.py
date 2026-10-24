@@ -660,3 +660,11 @@ def test_new_search_drops_a_removed_filter(client, hms):          # Doctor Dekho
     assert first["doctors"]["filters"].get("gender") == "female"
     again = chat(client, "cardiologist", session_id=first["session_id"], city="Kolkata", new_search=True)
     assert "gender" not in again["doctors"]["filters"] and len(again["doctors"]["items"]) == 2
+
+
+@pytest.mark.parametrize("text, gender, key", [("lady skin doctor", "female", "dermatology"),
+                                               ("aurat ka doctor", None, "gynaecology"),
+                                               ("female dentist", "female", "dentistry")])
+def test_gender_with_a_specialty_word(text, gender, key):
+    a = parse(text)
+    assert a.gender == gender and a.specialty_key == key

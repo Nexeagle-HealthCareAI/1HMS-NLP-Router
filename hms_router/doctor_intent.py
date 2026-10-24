@@ -99,7 +99,7 @@ _MORE = re.compile(r"\b(show more|more doctors|aur doctor|aur doctors|aur dikhao
                    r"other doctors|next page|aur options|more options|aur koi)\b")
 
 # "lady doctor", "mahila doctor", "female doctor" -> a female doctor (any specialty); "male doctor" likewise
-_GENDER = re.compile(r"\b(lady|ladies|mahila|female|woman|aurat|stree|male|gents|purush|aadmi)\s+(doctor|doctors|daktar|dr|"
+_GENDER = re.compile(r"\b(lady|ladies|mahila|female|woman|aurat|stree|male|gents|purush|aadmi)\s+(?:(?!ka\b|ke\b|ki\b)[a-z]+\s+)?(doctor|doctors|daktar|dr|"
                      r"specialist|physician|surgeon|dentist|gynae\w*|ortho|derma|\w+logists?|\w+icians?)\b"
                      r"|\b(doctor|daktar)\s+(lady|mahila|female)\b")
 _FEMALE_WORDS = {"lady", "ladies", "mahila", "female", "woman", "aurat", "stree"}
