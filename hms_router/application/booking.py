@@ -422,7 +422,7 @@ class BookingFlow:
         where = ", ".join(x for x in (d.get("hospital"), d.get("city")) if x)
         spec = d.get("specialty") or ""
         fee = f"₹{d['fee']}" if d.get("fee") is not None else None
-        age = f"{p['age']}{'' if p.get('ageUnit') != 'months' else ' ' + v('months', 'mahine', 'महीने')}"
+        age = f"{p['age']}{' ' + v('months', 'mahine', 'महीने') if str(p.get('ageUnit') or '').lower() in ('months', 'm') else ''}"
         who = f"{p['name']} ({age}, {_sex_word(v, p.get('sex'))})"
         msg = v(f"Shall I book {d['name']}" + (f" ({spec})" if spec else "") + f" at {where}, {when}, for {who}"
                 + (f", fee {fee} paid at the hospital" if fee else "") + "? The hospital confirms the exact time.",
