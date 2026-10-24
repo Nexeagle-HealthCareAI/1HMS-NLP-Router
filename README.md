@@ -115,5 +115,5 @@ hms-nlp-router/
 ## Known limitations
 * Devanagari words get a spurious middle "a" (`घबराहट` -> `ghabaraahat`). Known words are rescued by the phonetic key; novel ones reach the review queue in that longer form.
 * The safety net errs toward alerting: "stroke patient diet advice" alerts. Intended.
-* Self-harm / suicidal statements are **not** in the emergency list and would need a different response than "call 112 / ER". Decide this deliberately before launch.
+* Self-harm / suicidal statements are **not** in the emergency list and would need a different response than "call 108 / 112 / ER". Decide this deliberately before launch.
 * All patient-facing text, symptom weights, score bands and the emergency phrase list need clinician review.

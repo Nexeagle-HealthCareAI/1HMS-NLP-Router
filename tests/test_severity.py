@@ -33,7 +33,7 @@ def test_intensity_and_duration_raise_score():
 def test_every_doc_emergency_phrase_fires_from_text_alone(text):
     r = clf.classify({"symptoms": []}, [text])
     assert r.emergency and r.level == "EMERGENCY" and r.triggered_by == "safety_net" and r.score >= 90
-    assert r.alert and "112" in r.alert
+    assert r.alert and "108" in r.alert
 
 
 def test_typo_still_caught():

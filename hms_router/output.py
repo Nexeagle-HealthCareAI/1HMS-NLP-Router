@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
 
+from .severity import EMERGENCY_NUMBER
 from .specialist_rag import EMERGENCY_SPECIALIST, FALLBACKS, RoutingResult
 
 PRIMARY, SECONDARY, ALTERNATIVE = "PRIMARY", "SECONDARY", "ALTERNATIVE"
@@ -21,7 +22,8 @@ ROLE_HINT = {PRIMARY: "Highest confidence match", SECONDARY: "Differential-diagn
              ALTERNATIVE: "GP / telemedicine option"}
 
 # doc, Step 7 sample card + Step 5 emergency table
-GENERAL_WATCH_FOR = "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 112 / go to ER immediately"
+GENERAL_WATCH_FOR = ("Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> "
+                     f"call {EMERGENCY_NUMBER} / go to ER immediately")
 WATCH_FOR: dict[str, list[str]] = {
     "Gastroenterologist": ["Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately"],
     "General Physician": ["Fever above 103 F or symptoms getting worse -> consult Emergency Medicine"],
