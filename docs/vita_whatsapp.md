@@ -59,3 +59,10 @@ the bot's own booking flow (map `doctor.doctorId`, `doctor.name`, fee and `docto
 Vita answers within the router's timeout; on 5xx, timeout or an unknown shape, the bot should fall back to its
 own finder for that message. Vita's `degraded: ["doctor_lookup"]` (1HMS down) still comes with a valid text
 message to send.
+
+## Emergencies
+
+`kind: "emergency"` renders as a text message (108 / 112 first, then the nearest emergency hospitals with their numbers, which
+WhatsApp makes tappable), then either WhatsApp's "send location" button (no location yet; the location comes back as a normal
+turn and the places follow) or a "Share my number" reply button (sends the sender's verified number to the alerted hospitals,
+only on that tap).

@@ -89,6 +89,27 @@ Choosing a doctor starts booking when `HMS_PUBLIC_API_URL` / `HMS_PUBLIC_API_KEY
   down books nothing and says so; no silent retries. "Cancel" / "rehne do" ends it; an emergency still wins.
 - Telemetry for booking turns records "[booking details]", never names, numbers or codes.
 
+## Emergency takeover (vision Phase 3)
+
+With booking's 1HMS public API set up (`HMS_PUBLIC_API_KEY`), an emergency reply also carries the nearest emergency-ready
+places and 1HMS alerts them (`POST /public/emergency-alerts`; 1HMSAPI `docs/emergency_takeover.md`). The message still starts
+with 108 / 112 in the patient's language; the places follow, nearest first, with their numbers:
+
+```
+emergency: {places: [{settingId, name, kind, phone, alternatePhone, distanceKm, address, landmark, city, lat, lng, mapUrl}],
+            eventId, alerted, repeated, needsLocation, numberShared, canShareNumber}
+```
+
+- **No location:** `needsLocation: true` and the message asks for it. The next turn with `lat`/`lng` (text `location`, or a
+  WhatsApp location) within 30 minutes gets the places and the alert.
+- **Alerted once** per chat session per 30 minutes (1HMS answers `repeated`).
+- **Share my number:** when the channel knows the number (WhatsApp `verified_mobile`, or a signed-in `patient_token`), the reply
+  offers `clarify.kind = "emergency_share"`; "Share my number" sends it to the alerted places. On the website a guest types it in
+  the emergency card and the site sends it to 1HMS itself (`eventId`).
+- **Capability** sent to 1HMS from what was said: cardiac, maternity, paediatric or trauma (puts the right hospital first among
+  nearly-as-close ones).
+- 1HMS unreachable: the numbers still go out, `degraded: ["emergency_places"]`. No doctor list, no booking, ever.
+
 ## Channels
 
 `channel: "whatsapp"` adds `whatsapp`: the reply as ready-to-send WhatsApp messages; taps come back as

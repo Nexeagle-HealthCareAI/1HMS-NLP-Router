@@ -96,7 +96,8 @@ def build_router(guard) -> APIRouter:
             out = flow.handle(text, req.session_id, city=req.city, lat=lat, lng=lng,
                               client_ip=req.client_ip, patient_token=req.patient_token, verified_mobile=verified,
                               hospital_id=req.hospital_id, select_doctor_id=select, page=req.page,
-                              new_search=req.new_search, ui_language=ui_language(req.ui_language))
+                              new_search=req.new_search, ui_language=ui_language(req.ui_language),
+                              channel=req.channel)
         except ValueError as exc:              # includes SelectionError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:

@@ -97,6 +97,20 @@ class HmsPublicClient:
     def family(self, token: str, *, client_ip: str | None = None) -> list[dict]:
         return list(self._call("GET", "/public/patients/me/family", client_ip=client_ip, token=token).get("members") or [])
 
+    # ------------------------------------------------------------------ emergency takeover (vision Phase 3)
+    def emergency_alert(self, *, lat: float, lng: float, reason: str, capability: str | None, channel: str,
+                        session_ref: str | None, client_ip: str | None) -> dict:
+        """POST /public/emergency-alerts: the nearest emergency-ready places, alerted (once per chat session per 30 min).
+        Returns {eventId, places, alerted, repeated}. The point is used for this lookup only (1HMS keeps distances)."""
+        return self._call("POST", "/public/emergency-alerts", client_ip=client_ip, json={
+            "latitude": lat, "longitude": lng, "reason": reason, "capability": capability, "channel": channel,
+            "sessionRef": session_ref})
+
+    def share_emergency_number(self, event_id: str, mobile: str, *, client_ip: str | None = None) -> None:
+        """The patient agreed to share their number with the places alerted in this emergency."""
+        self._call("POST", f"/public/emergency-alerts/{event_id}/share-number", client_ip=client_ip,
+                   json={"mobile": mobile, "consent": True})
+
     # ------------------------------------------------------------------ booking
     def book(self, *, doctor_id: str, patient: dict, preferred_date: str, preferred_time: str | None,
              reason: str | None, token: str | None, client_ip: str | None) -> str:
