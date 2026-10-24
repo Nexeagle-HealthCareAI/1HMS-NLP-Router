@@ -37,6 +37,7 @@ from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, D
 from ..severity import EMERGENCY, emergency_check
 from ..textnorm import intent_text, preprocess
 from ..voice import Voice
+from .booking import BookingFlow
 
 log = logging.getLogger("hms_router.doctor_chat")
 
@@ -96,8 +97,9 @@ def _fee(d: dict) -> float:
 
 
 class DoctorChat:
-    def __init__(self, agent, directory: DoctorDirectory, redis, *, terms=medical_terms):
+    def __init__(self, agent, directory: DoctorDirectory, redis, *, terms=medical_terms, booking_client=None):
         self.agent, self.directory, self.r, self.terms = agent, directory, redis, terms
+        self.booking = BookingFlow(directory, booking_client)
 
     # ================================================================== session state
     @staticmethod
@@ -133,11 +135,15 @@ class DoctorChat:
     def handle(self, text: str, session_id: str | None, *, city: str | None = None, lat: float | None = None,
                lng: float | None = None, hospital_id: str | None = None,
                select_doctor_id: str | None = None, page: int = 1, new_search: bool = False,
-               ui_language: str | None = None) -> dict:
+               ui_language: str | None = None, client_ip: str | None = None, patient_token: str | None = None,
+               verified_mobile: str | None = None) -> dict:
         """new_search: the screen removed a filter chip and re-sent the remaining filters as text; search
         with exactly those, never merged into the last search."""
         ctx = {"city": city, "lat": lat, "lng": lng, "hospital_id": hospital_id,
-               "located": lat is not None and lng is not None}
+               "located": lat is not None and lng is not None,
+               # booking only: the visitor's IP for 1HMS's per-visitor limits, the channel's signed-in patient
+               # token (no OTP needed), a number the channel already verified (WhatsApp)
+               "client_ip": client_ip, "patient_token": patient_token, "verified_mobile": verified_mobile}
         self._hint = ui_language
         if select_doctor_id:
             return self._select(text, session_id, select_doctor_id, ctx)
@@ -145,6 +151,15 @@ class DoctorChat:
         if self.agent.pipeline.detector.detect(text).language == "bangla":
             return self._bangla(text, session_id)
         st = self.load(session_id)
+        if st.get("booking"):                                                             # booking in progress
+            if self._emergency(text):                                                     # emergency still first
+                st.pop("booking", None)
+                self._save(session_id, st)
+                return self._agent_turn(text, session_id, parse(text), ctx, emergency_checked=True)
+            out = self._booking_turn(text, session_id, st, ctx)
+            if out is not None:
+                return out
+            st = self.load(session_id)                                                    # booking ended: a new ask
         norm = intent_text(text)
         names = self.directory.names(city) if _wants_names(norm) else None
         ask = parse(text, names=names, medical_terms=self.terms)
@@ -539,9 +554,45 @@ class DoctorChat:
         msg = hi(f"You chose {name}{where}. Tap 'Book a slot' to pick a time.",
                  f"Aapne {name}{where} ko chuna hai. Samay chunne ke liye 'Book a slot' dabayein.",
                  f"आपने {name}{where} को चुना है। समय चुनने के लिए 'Book a slot' दबाएँ।")
-        out = self._reply(base, DOCTOR_SELECTED, msg, degraded=degraded)
+        clarify = None
+        if self.booking.enabled and not degraded:                     # Vita books it (vision Phase 2)
+            started = self.booking.start(st, doctor, hi, ctx)
+            clarify = started["clarify"]
+            chose = hi(f"You chose {name}{where}.", f"Aapne {name}{where} ko chuna hai.", f"आपने {name}{where} को चुना है।")
+            msg = f"{chose} {started['message']}" if st.get("booking") else started["message"]
+            if clarify:
+                clarify["question"] = msg
+            self._save(session_id, st)
+        out = self._reply(base, DOCTOR_SELECTED, msg, question=msg if clarify else None, clarify=clarify, degraded=degraded)
         out["doctor"] = doctor
         out["selectedDoctorId"] = doctor_id
+        return out
+
+    def _booking_turn(self, text, session_id, st, ctx) -> dict | None:
+        """One message while booking. None: it was not about booking (a new ask), and booking has ended."""
+        before = st.get("language")
+        ing = self._ingest_only(text, session_id)
+        lang = ing.language.language
+        if before and lang != before and self.booking._picked(st["booking"], text) is not None:
+            # a tapped chip ("Tomorrow (Mon 26 Oct)", "Morning 09:00-13:00") is not the patient changing language
+            lang = before
+            self.agent.pipeline.sessions.set_context(ing.session_id, language=before)
+        st["language"], st["turn"] = lang, ing.turn
+        v = Voice(lang)
+        res = self.booking.turn(st, text, v, ctx)
+        if res is None:
+            st.pop("booking", None)
+            self._save(session_id, st)
+            return None
+        self._save(session_id, st)
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": lang}
+        clarify = res.get("clarify")
+        out = self._reply(base, res["kind"], res["message"], question=clarify["question"] if clarify else None,
+                          clarify=clarify)
+        if res.get("booking"):
+            out["booking"] = res["booking"]
+        if res.get("patient_session"):
+            out["patient_session"] = res["patient_session"]       # the channel signs the patient in; never logged
         return out
 
     def clear(self, sid: str) -> None:

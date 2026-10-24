@@ -16,6 +16,7 @@ from ...agent import HMSRouterAgent
 from ...application.chat import ChatService
 from ...application.container import build_route_symptom_service
 from ...application.retraining import Retrainer
+from ...booking_client import build_public_client
 from ...doctors import build_directory
 from ...rag.model_bundle import MODEL_PATH, ModelBundle
 from ...telemetry import build_recorder
@@ -75,6 +76,10 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         app.state.telemetry.start()
         app.state.doctors = build_directory(settings.doctors_mcp_url, settings.doctors_mcp_key,
                                             limit=settings.doctors_limit, timeout=settings.doctors_timeout)
+        app.state.booking = build_public_client(settings.public_api_url, settings.public_api_key,
+                                                mcp_url=settings.doctors_mcp_url,
+                                                proxy_secret=settings.proxy_forwarding_secret,
+                                                timeout=settings.booking_timeout)
         llm_complete = build_llm_completion(settings)
 
         def promote(bundle: ModelBundle) -> None:
