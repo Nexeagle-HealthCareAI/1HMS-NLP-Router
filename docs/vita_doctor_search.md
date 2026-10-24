@@ -42,6 +42,16 @@ POST /v2/agent/chat          (same API keys and rate limit as /chat)
 | degree | "MS ortho", "MD medicine wala" | `doctor_list` |
 | distance | "paas mein", "near me", "5 km ke andar" | `doctor_list` nearest first; no location → `follow_up` with `clarify.kind = "location"` once |
 
+| hospital | "Sadar Hospital Purnia ke doctor", "AMRI hospital mein cardiologist" | `search_hospitals`, then that hospital's doctors only; two equal matches → `clarify.kind="which_hospital"` |
+| availability | "Is Dr Sharma available Sunday?", "dr sen kal milenge", "kab baithte hain" | `kind=info` with `availability.days` (shift hours from 1HMS), the next working day if needed, and `clarify.kind="book_offer"` (Yes, book → send the id as `select_doctor_id`; No, just checking) |
+
+Filters that combine with any of the above, and refine the last list: "lady doctor" / "mahila doctor"
+(`gender`), "aaj available" (`availableToday`), a place at the end ("near Purnia", "kolkata mein") used as the
+city when no location is shared. "mahila rog" / "women's doctor" still means gynaecology.
+
+1HMS has no bookable time slots for public requests: availability is working days and shift hours, and the
+hospital confirms the exact time (`availability.note`).
+
 Combinations work in one turn ("MD cardiologist near Salt Lake"). Refinements reuse the last search:
 "inme se koi paas wala?", "kam fees wala", "sabse experienced". A bare "doctor chahiye" gets
 `clarify.kind = "ask_kind"` with the five options.

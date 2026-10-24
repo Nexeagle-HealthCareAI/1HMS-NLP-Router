@@ -223,7 +223,8 @@ class DoctorDirectory:
     def search(self, *, specialty_key: str | None = None, query: str | None = None, degree: str | None = None,
                lat: float | None = None, lng: float | None = None, max_distance_km: float | None = None,
                city: str | None = None, hospital_id: str | None = None, sort: str | None = None,
-               limit: int | None = None) -> dict | None:
+               limit: int | None = None, offset: int = 0, only_at_hospital: bool = False,
+               gender: str | None = None, available_today: bool = False) -> dict | None:
         """{"doctors", "total", "specialtyId", "args"}; None when the specialty has no bookable doctors on
         1HMS (or nothing to search by). Raises DoctorLookupError when 1HMS cannot answer.
         `doctors` is exactly the MCP list, in 1HMS order - never edited here (VITA-12)."""
@@ -252,6 +253,14 @@ class DoctorDirectory:
                 args["hospitalId"] = hospital_id
             if sort:
                 args["sort"] = sort
+            if offset:
+                args["offset"] = int(offset)
+            if only_at_hospital and hospital_id:
+                args["onlyAtHospital"] = True
+            if gender:
+                args["gender"] = gender
+            if available_today:
+                args["availableToday"] = True
             if not ({"query", "specialtyIds", "degree", "lat", "hospitalId"} & args.keys()):
                 return None                      # the tool needs one real filter; a city alone is not one
             cache_key = json.dumps(args, sort_keys=True)
@@ -272,6 +281,48 @@ class DoctorDirectory:
         except Exception as exc:
             self._failed("search", exc)
             raise DoctorLookupError(str(exc)) from exc
+
+    def search_hospitals(self, *, query: str | None = None, city: str | None = None, lat: float | None = None,
+                         lng: float | None = None, limit: int = 5) -> list[dict]:
+        """Hospitals with doctors on Doctor Dekho ("Sadar Hospital Purnia"). Raises DoctorLookupError."""
+        if not self.enabled:
+            raise DoctorLookupError("doctor lookups are off")
+        args: dict[str, Any] = {"limit": max(1, min(int(limit), 10))}
+        if query:
+            args["query"] = query
+        if city:
+            args["city"] = city
+        if lat is not None and lng is not None:
+            args.update(lat=lat, lng=lng)
+        cache_key = "h:" + json.dumps(args, sort_keys=True)
+        hit = self._searches.get(cache_key)
+        if hit and self._clock() - hit[0] < SEARCH_TTL_S:
+            self.stats["cacheHits"] += 1
+            return list(hit[1].get("hospitals") or [])
+        self.stats["calls"] += 1
+        try:
+            data = self._call("search_hospitals", args)
+        except Exception as exc:
+            self._failed("search_hospitals", exc)
+            raise DoctorLookupError(str(exc)) from exc
+        with self._lock:
+            self._searches[cache_key] = (self._clock(), data)
+        return list(data.get("hospitals") or [])
+
+    def availability(self, doctor_id: str, *, from_date: str | None = None, days: int = 7) -> dict | None:
+        """{"days": [{"date", "isAvailable", "shifts"}], "nextAvailableDate", "note"}; None when the doctor
+        is not listed. Never cached for long: schedules change. Raises DoctorLookupError."""
+        if not self.enabled:
+            raise DoctorLookupError("doctor lookups are off")
+        args: dict[str, Any] = {"doctorId": doctor_id, "days": max(1, min(int(days), 14))}
+        if from_date:
+            args["fromDate"] = from_date
+        try:
+            data = self._call("get_doctor_availability", args)
+        except Exception as exc:
+            self._failed("availability", exc)
+            raise DoctorLookupError(str(exc)) from exc
+        return data if data.get("found") else None
 
     def names(self, city: str | None = None) -> list[str]:
         """Names of every live doctor (for spotting a name typed without "dr"). [] on any failure."""

@@ -26,6 +26,7 @@ import json
 import logging
 import threading
 import time
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, parse
@@ -154,12 +155,14 @@ class DoctorChat:
 
         pending = st.get("pending")
         which_id = self._which_pick(norm, st)
+        hospital_pick = self._pick_option(norm, st.get("which_hospital"))
         skips_triage = (ask.direct or ask.refine or bool(pending) or which_id is not None or ask.move is not None
-                        or page > 1 or _bare_doctor(norm, ask))
+                        or hospital_pick is not None or page > 1 or _bare_doctor(norm, ask))
         if skips_triage and self._emergency(text):                                       # step 3
-            if session_id and (pending or st.get("which")):
+            if session_id and (pending or st.get("which") or st.get("which_hospital")):
                 st.pop("pending", None)
                 st.pop("which", None)
+                st.pop("which_hospital", None)
                 self._save(session_id, st)
             return self._agent_turn(text, session_id, ask, ctx, emergency_checked=True)
 
@@ -171,6 +174,13 @@ class DoctorChat:
             return self._small_talk(text, session_id, ask.move)
         if which_id is not None:                                                           # "salt lake wali"
             return self._select(text, session_id, which_id, ctx)
+        if hospital_pick is not None and st.get("last"):                                   # "purnia wala"
+            opt = next(o for o in st["which_hospital"] if o["id"] == hospital_pick)
+            st.pop("which_hospital", None)
+            filters = dict(st["last"], hospitalId=opt["id"], hospitalName=opt.get("name"))
+            return self._search_turn(text, session_id, filters, ctx, st)
+        if ask.when:                                                                       # "Dr X available Sunday?"
+            return self._availability(text, session_id, ask, st, ctx)
 
         if pending and not ask.symptomish and not (ask.specialty_key or ask.name_query or ask.degree):   # step 4
             filters = dict(pending)
@@ -252,7 +262,8 @@ class DoctorChat:
         hi = _hinglish(lang)
         base = {"session_id": sid, "turn": ing.turn, "language": lang}
 
-        if filters.get("near") and not ctx["located"] and not filters.get("locationAsked"):
+        place_city = filters.get("place") if not ctx["located"] else None     # "near Purnia" without a location
+        if filters.get("near") and not ctx["located"] and not filters.get("locationAsked") and not place_city:
             st["pending"] = {k: v for k, v in filters.items() if k != "locationAsked"}
             self._save(sid, st)
             q = ("Aap kahan hain? Location share karein, area ya pincode likhein, ya apna city use karein."
@@ -260,12 +271,28 @@ class DoctorChat:
             return self._reply(base, FOLLOW_UP, q, question=q,
                                clarify={"kind": "location", "question": q, "options": LOCATION_OPTIONS})
         st.pop("pending", None)
+        city = place_city or ctx["city"]
 
-        used_city = bool(filters.get("near") and not ctx["located"])
+        t0 = time.perf_counter()
+        try:
+            if filters.get("hospitalQuery") and not filters.get("hospitalId"):           # "Sadar Hospital Purnia"
+                picked = self._resolve_hospital(filters, ctx, st, sid, base, hi)
+                if isinstance(picked, dict) and "kind" in picked:
+                    return picked                                   # asked which hospital, or none found
+        except DoctorLookupError:
+            return self._lookup_failed(sid, st, base, hi, filters)
+
+        used_city = bool(filters.get("near") and not ctx["located"] and not place_city)
         per = self.directory.limit
-        limit = 10 if filters.get("sort") == "fee" else min(10, per * page)   # MCP has no offset yet: fetch, slice
+        fee_sort = filters.get("sort") == "fee"
+        own_hospital = filters.get("hospitalId") or ctx["hospital_id"]
         args = dict(specialty_key=filters.get("specialtyKey"), query=filters.get("query"),
-                    degree=filters.get("degree"), city=ctx["city"], hospital_id=ctx["hospital_id"], limit=limit)
+                    degree=filters.get("degree"), city=None if filters.get("hospitalId") else city,
+                    hospital_id=own_hospital, only_at_hospital=bool(filters.get("hospitalId")),
+                    gender=filters.get("gender"), available_today=bool(filters.get("availableToday")),
+                    # fees are sorted here, over the first 10; everything else pages with 1HMS's offset
+                    limit=min(10, per * page) if fee_sort else per,
+                    offset=0 if fee_sort else per * (page - 1))
         if ctx["located"]:
             near = bool(filters.get("near"))
             args.update(lat=ctx["lat"], lng=ctx["lng"],
@@ -275,26 +302,20 @@ class DoctorChat:
         if filters.get("sort") == "experience":
             args["sort"] = "experience"
 
-        t0 = time.perf_counter()
         fallback_used = False
         try:
             found = self.directory.search(**args)
-            if (found is None or not found["doctors"]) and filters.get("specialtyKey") and not filters.get("query"):
+            if (found is None or (not found["doctors"] and not found["total"])) and filters.get("specialtyKey") \
+                    and not filters.get("query") and not filters.get("hospitalId") and page == 1:
                 if filters["specialtyKey"] != "general-medicine":                   # nobody of that specialty
                     gp = self.directory.search(**dict(args, specialty_key="general-medicine"))
                     if gp and gp["doctors"]:
                         found, fallback_used = gp, True
         except DoctorLookupError:
-            self._save(sid, st)
-            msg = ("Abhi doctors load nahi ho paaye. Thodi der mein dobara try karein, ya Doctor Dekho directory "
-                   "dekhein." if hi else
-                   "I couldn't load doctors right now. Please try again in a moment, or open the Doctor Dekho directory.")
-            out = self._reply(base, DOCTOR_LIST, msg, degraded=["doctor_lookup"])
-            out["searchFilters"] = _public_filters(filters)
-            return out
+            return self._lookup_failed(sid, st, base, hi, filters)
         ms = round((time.perf_counter() - t0) * 1000, 1)
 
-        if found is None and not (filters.get("specialtyKey") or filters.get("query") or filters.get("degree")):
+        if found is None and not any(filters.get(k) for k in ("specialtyKey", "query", "degree", "hospitalId", "gender")):
             st["pending"] = {k: v for k, v in filters.items() if k != "locationAsked"}   # nothing to search by yet
             self._save(sid, st)
             q = ("Paas ke doctor dhoondhne ke liye location share karein, ya batayein kis tarah ka doctor chahiye."
@@ -303,17 +324,18 @@ class DoctorChat:
                                clarify={"kind": "location", "question": q, "options": LOCATION_OPTIONS})
 
         items = list(found["doctors"]) if found else []
-        if filters.get("sort") == "fee":
-            items = sorted(items, key=_fee)                    # stable: equal fees keep 1HMS order
         total = found["total"] if found else 0
-        if page > 1 and len(items) <= per * (page - 1):                        # nothing left to show
+        if fee_sort:
+            items = sorted(items, key=_fee)[per * (page - 1): per * page]     # stable: equal fees keep 1HMS order
+        if page > 1 and not items:                                            # nothing left to show
             st["page"] = page - 1
             self._save(sid, st)
             msg = ("Is list mein aur doctor nahi hain. Doctor Dekho par saare doctor dekh sakte hain, ya filter badlein."
                    if hi else "There are no more doctors in this list. You can browse all doctors on Doctor Dekho, "
                               "or change the filters.")
             return self._reply(base, DOCTOR_LIST, msg, clarify={"kind": "no_more", "question": msg, "options": []})
-        items = items[per * (page - 1): per * page]
+        items = items[:per]
+        filters = dict(filters, city=city) if place_city else filters
         modes = list(filters.get("modes") or [])
         block = self._block(items, total, modes, filters, ctx, specialty_id=found["specialtyId"] if found else None,
                             specialist=_spec_name(filters.get("specialtyKey")) if not fallback_used else FALLBACK_SPECIALIST,
@@ -344,6 +366,110 @@ class DoctorChat:
         out = self._reply(base, DOCTOR_LIST, msg, question=clarify["question"] if clarify else None, clarify=clarify)
         out["doctors"] = block
         return out
+
+    def _availability(self, text, session_id, ask: DoctorAsk, st_in, ctx) -> dict:
+        """ "Is Dr Sharma available Sunday?" -> that day's shifts, or the next working day, from 1HMS. Answers the
+        question without pushing a booking; offers it (vision: "Shall I book it?" and accept "no, just checking")."""
+        ing, st, base, hi = self._ingest(text, session_id)
+        doctor = None
+        try:
+            if ask.name_query:
+                found = self.directory.search(query=ask.name_query, city=ctx["city"], limit=1)
+                doctor = found["doctors"][0] if found and found["doctors"] else None
+            else:
+                sel = (st.get("selected") or {}).get("doctorId")
+                doctor = (st.get("shown") or {}).get(sel) if sel else None
+            if doctor is None:
+                self._save(ing.session_id, st)
+                who = f"'{ask.name_query}'" if ask.name_query else ("kaun se doctor" if hi else "which doctor")
+                msg = (f"{who} naam ke doctor nahi mile. Doctor ka naam batayein." if hi and ask.name_query else
+                       "Kaun se doctor ke baare mein pooch rahe hain? Naam batayein." if hi else
+                       f"I couldn't find a doctor named {who}. Please tell me the doctor's name." if ask.name_query else
+                       "Which doctor do you mean? Please tell me the name.")
+                return self._reply(base, FOLLOW_UP, msg, question=msg)
+            target, label = _target_date(ask.when)
+            sched = self.directory.availability(doctor["doctorId"], from_date=target, days=7 if ask.when == "next" else 1)
+            nxt = None
+            if sched and ask.when != "next" and not any(d["isAvailable"] for d in sched.get("days") or []):
+                after = (date.fromisoformat(target) + timedelta(days=1)).isoformat()
+                later = self.directory.availability(doctor["doctorId"], from_date=after, days=7)
+                nxt = (later or {}).get("nextAvailableDate")
+        except DoctorLookupError:
+            return self._lookup_failed(ing.session_id, st, base, hi, {"query": ask.name_query})
+        self._remember(st, [doctor])
+        self._save(ing.session_id, st)
+        name = doctor.get("name") or "The doctor"
+        if not sched:
+            msg = (f"{name} ab Doctor Dekho par available nahi hain." if hi else f"{name} is no longer listed on Doctor Dekho.")
+            return self._reply(base, INFO, msg)
+        day = next((d for d in sched.get("days") or [] if d["isAvailable"]), None) if ask.when == "next" else \
+            (sched.get("days") or [None])[0]
+        if day and day.get("isAvailable"):
+            hours = ", ".join(f"{sh.get('name') or ''} {sh.get('start')}-{sh.get('end')}".strip()
+                              for sh in day.get("shifts") or [] if sh.get("start"))
+            when = _day_label(day["date"], hi)
+            msg = (f"Haan, {name} {when} baithte hain" + (f" ({hours})" if hours else "") +
+                   ". Sahi samay hospital confirm karega. Kya main appointment book karoon?" if hi else
+                   f"Yes, {name} works on {when}" + (f" ({hours})" if hours else "") +
+                   ". The hospital confirms the exact time. Shall I book an appointment?")
+        else:
+            when = _day_label(target, hi) if ask.when != "next" else ("agle 7 din" if hi else "the next 7 days")
+            nxt_txt = _day_label(nxt, hi) if nxt else None
+            msg = (f"{name} {when} available nahi hain." + (f" Agla din: {nxt_txt}." if nxt_txt else "") if hi else
+                   f"{name} is not available on {when}." + (f" Next working day: {nxt_txt}." if nxt_txt else ""))
+            msg += " Kya main appointment book karoon?" if hi else " Shall I book an appointment?"
+        out = self._reply(base, INFO, msg, question=msg, clarify={"kind": "book_offer", "question": msg, "options": [
+            {"id": doctor["doctorId"], "label": "Haan, book karein" if hi else "Yes, book"},
+            {"id": "no", "label": "Nahi, bas pooch raha tha" if hi else "No, just checking"}]})
+        out["doctor"] = doctor
+        out["availability"] = {"doctorId": doctor["doctorId"], "days": sched.get("days"),
+                               "nextAvailableDate": nxt or sched.get("nextAvailableDate"), "note": sched.get("note")}
+        return out
+
+    def _lookup_failed(self, sid, st, base, hi, filters) -> dict:
+        self._save(sid, st)
+        msg = ("Abhi doctors load nahi ho paaye. Thodi der mein dobara try karein, ya Doctor Dekho directory "
+               "dekhein." if hi else
+               "I couldn't load doctors right now. Please try again in a moment, or open the Doctor Dekho directory.")
+        out = self._reply(base, DOCTOR_LIST, msg, degraded=["doctor_lookup"])
+        out["searchFilters"] = _public_filters(filters)
+        return out
+
+    def _resolve_hospital(self, filters: dict, ctx, st, sid, base, hi):
+        """filters.hospitalQuery -> filters.hospitalId / hospitalName (in place), or a reply: none found, or
+        "which one?" when two hospitals match about equally (e.g. two "Sadar Hospital"s, different cities)."""
+        query = filters["hospitalQuery"]
+        hospitals = self.directory.search_hospitals(query=query, city=filters.get("place"),
+                                                    lat=ctx["lat"], lng=ctx["lng"], limit=4)
+        if not hospitals and filters.get("place"):
+            hospitals = self.directory.search_hospitals(query=query, lat=ctx["lat"], lng=ctx["lng"], limit=4)
+        if not hospitals:
+            st["last"] = {k: v for k, v in filters.items() if k != "locationAsked"}
+            st["confused"] = int(st.get("confused") or 0)
+            msg = (f"'{query}' Doctor Dekho par nahi mila. Kya kisi doctor ya specialty se dhoondhein?" if hi else
+                   f"I couldn't find '{query}' on Doctor Dekho. Shall I search by a doctor or specialty instead?")
+            clarify = self._confused(st, {"kind": "no_match", "question": msg, "options": list(ASK_KIND_OPTIONS[1:3])})
+            self._save(sid, st)
+            out = self._reply(base, DOCTOR_LIST, msg, clarify=clarify)
+            out["doctors"] = {"mode": ["hospital"], "filters": {"hospital": query}, "items": [], "total": 0,
+                              "fallbackUsed": False, "source": SOURCE, "doctors": [], "specialist": None,
+                              "specialtyId": None, "lookupMs": None, "page": 1, "hasMore": False}
+            return out
+        scores = [h.get("nameMatchScore") or 0 for h in hospitals]
+        close = [h for h, sc in zip(hospitals, scores) if scores[0] - sc <= 0.05]
+        if len(close) > 1:
+            st["which_hospital"] = [{"id": h["hospitalId"], "name": h.get("name"),
+                                     "label": ", ".join(x for x in (h.get("name"), h.get("city")) if x),
+                                     "keys": sorted(set(preprocess(f"{h.get('name') or ''} {h.get('city') or ''}").split())
+                                                    - {"hospital", "the", "clinic"})} for h in close[:4]]
+            st["last"] = {k: v for k, v in filters.items() if k != "locationAsked"}
+            self._save(sid, st)
+            q = "Kaun sa hospital?" if hi else "Which hospital do you mean?"
+            return self._reply(base, FOLLOW_UP, q, question=q, clarify={
+                "kind": "which_hospital", "question": q,
+                "options": [{"id": o["id"], "label": o["label"]} for o in st["which_hospital"]]})
+        filters["hospitalId"], filters["hospitalName"] = hospitals[0]["hospitalId"], hospitals[0].get("name")
+        return None
 
     # ================================================================== selection
     def _select(self, text, session_id, doctor_id, ctx) -> dict:
@@ -519,6 +645,18 @@ class DoctorChat:
         return out[:4] if len(out) > 1 else None
 
     @staticmethod
+    def _pick_option(norm: str, options: list[dict] | None) -> str | None:
+        """A tapped chip (its label as text) or a typed answer that fits exactly one option."""
+        if not options:
+            return None
+        for o in options:
+            if preprocess(o.get("label") or "") == norm:
+                return o["id"]
+        words = {w for w in norm.split() if len(w) >= 3}
+        hits = [o["id"] for o in options if words & set(o.get("keys") or [])]
+        return hits[0] if len(hits) == 1 else None
+
+    @staticmethod
     def _which_pick(norm: str, st: dict) -> str | None:
         """A typed answer to "which one?" ("salt lake wali", "howrah") that fits exactly one option."""
         options = st.get("which") or []
@@ -555,17 +693,23 @@ class DoctorChat:
         bracket = f" ({spec})" if spec and plain and plain.lower() not in spec.lower() and not fallback_used else ""
         deg = f"{filters['degree']} " if filters.get("degree") else ""
         near = filters.get("near") and not used_city
+        hosp, town = filters.get("hospitalName"), filters.get("city")
+        lady = {"female": ("female ", "mahila "), "male": ("male ", "purush ")}.get(filters.get("gender") or "", ("", ""))
         if hi:
             head = (f"{spec} abhi available nahi hain; ye General Physician pehle dekh sakte hain. "
                     if fallback_used and spec else "")
-            where = " aapke paas" if near else ""
+            where = (f" {hosp} mein" if hosp else f" {town.title()} mein" if town else "") + (" aapke paas" if near else "")
+            where += " (aaj available)" if filters.get("availableToday") else ""
+            deg = lady[1] + deg
             city = " (location nahi mili, aapke city ke doctor dikha rahe hain)" if used_city else ""
             core = (f"'{filters['query']}' naam se ye doctor mile" if filters.get("query")
                     else f"Ye {'aur ' if page > 1 else ''}{deg}{what}doctor{bracket} mile{where}")
             return f"{head}{core}{city}. Kisi ek ko chunne ke liye 'Choose' dabayein."
         head = (f"No {spec} is available right now; a General Physician can see you first. "
                 if fallback_used and spec else "")
-        where = " near you" if near else ""
+        where = (f" at {hosp}" if hosp else f" in {town.title()}" if town else "") + (" near you" if near else "")
+        where += ", available today" if filters.get("availableToday") else ""
+        deg = lady[0] + deg
         city = " (no location shared, so these are in your city)" if used_city else ""
         core = (f"Doctors matching '{filters['query']}'" if filters.get("query")
                 else f"Here {'is' if n == 1 else 'are'} {n} {'more ' if page > 1 else ''}{deg}{what}"
@@ -580,14 +724,19 @@ class DoctorChat:
             msg = (f"'{q}' naam ke koi doctor nahi mile. Kya specialty se dhoondhein?" if hi else
                    f"I couldn't find a doctor named '{q}'. Shall I search by specialty instead?")
             return msg, {"kind": "no_match", "question": msg, "options": ASK_KIND_OPTIONS[1:2]}
-        spec = _spec_name(filters.get("specialtyKey")) or "matching"
-        deg = f" {filters['degree']}" if filters.get("degree") else ""
-        where = " paas mein" if filters.get("near") else ""
-        msg = (f"Abhi{where} koi{deg} {spec} doctor Doctor Dekho par nahi mile. Doosra area ya specialty try karein."
-               if hi else
-               f"No{deg} {spec} doctors are listed on Doctor Dekho{' near you' if filters.get('near') else ''} right "
-               f"now. Try another area or specialty.")
-        return msg, None
+        spec = _spec_name(filters.get("specialtyKey")) or ("matching" if not hi else "")
+        lady = {"female": (" female", " mahila"), "male": (" male", " purush")}.get(filters.get("gender") or "", ("", ""))
+        deg = (lady[1] if hi else lady[0]) + (f" {filters['degree']}" if filters.get("degree") else "")
+        hosp, town = filters.get("hospitalName"), filters.get("city")
+        if hi:
+            where = f" {hosp} mein" if hosp else f" {town.title()} mein" if town else " paas mein" if filters.get("near") else ""
+            today = " aaj" if filters.get("availableToday") else ""
+            msg = f"Abhi{where}{today} koi{deg} {spec} doctor Doctor Dekho par nahi mile. Doosra area ya filter try karein."
+        else:
+            where = f" at {hosp}" if hosp else f" in {town.title()}" if town else " near you" if filters.get("near") else ""
+            today = " available today" if filters.get("availableToday") else ""
+            msg = f"No{deg} {spec} doctors{today} are listed on Doctor Dekho{where} right now. Try another area or filter."
+        return " ".join(msg.split()), None
 
 
 # ---------------------------------------------------------------------------------------------- pure helpers
@@ -602,13 +751,43 @@ def _bare_doctor(norm: str, ask: DoctorAsk) -> bool:
     return not ask.modes and not ask.refine and any(w in DOCTOR_WORDS for w in norm.split())
 
 
+def _today_ist() -> date:
+    return (datetime.now(timezone.utc) + timedelta(minutes=330)).date()
+
+
+def _target_date(when: str | None) -> tuple[str, str]:
+    """"+1" -> tomorrow, "dow:6" -> the coming Sunday (today if it is Sunday), "next" -> today (IST)."""
+    today = _today_ist()
+    if when and when.startswith("+"):
+        d = today + timedelta(days=int(when[1:]))
+    elif when and when.startswith("dow:"):
+        d = today + timedelta(days=(int(when[4:]) - today.weekday()) % 7)
+    else:
+        d = today
+    return d.isoformat(), _day_label(d.isoformat())
+
+
+def _day_label(iso: str | None, hi: bool = False) -> str:
+    if not iso:
+        return ""
+    d = date.fromisoformat(iso)
+    today = _today_ist()
+    if d == today:
+        return "aaj" if hi else "today"
+    if d == today + timedelta(days=1):
+        return "kal" if hi else "tomorrow"
+    return d.strftime("%a %d %b")
+
+
 def _spec_name(key: str | None) -> str | None:
     return SPECIALTY_NAMES.get(key) if key else None
 
 
 def _filters(ask: DoctorAsk) -> dict:
     return {"specialtyKey": ask.specialty_key, "query": ask.name_query, "degree": ask.degree, "near": ask.near,
-            "radiusKm": ask.radius_km, "sort": ask.sort, "modes": [m for m in ask.modes if m != "symptom"]}
+            "radiusKm": ask.radius_km, "sort": ask.sort, "gender": ask.gender, "availableToday": ask.available_today,
+            "hospitalQuery": ask.hospital_query, "place": ask.place,
+            "modes": [m for m in ask.modes if m != "symptom"]}
 
 
 def _merge(last: dict, ask: DoctorAsk) -> dict:
@@ -624,6 +803,18 @@ def _merge(last: dict, ask: DoctorAsk) -> dict:
     if ask.near:
         f["near"], f["radiusKm"] = True, ask.radius_km or f.get("radiusKm")
         modes.add("distance")
+    if ask.gender:
+        f["gender"] = ask.gender
+        modes.add("gender")
+    if ask.available_today:
+        f["availableToday"] = True
+        modes.add("today")
+    if ask.place:
+        f["place"] = ask.place
+        modes.add("place")
+    if ask.hospital_query:
+        f["hospitalQuery"], f["hospitalId"], f["hospitalName"] = ask.hospital_query, None, None
+        modes.add("hospital")
     if ask.sort:
         f["sort"] = ask.sort
     f["modes"] = sorted(modes - {"symptom"}) or sorted(modes)
@@ -635,17 +826,21 @@ def _public_filters(filters: dict, ctx: dict | None = None, specialty_id: str | 
     out: dict[str, Any] = {}
     if specialty_id:
         out["specialtyId"] = specialty_id
-    for k in ("query", "degree", "sort"):
+    for k in ("query", "degree", "sort", "gender"):
         if filters.get(k):
             out[k] = filters[k]
+    if filters.get("availableToday"):
+        out["availableToday"] = True
+    if filters.get("hospitalId"):
+        out["hospital"] = {"hospitalId": filters["hospitalId"], "name": filters.get("hospitalName")}
     if filters.get("near"):
         out["near"] = True
         out["radiusKm"] = filters.get("radiusKm") or NEARBY_DEFAULT_KM
     if ctx:
         if ctx.get("located"):
             out["location"] = "shared"
-        elif ctx.get("city"):
-            out["city"] = ctx["city"]
+        elif filters.get("city") or ctx.get("city"):
+            out["city"] = filters.get("city") or ctx["city"]
         if ctx.get("hospital_id"):
             out["hospitalId"] = ctx["hospital_id"]
     return out
