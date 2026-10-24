@@ -29,11 +29,14 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from .. import voice as V
+from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's own wording, mapped to voice keys
 from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, parse
 from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
                        specialty_key)
 from ..severity import EMERGENCY, emergency_check
-from ..textnorm import preprocess
+from ..textnorm import intent_text, preprocess
+from ..voice import Voice
 
 log = logging.getLogger("hms_router.doctor_chat")
 
@@ -55,27 +58,10 @@ SPECIALTY_NAMES = {
     "cardiothoracic-surgery": "Cardiothoracic Surgeon", "emergency-medicine": "Emergency Medicine",
     "sports-medicine": "Sports Medicine",
 }
-# Plain words first, the specialty in brackets (vision: "bone doctor (orthopaedics)", not just "orthopaedics")
-PLAIN = {  # key: (English, Hinglish)
-    "cardiology": ("heart", "dil ke"), "dermatology": ("skin", "skin ke"), "orthopaedics": ("bone", "haddi ke"),
-    "gynaecology": ("women's health", "mahila rog"), "dentistry": ("teeth", "daant ke"),
-    "ent": ("ear, nose and throat", "kaan-naak-gala ke"), "ophthalmology": ("eye", "aankh ke"),
-    "neurology": ("brain and nerve", "dimag aur nas ke"), "neurosurgery": ("brain surgery", "dimag ki surgery ke"),
-    "psychiatry": ("mental health", "mann ke"), "urology": ("urinary", "peshab ke"),
-    "gastroenterology": ("stomach", "pet ke"), "endocrinology": ("diabetes and hormone", "sugar aur hormone ke"),
-    "pulmonology": ("chest and lung", "chhati aur phephde ke"), "nephrology": ("kidney", "kidney ke"),
-    "oncology": ("cancer", "cancer ke"), "rheumatology": ("joint pain", "jodon ke dard ke"),
-    "physiotherapy": ("physiotherapy", "physiotherapy ke"), "paediatrics": ("child", "bachchon ke"),
-    "geriatrics": ("elderly care", "buzurgon ke"), "general-medicine": ("general", "general"),
-    "general-surgery": ("general surgery", "general surgery ke"),
-}
-LOCATION_OPTIONS = [{"id": "share_location", "label": "Share my location"},
-                    {"id": "type_area", "label": "Type area or pincode"},
-                    {"id": "use_city", "label": "Use my city"}]
-HUMAN_OPTION = {"id": "human", "label": "Talk to a person"}
-ASK_KIND_OPTIONS = [{"id": "symptom", "label": "Symptom batayein"}, {"id": "specialty", "label": "Specialty chunein"},
-                    {"id": "name", "label": "Doctor ka naam"}, {"id": "degree", "label": "Degree se"},
-                    {"id": "distance", "label": "Paas ke doctor"}]
+# Plain words for specialties, chips and every phrase live in hms_router/voice.py, in three languages.
+PLAIN = {k: v[:2] for k, v in V.PLAIN.items()}     # (English, Hinglish), kept for older callers
+_EN = Voice("english")
+LOCATION_OPTIONS, HUMAN_OPTION, ASK_KIND_OPTIONS = V.location_options(_EN), V.human_option(_EN), V.ask_kind_options(_EN)
 
 _vocab_lock = threading.Lock()
 _vocab = None
@@ -92,12 +78,16 @@ def medical_terms(text: str) -> list[str]:
     return _vocab.terms_in(text)
 
 
+_QUESTION_KEYS = {text: key for key, text in _AGENT_QUESTIONS.items()}
+
+
 class SelectionError(ValueError):
     """select_doctor_id was not shown in this session -> 422."""
 
 
-def _hinglish(lang: str | None) -> bool:
-    return lang in ("hinglish", "hindi")
+def _hinglish(lang: str | None) -> Voice:
+    """The conversation's voice (truthy for Hinglish and Hindi)."""
+    return Voice(lang)
 
 
 def _fee(d: dict) -> float:
@@ -142,16 +132,20 @@ class DoctorChat:
     # ================================================================== entry
     def handle(self, text: str, session_id: str | None, *, city: str | None = None, lat: float | None = None,
                lng: float | None = None, hospital_id: str | None = None,
-               select_doctor_id: str | None = None, page: int = 1, new_search: bool = False) -> dict:
+               select_doctor_id: str | None = None, page: int = 1, new_search: bool = False,
+               ui_language: str | None = None) -> dict:
         """new_search: the screen removed a filter chip and re-sent the remaining filters as text; search
         with exactly those, never merged into the last search."""
         ctx = {"city": city, "lat": lat, "lng": lng, "hospital_id": hospital_id,
                "located": lat is not None and lng is not None}
+        self._hint = ui_language
         if select_doctor_id:
             return self._select(text, session_id, select_doctor_id, ctx)
 
+        if self.agent.pipeline.detector.detect(text).language == "bangla":
+            return self._bangla(text, session_id)
         st = self.load(session_id)
-        norm = preprocess(text)
+        norm = intent_text(text)
         names = self.directory.names(city) if _wants_names(norm) else None
         ask = parse(text, names=names, medical_terms=self.terms)
 
@@ -217,17 +211,36 @@ class DoctorChat:
 
     # ================================================================== symptom path (agent)
     def _agent_turn(self, text, session_id, ask: DoctorAsk, ctx, emergency_checked=False) -> dict:
-        reply = self.agent.handle(text, session_id)
+        reply = self.agent.handle(text, session_id, language_hint=getattr(self, "_hint", None))
         out = reply.to_dict()
+        voice = Voice(out.get("language"))
         card = out.get("card") or {}
-        if out.get("kind") != "recommendation" or card.get("low_confidence"):
-            return out                                         # follow-ups and emergencies never carry doctors
+        state = out.get("state") or {}
+        if out.get("kind") == "follow_up":                     # the next triage question, said like a person
+            key = _QUESTION_KEYS.get(out.get("question") or out.get("message") or "")
+            q = V.triage_question(voice, key, list(state.get("symptoms") or []), first=key == "more")
+            if q:
+                out["message"] = out["question"] = q
+            return out
+        if out.get("kind") == "emergency":                     # number first, in the patient's language
+            signs = [s for o in card.get("outputs") or [] for s in o.get("matched_symptoms") or []] \
+                or list(card.get("emergency_reasons") or [])
+            out["message"] = V.emergency(voice, signs)
+            return out
+        if out.get("kind") != "recommendation":
+            return out
         outputs = card.get("outputs") or []
         primary = next((o for o in outputs if o.get("role") == "PRIMARY"), None)
-        if primary is None:
-            return out
+        said = dict(symptoms=list(state.get("symptoms") or []), duration=state.get("duration"),
+                    severity=card.get("severity_level"), low_confidence=bool(card.get("low_confidence")))
+        if card.get("low_confidence") or primary is None:
+            out["message"] = V.recommendation(voice, **said, specialty_key=None, specialist=None, doctors=0,
+                                              fallback_used=False)
+            return out                                         # unsure: no doctor list
         fallbacks = [o["specialist"] for o in outputs if o.get("role") == "SECONDARY" and o.get("specialist")]
         fallbacks.append(FALLBACK_SPECIALIST)
+        out["message"] = V.recommendation(voice, **said, specialty_key=specialty_key(primary["specialist"]),
+                                          specialist=primary["specialist"], doctors=0, fallback_used=False)
         t0 = time.perf_counter()
         try:
             found = self.directory.for_specialist(
@@ -245,6 +258,9 @@ class DoctorChat:
         out["doctors"] = self._block(found["doctors"], found["total"], modes, filters, ctx,
                                      specialty_id=found["specialtyId"], specialist=found["specialist"],
                                      fallback_used=found["fallbackUsed"], ms=ms)
+        out["message"] = V.recommendation(voice, **said, specialty_key=specialty_key(primary["specialist"]),
+                                          specialist=primary["specialist"], doctors=len(found["doctors"]),
+                                          fallback_used=bool(found["fallbackUsed"]))
         sid = out["session_id"]
         st = self.load(sid)
         st["last"] = filters
@@ -254,9 +270,16 @@ class DoctorChat:
         self._save(sid, st)
         return out
 
+    def _bangla(self, text, session_id) -> dict:
+        """Bangla is recognised, not yet understood: say so in Bangla, Hindi and English, with the emergency
+        number, and ask for Hindi or English. The conversation keeps whatever language it had."""
+        ing = self._ingest_only(text, session_id)
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": "bangla"}
+        return self._reply(base, FOLLOW_UP, V.BANGLA_NOTE, question=V.BANGLA_NOTE)
+
     # ================================================================== direct search
     def _search_turn(self, text, session_id, filters: dict, ctx, st: dict, page: int = 1) -> dict:
-        ing = self.agent.pipeline.ingest(text, session_id)
+        ing = self._ingest_only(text, session_id)
         sid, lang = ing.session_id, ing.language.language
         if ing.session_id != session_id:
             st = self.load(sid)
@@ -268,10 +291,11 @@ class DoctorChat:
         if filters.get("near") and not ctx["located"] and not filters.get("locationAsked") and not place_city:
             st["pending"] = {k: v for k, v in filters.items() if k != "locationAsked"}
             self._save(sid, st)
-            q = ("Aap kahan hain? Location share karein, area ya pincode likhein, ya apna city use karein."
-                 if hi else "Where are you? Share your location, type your area or pincode, or use your city.")
+            q = hi("Where are you? Share your location, type your area or pincode, or use your city.",
+                   "Aap kahan hain? Location share karein, area ya pincode likhein, ya apna city use karein.",
+                   "आप कहाँ हैं? अपनी लोकेशन शेयर करें, इलाका या पिनकोड लिखें, या अपना शहर चुनें।")
             return self._reply(base, FOLLOW_UP, q, question=q,
-                               clarify={"kind": "location", "question": q, "options": LOCATION_OPTIONS})
+                               clarify={"kind": "location", "question": q, "options": V.location_options(hi)})
         st.pop("pending", None)
         city = place_city or ctx["city"]
 
@@ -320,10 +344,11 @@ class DoctorChat:
         if found is None and not any(filters.get(k) for k in ("specialtyKey", "query", "degree", "hospitalId", "gender")):
             st["pending"] = {k: v for k, v in filters.items() if k != "locationAsked"}   # nothing to search by yet
             self._save(sid, st)
-            q = ("Paas ke doctor dhoondhne ke liye location share karein, ya batayein kis tarah ka doctor chahiye."
-                 if hi else "To find doctors near you, share your location, or tell me what kind of doctor you need.")
+            q = hi("To find doctors near you, share your location, or tell me what kind of doctor you need.",
+                   "Paas ke doctor dhoondhne ke liye location share karein, ya batayein kis tarah ka doctor chahiye.",
+                   "पास के डॉक्टर ढूँढने के लिए अपनी लोकेशन शेयर करें, या बताएँ कि किस तरह का डॉक्टर चाहिए।")
             return self._reply(base, FOLLOW_UP, q, question=q,
-                               clarify={"kind": "location", "question": q, "options": LOCATION_OPTIONS})
+                               clarify={"kind": "location", "question": q, "options": V.location_options(hi)})
 
         items = list(found["doctors"]) if found else []
         total = found["total"] if found else 0
@@ -332,9 +357,10 @@ class DoctorChat:
         if page > 1 and not items:                                            # nothing left to show
             st["page"] = page - 1
             self._save(sid, st)
-            msg = ("Is list mein aur doctor nahi hain. Doctor Dekho par saare doctor dekh sakte hain, ya filter badlein."
-                   if hi else "There are no more doctors in this list. You can browse all doctors on Doctor Dekho, "
-                              "or change the filters.")
+            msg = hi("There are no more doctors in this list. You can browse all doctors on Doctor Dekho, "
+                     "or change the filters.",
+                     "Is list mein aur doctor nahi hain. Doctor Dekho par saare doctor dekh sakte hain, ya filter badlein.",
+                     "इस लिस्ट में और डॉक्टर नहीं हैं। Doctor Dekho पर सभी डॉक्टर देख सकते हैं, या फ़िल्टर बदलें।")
             return self._reply(base, DOCTOR_LIST, msg, clarify={"kind": "no_more", "question": msg, "options": []})
         items = items[:per]
         filters = dict(filters, city=city) if place_city else filters
@@ -352,7 +378,7 @@ class DoctorChat:
 
         if not items:
             msg, clarify = self._empty_message(filters, hi)
-            clarify = self._confused(st, clarify)
+            clarify = self._confused(st, clarify, hi)
         else:
             st["confused"] = 0
             msg = self._list_message(items, total, filters, hi, used_city=used_city and bool(ctx["city"]),
@@ -360,7 +386,8 @@ class DoctorChat:
             which = self._which_options(items, filters)
             if which:                                   # several doctors share the name: tell them apart
                 st["which"] = which
-                q = ("Aap kaun se doctor ki baat kar rahe hain?" if hi else "Which one do you mean?")
+                q = hi("Which one do you mean?", "Aap kaun se doctor ki baat kar rahe hain?",
+                       "आप किस डॉक्टर की बात कर रहे हैं?")
                 clarify = {"kind": "which_doctor", "question": q,
                            "options": [{"id": o["id"], "label": o["label"]} for o in which]}
                 msg = msg + " " + q
@@ -383,11 +410,13 @@ class DoctorChat:
                 doctor = (st.get("shown") or {}).get(sel) if sel else None
             if doctor is None:
                 self._save(ing.session_id, st)
-                who = f"'{ask.name_query}'" if ask.name_query else ("kaun se doctor" if hi else "which doctor")
-                msg = (f"{who} naam ke doctor nahi mile. Doctor ka naam batayein." if hi and ask.name_query else
-                       "Kaun se doctor ke baare mein pooch rahe hain? Naam batayein." if hi else
-                       f"I couldn't find a doctor named {who}. Please tell me the doctor's name." if ask.name_query else
-                       "Which doctor do you mean? Please tell me the name.")
+                who = f"'{ask.name_query}'"
+                msg = (hi(f"I couldn't find a doctor named {who}. Please tell me the doctor's name.",
+                          f"{who} naam ke doctor nahi mile. Doctor ka naam batayein.",
+                          f"{who} नाम के डॉक्टर नहीं मिले। डॉक्टर का नाम बताएँ।") if ask.name_query else
+                       hi("Which doctor do you mean? Please tell me the name.",
+                          "Kaun se doctor ke baare mein pooch rahe hain? Naam batayein.",
+                          "आप किस डॉक्टर के बारे में पूछ रहे हैं? नाम बताएँ।"))
                 return self._reply(base, FOLLOW_UP, msg, question=msg)
             target, label = _target_date(ask.when)
             sched = self.directory.availability(doctor["doctorId"], from_date=target, days=7 if ask.when == "next" else 1)
@@ -402,7 +431,8 @@ class DoctorChat:
         self._save(ing.session_id, st)
         name = doctor.get("name") or "The doctor"
         if not sched:
-            msg = (f"{name} ab Doctor Dekho par available nahi hain." if hi else f"{name} is no longer listed on Doctor Dekho.")
+            msg = hi(f"{name} is no longer listed on Doctor Dekho.", f"{name} ab Doctor Dekho par available nahi hain.",
+                     f"{name} अब Doctor Dekho पर उपलब्ध नहीं हैं।")
             return self._reply(base, INFO, msg)
         day = next((d for d in sched.get("days") or [] if d["isAvailable"]), None) if ask.when == "next" else \
             (sched.get("days") or [None])[0]
@@ -410,19 +440,20 @@ class DoctorChat:
             hours = ", ".join(f"{sh.get('name') or ''} {sh.get('start')}-{sh.get('end')}".strip()
                               for sh in day.get("shifts") or [] if sh.get("start"))
             when = _day_label(day["date"], hi)
-            msg = (f"Haan, {name} {when} baithte hain" + (f" ({hours})" if hours else "") +
-                   ". Sahi samay hospital confirm karega. Kya main appointment book karoon?" if hi else
-                   f"Yes, {name} works on {when}" + (f" ({hours})" if hours else "") +
-                   ". The hospital confirms the exact time. Shall I book an appointment?")
+            h = f" ({hours})" if hours else ""
+            msg = hi(f"Yes, {name} works on {when}{h}. The hospital confirms the exact time. Shall I book an appointment?",
+                     f"Haan, {name} {when} baithte hain{h}. Sahi samay hospital confirm karega. Kya main appointment book karoon?",
+                     f"हाँ, {name} {when} बैठते हैं{h}। सही समय अस्पताल कन्फ़र्म करेगा। क्या मैं अपॉइंटमेंट बुक करूँ?")
         else:
-            when = _day_label(target, hi) if ask.when != "next" else ("agle 7 din" if hi else "the next 7 days")
+            when = _day_label(target, hi) if ask.when != "next" else hi("the next 7 days", "agle 7 din", "अगले 7 दिन")
             nxt_txt = _day_label(nxt, hi) if nxt else None
-            msg = (f"{name} {when} available nahi hain." + (f" Agla din: {nxt_txt}." if nxt_txt else "") if hi else
-                   f"{name} is not available on {when}." + (f" Next working day: {nxt_txt}." if nxt_txt else ""))
-            msg += " Kya main appointment book karoon?" if hi else " Shall I book an appointment?"
+            msg = hi(f"{name} is not available on {when}." + (f" Next working day: {nxt_txt}." if nxt_txt else ""),
+                     f"{name} {when} available nahi hain." + (f" Agla din: {nxt_txt}." if nxt_txt else ""),
+                     f"{name} {when} उपलब्ध नहीं हैं।" + (f" अगला दिन: {nxt_txt}।" if nxt_txt else ""))
+            msg += hi(" Shall I book an appointment?", " Kya main appointment book karoon?", " क्या मैं अपॉइंटमेंट बुक करूँ?")
         out = self._reply(base, INFO, msg, question=msg, clarify={"kind": "book_offer", "question": msg, "options": [
-            {"id": doctor["doctorId"], "label": "Haan, book karein" if hi else "Yes, book"},
-            {"id": "no", "label": "Nahi, bas pooch raha tha" if hi else "No, just checking"}]})
+            {"id": doctor["doctorId"], "label": hi("Yes, book", "Haan, book karein", "हाँ, बुक करें")},
+            {"id": "no", "label": hi("No, just checking", "Nahi, bas pooch raha tha", "नहीं, बस पूछ रहा था")}]})
         out["doctor"] = doctor
         out["availability"] = {"doctorId": doctor["doctorId"], "days": sched.get("days"),
                                "nextAvailableDate": nxt or sched.get("nextAvailableDate"), "note": sched.get("note")}
@@ -430,9 +461,9 @@ class DoctorChat:
 
     def _lookup_failed(self, sid, st, base, hi, filters) -> dict:
         self._save(sid, st)
-        msg = ("Abhi doctors load nahi ho paaye. Thodi der mein dobara try karein, ya Doctor Dekho directory "
-               "dekhein." if hi else
-               "I couldn't load doctors right now. Please try again in a moment, or open the Doctor Dekho directory.")
+        msg = hi("I couldn't load doctors right now. Please try again in a moment, or open the Doctor Dekho directory.",
+                 "Abhi doctors load nahi ho paaye. Thodi der mein dobara try karein, ya Doctor Dekho directory dekhein.",
+                 "अभी डॉक्टरों की जानकारी लोड नहीं हो पाई। थोड़ी देर में फिर कोशिश करें, या Doctor Dekho डायरेक्टरी देखें।")
         out = self._reply(base, DOCTOR_LIST, msg, degraded=["doctor_lookup"])
         out["searchFilters"] = _public_filters(filters)
         return out
@@ -448,9 +479,11 @@ class DoctorChat:
         if not hospitals:
             st["last"] = {k: v for k, v in filters.items() if k != "locationAsked"}
             st["confused"] = int(st.get("confused") or 0)
-            msg = (f"'{query}' Doctor Dekho par nahi mila. Kya kisi doctor ya specialty se dhoondhein?" if hi else
-                   f"I couldn't find '{query}' on Doctor Dekho. Shall I search by a doctor or specialty instead?")
-            clarify = self._confused(st, {"kind": "no_match", "question": msg, "options": list(ASK_KIND_OPTIONS[1:3])})
+            msg = hi(f"I couldn't find '{query}' on Doctor Dekho. Shall I search by a doctor or specialty instead?",
+                     f"'{query}' Doctor Dekho par nahi mila. Kya kisi doctor ya specialty se dhoondhein?",
+                     f"'{query}' Doctor Dekho पर नहीं मिला। क्या किसी डॉक्टर या स्पेशलिटी से ढूँढें?")
+            clarify = self._confused(st, {"kind": "no_match", "question": msg,
+                                          "options": list(V.ask_kind_options(hi)[1:3])}, hi)
             self._save(sid, st)
             out = self._reply(base, DOCTOR_LIST, msg, clarify=clarify)
             out["doctors"] = {"mode": ["hospital"], "filters": {"hospital": query}, "items": [], "total": 0,
@@ -466,7 +499,7 @@ class DoctorChat:
                                                     - {"hospital", "the", "clinic"})} for h in close[:4]]
             st["last"] = {k: v for k, v in filters.items() if k != "locationAsked"}
             self._save(sid, st)
-            q = "Kaun sa hospital?" if hi else "Which hospital do you mean?"
+            q = hi("Which hospital do you mean?", "Kaun sa hospital?", "आप कौन-से अस्पताल की बात कर रहे हैं?")
             return self._reply(base, FOLLOW_UP, q, question=q, clarify={
                 "kind": "which_hospital", "question": q,
                 "options": [{"id": o["id"], "label": o["label"]} for o in st["which_hospital"]]})
@@ -488,8 +521,9 @@ class DoctorChat:
         try:
             doctor = self.directory.get_doctor(doctor_id)
             if doctor is None:
-                msg = ("Ye doctor ab Doctor Dekho par available nahi hain. Kripya list se koi aur doctor chunein."
-                       if hi else "This doctor is no longer available on Doctor Dekho. Please choose another one.")
+                msg = hi("This doctor is no longer available on Doctor Dekho. Please choose another one.",
+                         "Ye doctor ab Doctor Dekho par available nahi hain. Kripya list se koi aur doctor chunein.",
+                         "यह डॉक्टर अब Doctor Dekho पर उपलब्ध नहीं हैं। कृपया लिस्ट से कोई और डॉक्टर चुनें।")
                 shown.pop(doctor_id, None)
                 self._save(session_id, st)
                 return self._reply(base, DOCTOR_LIST, msg)
@@ -500,8 +534,9 @@ class DoctorChat:
         name = doctor.get("name") or "the doctor"
         hosp = (doctor.get("hospital") or {}).get("name")
         where = f" ({hosp})" if hosp else ""
-        msg = (f"{name}{where} chune gaye. Slot book karne ke liye 'Book a slot' dabayein."
-               if hi else f"You chose {name}{where}. Tap 'Book a slot' to pick a time.")
+        msg = hi(f"You chose {name}{where}. Tap 'Book a slot' to pick a time.",
+                 f"Aapne {name}{where} ko chuna hai. Samay chunne ke liye 'Book a slot' dabayein.",
+                 f"आपने {name}{where} को चुना है। समय चुनने के लिए 'Book a slot' दबाएँ।")
         out = self._reply(base, DOCTOR_SELECTED, msg, degraded=degraded)
         out["doctor"] = doctor
         out["selectedDoctorId"] = doctor_id
@@ -514,8 +549,11 @@ class DoctorChat:
             log.exception("doctor session state not cleared")
 
     # ================================================================== conversation moves
+    def _ingest_only(self, text, session_id):
+        return self.agent.pipeline.ingest(text, session_id, language_hint=getattr(self, "_hint", None))
+
     def _ingest(self, text, session_id):
-        ing = self.agent.pipeline.ingest(text, session_id)
+        ing = self._ingest_only(text, session_id)
         st = self.load(ing.session_id)
         st["language"], st["turn"] = ing.language.language, ing.turn
         base = {"session_id": ing.session_id, "turn": ing.turn, "language": ing.language.language}
@@ -526,8 +564,9 @@ class DoctorChat:
         ing, st, base, hi = self._ingest(text, session_id)
         st["handoff"] = {"reason": reason, "at": int(time.time())}
         self._save(ing.session_id, st)
-        msg = ("Main aapko hamari support team se jod raha hoon. Koi jaldi aapse baat karega." if hi else
-               "I'm passing you to our support team. Someone will reply to you shortly.")
+        msg = hi("I'm passing you to our support team. Someone will reply to you shortly.",
+                 "Main aapko hamari support team se jod raha hoon. Koi jaldi aapse baat karega.",
+                 "मैं आपको हमारी सपोर्ट टीम से जोड़ रहा हूँ। कोई जल्द ही आपसे बात करेगा।")
         out = self._reply(base, HANDOFF, msg)
         out["handoff"] = {"reason": reason}
         return out
@@ -551,7 +590,12 @@ class DoctorChat:
         name = (doctor or {}).get("name")
         hosp = (doctor or {}).get("hospital") or {}
         desk = hosp.get("contact")                     # the hospital front desk, as 1HMS publishes it
-        if hi:
+        if hi.code == "hi":
+            msg = ("मैं डॉक्टरों के निजी नंबर शेयर नहीं कर सकता। "
+                   + (f"मैं {name} के साथ अपॉइंटमेंट बुक कर सकता हूँ" if name else
+                      "मैं आपके लिए अपॉइंटमेंट बुक कर सकता हूँ"))
+            msg += f", या {hosp.get('name')} का फ्रंट डेस्क नंबर: {desk}।" if desk else "।"
+        elif hi:
             msg = ("Main doctors ke personal number share nahi kar sakta. "
                    + (f"Main {name} ke saath appointment book kar sakta hoon" if name else
                       "Main aapke liye appointment book kar sakta hoon"))
@@ -569,24 +613,27 @@ class DoctorChat:
         ing, st, base, hi = self._ingest(text, session_id)
         self._save(ing.session_id, st)
         if move == "greeting":
-            q = ("Namaste! Main Vita hoon. Aapko kis tarah ka doctor chahiye?" if hi else
-                 "Hello! I'm Vita. How can I help you find a doctor?")
+            q = hi("Hello! I'm Vita. How can I help you find a doctor?",
+                   "Namaste! Main Vita hoon. Aapko kis tarah ka doctor chahiye?",
+                   "नमस्ते! मैं Vita हूँ। आपको किस तरह का डॉक्टर चाहिए?")
             return self._reply(base, FOLLOW_UP, q, question=q,
-                               clarify={"kind": "ask_kind", "question": q, "options": ASK_KIND_OPTIONS})
-        msg = ("Koi baat nahi. Jab bhi doctor chahiye ya koi sawaal ho, main yahin hoon." if hi else
-               "No problem. I'm here whenever you need a doctor or have a question.")
+                               clarify={"kind": "ask_kind", "question": q, "options": V.ask_kind_options(hi)})
+        msg = hi("No problem. I'm here whenever you need a doctor or have a question.",
+                 "Koi baat nahi. Jab bhi doctor chahiye ya koi sawaal ho, main yahin hoon.",
+                 "कोई बात नहीं। जब भी डॉक्टर चाहिए या कोई सवाल हो, मैं यहीं हूँ।")
         return self._reply(base, INFO, msg)
 
     # ================================================================== helpers
     def _ask_kind(self, text, session_id, st) -> dict:
-        ing = self.agent.pipeline.ingest(text, session_id)
+        ing = self._ingest_only(text, session_id)
         hi = _hinglish(ing.language.language)
-        q = ("Kis tarah ka doctor chahiye? Symptom batayein, specialty, doctor ka naam, degree, ya paas ke doctor."
-             if hi else "What kind of doctor do you need? Tell me your symptoms, a specialty, a doctor's name, a "
-                        "degree, or ask for doctors near you.")
+        q = hi("What kind of doctor do you need? Tell me your symptoms, a specialty, a doctor's name, a degree, "
+               "or ask for doctors near you.",
+               "Kis tarah ka doctor chahiye? Symptom batayein, specialty, doctor ka naam, degree, ya paas ke doctor.",
+               "किस तरह का डॉक्टर चाहिए? लक्षण बताएँ, स्पेशलिटी, डॉक्टर का नाम, डिग्री, या पास के डॉक्टर।")
         st = self.load(ing.session_id)
         st["language"], st["turn"] = ing.language.language, ing.turn
-        clarify = self._confused(st, {"kind": "ask_kind", "question": q, "options": list(ASK_KIND_OPTIONS)})
+        clarify = self._confused(st, {"kind": "ask_kind", "question": q, "options": V.ask_kind_options(hi)}, hi)
         self._save(ing.session_id, st)
         return self._reply({"session_id": ing.session_id, "turn": ing.turn, "language": ing.language.language},
                            FOLLOW_UP, q, question=q, clarify=clarify)
@@ -677,26 +724,40 @@ class DoctorChat:
             return False
 
     @staticmethod
-    def _confused(st: dict, clarify: dict | None) -> dict | None:
+    def _confused(st: dict, clarify: dict | None, voice: Voice | None = None) -> dict | None:
         """Two dead ends in a row -> also offer a person (vision: repeated confusion hands off)."""
         st["confused"] = int(st.get("confused") or 0) + 1
         if st["confused"] < 2:
             return clarify
         clarify = dict(clarify or {"kind": "no_match", "question": None, "options": []})
-        clarify["options"] = [*(clarify.get("options") or []), HUMAN_OPTION]
+        clarify["options"] = [*(clarify.get("options") or []), V.human_option(voice or _EN)]
         return clarify
 
     @staticmethod
     def _list_message(items, total, filters, hi, *, used_city, fallback_used, page=1) -> str:
         n = len(items)
         spec = _spec_name(filters.get("specialtyKey"))
-        plain = PLAIN.get(filters.get("specialtyKey") or "", (None, None))[1 if hi else 0]
+        plain = V.plain(hi, filters.get("specialtyKey")) if isinstance(hi, Voice) else \
+            PLAIN.get(filters.get("specialtyKey") or "", (None, None))[1 if hi else 0]
         what = (f"{plain} " if plain else f"{spec} ") if spec and not fallback_used else ""
         bracket = f" ({spec})" if spec and plain and plain.lower() not in spec.lower() and not fallback_used else ""
         deg = f"{filters['degree']} " if filters.get("degree") else ""
         near = filters.get("near") and not used_city
         hosp, town = filters.get("hospitalName"), filters.get("city")
         lady = {"female": ("female ", "mahila "), "male": ("male ", "purush ")}.get(filters.get("gender") or "", ("", ""))
+        sort = filters.get("sort")
+        srt = {"fee": (", lowest fee first", " (sabse kam fees pehle)", " (सबसे कम फ़ीस पहले)"),
+               "experience": (", most experienced first", " (sabse anubhavi pehle)", " (सबसे अनुभवी पहले)")
+               }.get(sort or "", ("", "", ""))
+        if isinstance(hi, Voice) and hi.code == "hi":
+            head = (f"{spec} अभी उपलब्ध नहीं हैं; ये जनरल फ़िज़िशियन पहले देख सकते हैं। " if fallback_used and spec else "")
+            where = (f" {hosp} में" if hosp else f" {town.title()} में" if town else "") + (" आपके पास" if near else "")
+            where += " (आज उपलब्ध)" if filters.get("availableToday") else ""
+            deg = {"female": "महिला ", "male": "पुरुष "}.get(filters.get("gender") or "", "") + deg
+            city = " (लोकेशन नहीं मिली, आपके शहर के डॉक्टर दिखा रहे हैं)" if used_city else ""
+            core = (f"'{filters['query']}' नाम से ये डॉक्टर मिले" if filters.get("query")
+                    else f"ये {'और ' if page > 1 else ''}{deg}{what}डॉक्टर{bracket} मिले{where}")
+            return f"{head}{core}{srt[2]}{city}। किसी एक को चुनने के लिए 'Choose' दबाएँ।"
         if hi:
             head = (f"{spec} abhi available nahi hain; ye General Physician pehle dekh sakte hain. "
                     if fallback_used and spec else "")
@@ -706,7 +767,7 @@ class DoctorChat:
             city = " (location nahi mili, aapke city ke doctor dikha rahe hain)" if used_city else ""
             core = (f"'{filters['query']}' naam se ye doctor mile" if filters.get("query")
                     else f"Ye {'aur ' if page > 1 else ''}{deg}{what}doctor{bracket} mile{where}")
-            return f"{head}{core}{city}. Kisi ek ko chunne ke liye 'Choose' dabayein."
+            return f"{head}{core}{srt[1]}{city}. Kisi ek ko chunne ke liye 'Choose' dabayein."
         head = (f"No {spec} is available right now; a General Physician can see you first. "
                 if fallback_used and spec else "")
         where = (f" at {hosp}" if hosp else f" in {town.title()}" if town else "") + (" near you" if near else "")
@@ -717,20 +778,28 @@ class DoctorChat:
                 else f"Here {'is' if n == 1 else 'are'} {n} {'more ' if page > 1 else ''}{deg}{what}"
                      f"doctor{'s' if n != 1 else ''}{bracket}{where}")
         more = f" ({total} in all)" if total > n else ""
-        return f"{head}{core}{more}{city}. Tap Choose to pick one."
+        return f"{head}{core}{more}{srt[0]}{city}. Tap Choose to pick one."
 
     @staticmethod
     def _empty_message(filters, hi) -> tuple[str, dict | None]:
+        v = hi if isinstance(hi, Voice) else Voice("hinglish" if hi else "english")
         if filters.get("query"):
             q = filters["query"]
-            msg = (f"'{q}' naam ke koi doctor nahi mile. Kya specialty se dhoondhein?" if hi else
-                   f"I couldn't find a doctor named '{q}'. Shall I search by specialty instead?")
-            return msg, {"kind": "no_match", "question": msg, "options": ASK_KIND_OPTIONS[1:2]}
+            msg = v(f"I couldn't find a doctor named '{q}'. Shall I search by specialty instead?",
+                    f"'{q}' naam ke koi doctor nahi mile. Kya specialty se dhoondhein?",
+                    f"'{q}' नाम के कोई डॉक्टर नहीं मिले। क्या स्पेशलिटी से ढूँढें?")
+            return msg, {"kind": "no_match", "question": msg, "options": V.ask_kind_options(v)[1:2]}
         spec = _spec_name(filters.get("specialtyKey")) or ("matching" if not hi else "")
         lady = {"female": (" female", " mahila"), "male": (" male", " purush")}.get(filters.get("gender") or "", ("", ""))
         deg = (lady[1] if hi else lady[0]) + (f" {filters['degree']}" if filters.get("degree") else "")
         hosp, town = filters.get("hospitalName"), filters.get("city")
-        if hi:
+        if v.code == "hi":
+            where = f" {hosp} में" if hosp else f" {town.title()} में" if town else " पास में" if filters.get("near") else ""
+            today = " आज" if filters.get("availableToday") else ""
+            hdeg = {"female": " महिला", "male": " पुरुष"}.get(filters.get("gender") or "", "") + \
+                (f" {filters['degree']}" if filters.get("degree") else "")
+            msg = f"अभी{where}{today} कोई{hdeg} {spec} डॉक्टर Doctor Dekho पर नहीं मिले। दूसरा इलाका या फ़िल्टर आज़माएँ।"
+        elif hi:
             where = f" {hosp} mein" if hosp else f" {town.title()} mein" if town else " paas mein" if filters.get("near") else ""
             today = " aaj" if filters.get("availableToday") else ""
             msg = f"Abhi{where}{today} koi{deg} {spec} doctor Doctor Dekho par nahi mile. Doosra area ya filter try karein."
@@ -769,15 +838,16 @@ def _target_date(when: str | None) -> tuple[str, str]:
     return d.isoformat(), _day_label(d.isoformat())
 
 
-def _day_label(iso: str | None, hi: bool = False) -> str:
+def _day_label(iso: str | None, hi=False) -> str:
     if not iso:
         return ""
+    v = hi if isinstance(hi, Voice) else Voice("hinglish" if hi else "english")
     d = date.fromisoformat(iso)
     today = _today_ist()
     if d == today:
-        return "aaj" if hi else "today"
+        return V.day_label(v, "today")
     if d == today + timedelta(days=1):
-        return "kal" if hi else "tomorrow"
+        return V.day_label(v, "tomorrow")
     return d.strftime("%a %d %b")
 
 

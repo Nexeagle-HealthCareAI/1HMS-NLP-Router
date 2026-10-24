@@ -1368,8 +1368,8 @@
       }
      ],
      "kind": "recommendation",
-     "language": "english",
-     "message": "Symptom summary: cough (for 3 days)\nSeverity: GREEN MILD - Self-care / OPD\n\nRecommended specialists:\n  1. PULMONOLOGIST          (Primary) -> Respiratory symptoms including cough and breathlessness\n  2. ENT SPECIALIST         (Secondary) -> Ear, nose and throat symptoms\n  3. GENERAL PHYSICIAN      (Alternative) -> Start with a general / tele-consult first\n\nWatch for:\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nTriage support only - not a diagnosis.",
+     "language": "hinglish",
+     "message": "Aapke symptoms: cough (for 3 days)\nGambhirta: GREEN MILD - Self-care / OPD\n\nKin doctors ko dikhayein:\n  1. PULMONOLOGIST          (Pehla option) -> Respiratory symptoms including cough and breathlessness\n  2. ENT SPECIALIST         (Doosra option) -> Ear, nose and throat symptoms\n  3. GENERAL PHYSICIAN      (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": null,
@@ -1399,7 +1399,7 @@
        "cough": 1
       },
       "intensity": "mild",
-      "language": "english",
+      "language": "hinglish",
       "negated_symptoms": [
        "chest pain"
       ],
@@ -1427,7 +1427,7 @@
      "cough": 1
     },
     "intensity": "mild",
-    "language": "english",
+    "language": "hinglish",
     "negated_symptoms": [
      "chest pain"
     ],

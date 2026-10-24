@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Iterable
 
 from .doctors import specialty_key
-from .textnorm import preprocess
+from .textnorm import intent_text, preprocess
 
 # ----------------------------------------------------------------------------- vocabulary
 DOCTOR_WORDS = {"doctor", "doctors", "docter", "daktar", "dactor", "dr", "specialist", "specialists", "sahab", "saab"}
@@ -76,7 +76,8 @@ _NEAR = re.compile(r"\b(near me|nearby|near|nearest|closest|close by|paas|pass m
 _RADIUS = re.compile(r"\b(\d{1,3})\s*(?:km|kms|kilometer|kilometers|kilometre|kilometres)\b")
 
 _REFINE = re.compile(r"\b(inme|inmein|inmese|in mein|in me|unme|unmein|isme|ismein|inhi|inhe|in doctors|in mein se|"
-                     r"inme se|inmein se|un mein se|ye wale|yeh wale|ussi list)\b")
+                     r"inme se|inmein se|un mein se|ye wale|yeh wale|ussi list|among (these|them|those)|of (these|them|those)|"
+                     r"from (these|them|those|this list|the list)|in (this|the) list|out of these)\b")
 _CHEAP = re.compile(r"\b(kam fees|kam fee|sasta|sasti|saste|cheap|cheaper|cheapest|low fee|lowest fee|kam paise|"
                     r"kam charge|less fee|affordable)\b")
 _EXPERIENCED = re.compile(r"\b(zyada experience|jyada experience|experienced|senior|most experienced|"
@@ -99,7 +100,7 @@ _MORE = re.compile(r"\b(show more|more doctors|aur doctor|aur doctors|aur dikhao
                    r"other doctors|next page|aur options|more options|aur koi)\b")
 
 # "lady doctor", "mahila doctor", "female doctor" -> a female doctor (any specialty); "male doctor" likewise
-_GENDER = re.compile(r"\b(lady|ladies|mahila|female|woman|aurat|stree|male|gents|purush|aadmi)\s+(?:(?!ka\b|ke\b|ki\b)[a-z]+\s+)?(doctor|doctors|daktar|dr|"
+_GENDER = re.compile(r"\b(lady|ladies|mahila|female|woman|aurat|stree|male|gents|purush|aadmi)\s+(?:(?!ka\b|ke\b|ki\b|rog\b)[a-z]+\s+)?(doctor|doctors|daktar|dr|"
                      r"specialist|physician|surgeon|dentist|gynae\w*|ortho|derma|\w+logists?|\w+icians?)\b"
                      r"|\b(doctor|daktar)\s+(lady|mahila|female)\b")
 _FEMALE_WORDS = {"lady", "ladies", "mahila", "female", "woman", "aurat", "stree"}
@@ -131,6 +132,7 @@ _NAME_STOP = DOCTOR_WORDS | _LINKS | {
     "bataiye", "dikhao", "dikhaiye", "milna", "mil", "sakta", "sakte", "available", "kaun", "kon", "koi", "acha",
     "accha", "achha", "best", "good", "top", "for", "the", "a", "and", "aur", "ya", "me", "mein", "my", "mera",
     "meri", "please", "plz", "pls", "sir", "madam", "ji", "sahab", "saab", "ne", "bola", "kaha", "list", "show",
+    "among", "these", "those", "them", "this", "from", "of", "out", "any", "one", "only", "just",
     "find", "need", "want", "chahta", "chahti", "hu", "hoon", "appointment", "book", "booking", "today", "aaj",
     "kal", "abhi", "now", "kahan", "kidhar", "wala", "wali", "fees", "fee", "number", "mobile", "phone",
     "contact", "whatsapp", "nambar", "do", "de", "dena", "hospital", "clinic", "aspatal", "haspatal",
@@ -256,7 +258,7 @@ def parse(text: str, *, names: Iterable[str] | None = None,
           medical_terms: Callable[[str], list[str]] | None = None) -> DoctorAsk:
     """names: listed doctors' names (DoctorDirectory.names()), used only for asks without "dr".
     medical_terms: MedicalVocabulary.terms_in, to tell a symptom description from a plain request."""
-    norm = preprocess(text)
+    norm = intent_text(text)          # Hindi script -> the casual Hinglish these rules read
     ask = DoctorAsk()
     consumed: set[str] = set()
 
@@ -345,6 +347,9 @@ def _find_place(norm: str, medical_terms) -> str | None:
     if _HOSPITAL_WORD.search(norm):
         return None
     words = norm.split()
+    lead = _leading_place(words, norm, medical_terms)      # Hindi order: "kolkata mein skin doctor"
+    if lead:
+        return lead
     if len(words) >= 2 and words[-1] in ("mein", "me"):
         tail, cut = words[:-1], None                       # "... kolkata mein"
     elif len(words) >= 2 and any(w in ("near", "in", "at") for w in words[-3:-1]):
@@ -363,6 +368,33 @@ def _find_place(norm: str, medical_terms) -> str | None:
             continue
         return place
     return None
+
+
+_LEAD_PLACE_END = {"mein", "me", "ke"}
+
+
+def _leading_place(words: list[str], norm: str, medical_terms) -> str | None:
+    """'kolkata mein skin doctor', 'purnia ke paas cardiologist', 'salt lake mein lady doctor': a place first,
+    as Hindi puts it. Only in a doctor ask (a doctor or specialist word follows), so 'kamar mein dard' stays a
+    symptom."""
+    if not (set(words) & DOCTOR_WORDS or _SPECIALIST_NOUN.search(norm)):
+        return None
+    for size in (1, 2):
+        if len(words) <= size + 1 or words[size] not in _LEAD_PLACE_END:
+            continue
+        cand = words[:size]
+        if any(len(w) < 4 for w in cand) or set(cand) & (_NOT_PLACE | DOCTOR_WORDS | _NAME_STOP | set(_ALIASES)):
+            continue
+        place = " ".join(cand)
+        if _SPECIALIST_NOUN.search(place) or _GENDER_WORD.search(place) or _find_specialty(place)[0] \
+                or (medical_terms and [t for t in medical_terms(place) if t not in _FILLER]):
+            continue
+        return place
+    return None
+
+
+_GENDER_WORD = re.compile(r"\b(lady|ladies|mahila|female|woman|aurat|stree|male|gents|purush|aadmi|mujhe|mere|meri|"
+                          r"inme|isme|unme|aaj|kal|abhi)\b")
 
 
 def _find_hospital(norm: str) -> str | None:
