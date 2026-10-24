@@ -11,12 +11,13 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, Field
 
 from ...application.doctor_chat import DoctorChat
+from ...channels import whatsapp
 from ...doctors import DoctorDirectory
 from ...language import ui_language
 from ...telemetry import DECISIONS, chat_record
@@ -27,7 +28,9 @@ _UUID = r"^[0-9a-fA-F-]{32,36}$"
 
 
 class AgentChatRequest(BaseModel):
-    text: str = Field(..., min_length=1, max_length=1000, description="Patient message in Hinglish / Hindi / English")
+    text: str | None = Field(None, max_length=1000,
+                             description="Patient message in Hinglish / Hindi / English. May be left out when "
+                                         "`reply_id` (a tapped WhatsApp row/button) or a shared location is sent")
     session_id: str | None = Field(None, description="From the previous reply; omit on the first message")
     city: str | None = Field(None, max_length=100, description="Patient's city, used when no location is shared")
     lat: float | None = Field(None, ge=-90, le=90, description="Patient latitude, with lng (this search only)")
@@ -41,6 +44,11 @@ class AgentChatRequest(BaseModel):
     ui_language: str | None = Field(None, max_length=16,
                                     description="The channel's UI language (en, hi, hinglish, bn). Used only until the "
                                                 "patient's own words show a language; Vita then mirrors the patient")
+    channel: Literal["web", "whatsapp"] = Field("web", description="whatsapp: the reply also carries `whatsapp`, "
+                                                                     "ready-to-send WhatsApp Cloud API messages")
+    reply_id: str | None = Field(None, max_length=256,
+                                 description="WhatsApp: the id of the list row or button the patient tapped, exactly "
+                                             "as Vita wrote it (doc:<id>, more, refine:<key>, say:<text>)")
     new_search: bool = Field(False, description="Search with exactly the asks in `text`, not merged into the last "
                                                 "search (the screen removed a filter chip)")
 
@@ -63,9 +71,17 @@ def build_router(guard) -> APIRouter:
         flow = _flow(request)
         t0 = time.perf_counter()
         lat, lng = (req.lat, req.lng) if req.lat is not None and req.lng is not None else (None, None)
+        text, select = (req.text or "").strip(), req.select_doctor_id
+        if req.reply_id:                                    # a tapped WhatsApp row / button
+            tap = whatsapp.read_reply_id(req.reply_id, flow.load(req.session_id).get("language"))
+            text, select = tap["text"], tap.get("select_doctor_id") or select
+        elif not text and lat is not None:                  # a location shared on its own
+            text = "location"
+        if not text:
+            raise HTTPException(status_code=422, detail="text, reply_id or a shared location is required")
         try:
-            out = flow.handle(req.text.strip(), req.session_id, city=req.city, lat=lat, lng=lng,
-                              hospital_id=req.hospital_id, select_doctor_id=req.select_doctor_id, page=req.page,
+            out = flow.handle(text, req.session_id, city=req.city, lat=lat, lng=lng,
+                              hospital_id=req.hospital_id, select_doctor_id=select, page=req.page,
                               new_search=req.new_search, ui_language=ui_language(req.ui_language))
         except ValueError as exc:              # includes SelectionError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -76,11 +92,13 @@ def build_router(guard) -> APIRouter:
         if rec is not None and rec.enabled:
             try:
                 record = chat_record(out, recorder=rec, caller=getattr(request.state, "client", "unknown"),
-                                     latency_ms=(time.perf_counter() - t0) * 1000, text=req.text.strip(),
+                                     latency_ms=(time.perf_counter() - t0) * 1000, text=text,
                                      model_version="vita-agent-v2")
                 rec.record(DECISIONS, record)
             except Exception:
                 log.exception("telemetry record failed")
+        if req.channel == "whatsapp":
+            out["whatsapp"] = whatsapp.render(out)
         return out
 
     @router.get("/session/{session_id}", summary="What Vita remembers about this conversation")

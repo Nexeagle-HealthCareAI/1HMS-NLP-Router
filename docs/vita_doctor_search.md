@@ -61,6 +61,11 @@ Combinations work in one turn ("MD cardiologist near Salt Lake"). Refinements re
 Body words alone ("pet mein dard", "kaan mein dard") are symptoms and go to triage; "pet ka doctor" is a
 specialty ask. Triage asks **at most two** follow-up questions before showing something (`/chat` keeps 3).
 
+## Channels
+
+`channel: "whatsapp"` adds `whatsapp`: the reply as ready-to-send WhatsApp messages; taps come back as
+`reply_id`. Contract and examples: [vita_whatsapp.md](vita_whatsapp.md).
+
 ## Language: Vita mirrors the patient
 
 Vita answers in the language the patient writes in, for the whole conversation: English, Hinglish (Roman
