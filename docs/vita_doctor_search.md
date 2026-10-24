@@ -28,7 +28,8 @@ POST /v2/agent/chat          (same API keys and rate limit as /chat)
   "lat": 22.58, "lng": 88.41,      // optional; used for this search only, never stored
   "hospital_id": "…",              // optional: Vita in a hospital's own channel (VITA-11)
   "select_doctor_id": "…",         // optional: the doctor the patient tapped Choose on (VITA-8)
-  "page": 2                        // optional: "Show more doctors" button (or the patient types "aur doctor dikhao")
+  "page": 2,                       // optional: "Show more doctors" button (or the patient types "aur doctor dikhao")
+  "new_search": true               // optional: search with exactly the asks in `text` (a filter chip was removed)
 }
 ```
 
