@@ -48,13 +48,21 @@ description 72, row id 200, buttons 1-3 with titles of 20.
 
 ## After a doctor is chosen
 
-The reply is `kind: "doctor_selected"` with `doctor` (the 1HMS record) and `selectedDoctorId`. That is where
-the bot's own booking flow (shift, patient details, confirmation) takes over: map `doctor.doctorId`,
-`doctor.name`, fee, `doctor.hospital.*` into its booking context, exactly as it does for its own list today.
-Booking inside Vita itself comes later (vision Phase 2).
+With booking switched on in the router, Vita books too: day, time, for whom, details, confirm, booked, all as
+buttons / lists / text in the same loop. Send `verified_mobile` (the sender's number) with a key that has the
+`verified_mobile` scope and Vita skips the WhatsApp code, since WhatsApp already verified the number. The reply
+`kind: "booked"` carries `booking.appointmentId`. Without booking switched on, `doctor_selected` hands over to
+the bot's own booking flow (map `doctor.doctorId`, `doctor.name`, fee and `doctor.hospital.*`).
 
 ## If Vita is unavailable
 
 Vita answers within the router's timeout; on 5xx, timeout or an unknown shape, the bot should fall back to its
 own finder for that message. Vita's `degraded: ["doctor_lookup"]` (1HMS down) still comes with a valid text
 message to send.
+
+## Emergencies
+
+`kind: "emergency"` renders as a text message (108 / 112 first, then the nearest emergency hospitals with their numbers, which
+WhatsApp makes tappable), then either WhatsApp's "send location" button (no location yet; the location comes back as a normal
+turn and the places follow) or a "Share my number" reply button (sends the sender's verified number to the alerted hospitals,
+only on that tap).

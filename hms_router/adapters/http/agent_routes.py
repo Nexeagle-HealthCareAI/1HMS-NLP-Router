@@ -49,6 +49,16 @@ class AgentChatRequest(BaseModel):
     reply_id: str | None = Field(None, max_length=256,
                                  description="WhatsApp: the id of the list row or button the patient tapped, exactly "
                                              "as Vita wrote it (doc:<id>, more, refine:<key>, say:<text>)")
+    client_ip: str | None = Field(None, max_length=64,
+                                  description="Booking: the visitor's own IP, so 1HMS limits each visitor, not the "
+                                              "router (needs HMS_PROXY_FORWARDING_SECRET)")
+    patient_token: str | None = Field(None, max_length=4096,
+                                      description="Booking: the channel's signed-in patient token (1HMS patient JWT). "
+                                                  "With it Vita skips the OTP and offers the saved profile and family. "
+                                                  "Server-to-server only; never logged or echoed")
+    verified_mobile: str | None = Field(None, max_length=16, pattern=r"^\+?\d{10,13}$",
+                                        description="Booking: a number the channel already verified (the WhatsApp "
+                                                    "sender). Honoured only for API keys with the verified_mobile scope")
     new_search: bool = Field(False, description="Search with exactly the asks in `text`, not merged into the last "
                                                 "search (the screen removed a filter chip)")
 
@@ -58,7 +68,8 @@ def _flow(request: Request) -> DoctorChat:
     if agent is None:
         raise HTTPException(status_code=503, detail="Agent not initialised yet")
     directory = getattr(request.app.state, "doctors", None) or DoctorDirectory(None)
-    return DoctorChat(agent, directory, request.app.state.redis)
+    return DoctorChat(agent, directory, request.app.state.redis,
+                      booking_client=getattr(request.app.state, "booking", None))
 
 
 def build_router(guard) -> APIRouter:
@@ -79,24 +90,33 @@ def build_router(guard) -> APIRouter:
             text = "location"
         if not text:
             raise HTTPException(status_code=422, detail="text, reply_id or a shared location is required")
+        trusted = "verified_mobile" in getattr(_client, "scopes", ())
+        verified = (req.verified_mobile or "")[-10:] if trusted and req.verified_mobile else None
         try:
             out = flow.handle(text, req.session_id, city=req.city, lat=lat, lng=lng,
+                              client_ip=req.client_ip, patient_token=req.patient_token, verified_mobile=verified,
                               hospital_id=req.hospital_id, select_doctor_id=select, page=req.page,
-                              new_search=req.new_search, ui_language=ui_language(req.ui_language))
+                              new_search=req.new_search, ui_language=ui_language(req.ui_language),
+                              channel=req.channel)
         except ValueError as exc:              # includes SelectionError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
             log.exception("Unhandled error in /v2/agent/chat")
             raise HTTPException(status_code=500, detail="Internal agent error") from exc
+        session = out.pop("patient_session", None)                 # a credential: kept out of telemetry
+        booking_turn = (out.get("kind") == "booked" or str((out.get("clarify") or {}).get("kind") or "").startswith("book_"))
         rec = getattr(request.app.state, "telemetry", None)
         if rec is not None and rec.enabled:
             try:
                 record = chat_record(out, recorder=rec, caller=getattr(request.state, "client", "unknown"),
-                                     latency_ms=(time.perf_counter() - t0) * 1000, text=text,
+                                     latency_ms=(time.perf_counter() - t0) * 1000,
+                                     text="[booking details]" if booking_turn else text,   # names, numbers, codes
                                      model_version="vita-agent-v2")
                 rec.record(DECISIONS, record)
             except Exception:
                 log.exception("telemetry record failed")
+        if session and req.channel != "whatsapp":
+            out["patient_session"] = session                       # the website signs the patient in with it
         if req.channel == "whatsapp":
             out["whatsapp"] = whatsapp.render(out)
         return out

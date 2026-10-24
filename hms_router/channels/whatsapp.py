@@ -34,6 +34,10 @@ _CODES = {"english": 0, "hinglish": 1, "hindi": 2}
 
 # (English, Hinglish, Hindi); every one fits the limit of the place it is used
 _WORDS = {
+    "emergency_share": ("Want the hospitals to call you?", "Kya hospital aapko call karein?", "क्या अस्पताल आपको कॉल करें?"),
+    "emergency_location": ("Send your location for the nearest emergency hospitals.",
+                           "Sabse nazdeeki emergency hospital ke liye location bhejein.",
+                           "सबसे नज़दीकी इमरजेंसी अस्पताल के लिए लोकेशन भेजें।"),
     "choose_doctor": ("Choose doctor", "Doctor chunein", "डॉक्टर चुनें"),          # list button, <= 20
     "choose": ("Choose", "Chunein", "चुनें"),                                       # list button, <= 20
     "doctors": ("Doctors", "Doctors", "डॉक्टर"),                                     # section title, <= 24
@@ -180,8 +184,17 @@ def render(reply: dict) -> list[dict]:
     block = reply.get("doctors") or {}
     items = list(block.get("items") or [])
 
-    if kind == "emergency":                                  # the number first, nothing to tap or book
-        return [_text(message)]
+    if kind == "emergency":                                  # the number first, nothing to book
+        msgs = [_text(message)]                              # numbers and the nearest places, as text (numbers are tappable)
+        em = reply.get("emergency") or {}
+        if em.get("needsLocation"):                          # one tap sends the location, then the places follow
+            msgs.append({"type": "interactive", "interactive": {
+                "type": "location_request_message", "body": {"text": _body(_w("emergency_location", language))},
+                "action": {"name": "send_location"}}})
+        options = [o for o in clarify.get("options") or [] if o.get("label")]
+        if options:                                          # "Share my number" (consent, one tap)
+            msgs.append(_options_message(_w("emergency_share", language), options, language))
+        return msgs
 
     if items:                                                # a doctor list: one list message
         doctor_rows = _unique_titles([_doctor_row(d, language) for d in items[: ROWS_MAX - 1]], ROW_TITLE_MAX)
