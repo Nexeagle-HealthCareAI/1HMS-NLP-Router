@@ -41,7 +41,7 @@ from ..voice import Voice
 from .booking import BookingFlow, token_mobile
 from .emergency_help import EmergencyHelp
 
-_LOCATION_ONLY = re.compile(r"^\s*(location|my location|share (my )?location|meri location|मेरी लोकेशन)\s*$", re.I)
+_LOCATION_ONLY = re.compile(r"^\s*(location|my location|share (my )?location|meri location|location bhej di|मेरी लोकेशन)\s*$", re.I)
 
 log = logging.getLogger("hms_router.doctor_chat")
 
