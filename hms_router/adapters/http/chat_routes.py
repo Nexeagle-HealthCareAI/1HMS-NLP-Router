@@ -1,9 +1,10 @@
 """/chat, /feedback, /session - moved here from api.py unchanged in behaviour (tests/test_chat_contract.py).
 
 Only additions: the auth + rate-limit guard (scope "chat"; a no-op while HMS_API_KEYS is unset),
-problem+json error bodies, and - only while HMS_DOCTORS_MCP_URL/KEY are set - a `doctors` block on a
-confident recommendation (optional city / lat+lng narrow it). Otherwise status codes and success
-bodies are exactly as before.
+problem+json error bodies, and - only while HMS_DOCTORS_MCP_URL/KEY are set - Vita doctor search
+(application/doctor_chat.py): asks by specialty, name, degree or distance answer with kind=doctor_list,
+a confident recommendation carries a `doctors` block, select_doctor_id gives kind=doctor_selected.
+With lookups off, status codes and success bodies are exactly as before.
 """
 from __future__ import annotations
 
@@ -14,6 +15,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, Field
 
+from ...application.doctor_chat import DoctorChat
+from ...doctors import DoctorDirectory
 from ...telemetry import DECISIONS, FEEDBACK, chat_record, feedback_record
 
 log = logging.getLogger("hms_router.api")
@@ -26,6 +29,11 @@ class ChatRequest(BaseModel):
     city: str | None = Field(None, max_length=100, description="Patient's city, for the doctors list (optional)")
     lat: float | None = Field(None, ge=-90, le=90, description="Patient latitude, with lng: nearest doctors first")
     lng: float | None = Field(None, ge=-180, le=180, description="Patient longitude, with lat")
+    hospital_id: str | None = Field(None, max_length=64, pattern=r"^[0-9a-fA-F-]{32,36}$",
+                                    description="Vita in a hospital's own channel: its doctors are listed first")
+    select_doctor_id: str | None = Field(None, max_length=64, pattern=r"^[0-9a-fA-F-]{32,36}$",
+                                         description="The doctor the patient tapped 'Choose' on; must be one "
+                                                     "shown in this session (else 422)")
 
 
 class FeedbackRequest(BaseModel):
@@ -38,18 +46,10 @@ class FeedbackRequest(BaseModel):
     phrase: str | None = Field(None, description="The unrecognised phrase (for new_symptom_phrase)")
 
 
-def _doctors_for(request: Request, out: dict, req: ChatRequest) -> dict | None:
-    """Bookable doctors for the PRIMARY specialist of a confident recommendation; None otherwise
-    (follow-up, emergency, low confidence, lookups off or failed)."""
-    directory = getattr(request.app.state, "doctors", None)
-    card = out.get("card") or {}
-    if directory is None or not directory.enabled or out.get("kind") != "recommendation" or card.get("low_confidence"):
-        return None
-    primary = next((o for o in card.get("outputs") or [] if o.get("role") == "PRIMARY"), None)
-    if primary is None:
-        return None
-    lat, lng = (req.lat, req.lng) if req.lat is not None and req.lng is not None else (None, None)
-    return directory.for_specialist(primary["specialist"], city=req.city, lat=lat, lng=lng)
+def _doctor_chat(request: Request, svc) -> DoctorChat:
+    """Built per request: app.state.doctors can be swapped at runtime (settings reload, tests)."""
+    directory = getattr(request.app.state, "doctors", None) or DoctorDirectory(None)
+    return DoctorChat(svc.agent, directory, request.app.state.redis)
 
 
 def build_router(guard) -> APIRouter:
@@ -69,14 +69,21 @@ def build_router(guard) -> APIRouter:
         expire after 30 minutes idle."""
         svc = service(request)
         t0 = time.perf_counter()
+        directory = getattr(request.app.state, "doctors", None)
+        searching = (directory is not None and directory.enabled) or req.select_doctor_id is not None
         try:
-            reply = svc.handle(req.text.strip(), req.session_id)
-        except ValueError as exc:
+            if searching:                     # Vita doctor search (application/doctor_chat.py)
+                lat, lng = (req.lat, req.lng) if req.lat is not None and req.lng is not None else (None, None)
+                out = _doctor_chat(request, svc).handle(
+                    req.text.strip(), req.session_id, city=req.city, lat=lat, lng=lng,
+                    hospital_id=req.hospital_id, select_doctor_id=req.select_doctor_id)
+            else:                             # lookups off: exactly the original /chat
+                out = svc.handle(req.text.strip(), req.session_id).to_dict()
+        except ValueError as exc:             # includes SelectionError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
             log.exception("Unhandled error in /chat")
             raise HTTPException(status_code=500, detail="Internal routing error") from exc
-        out = reply.to_dict()
         rec = getattr(request.app.state, "telemetry", None)
         if rec is not None and rec.enabled:
             try:
@@ -85,9 +92,6 @@ def build_router(guard) -> APIRouter:
                                                   model_version="chat-agent"))
             except Exception:
                 log.exception("telemetry record failed")
-        doctors = _doctors_for(request, out, req)
-        if doctors is not None:
-            out["doctors"] = doctors
         return out
 
     @router.post("/feedback", tags=["Router"], summary="Submit user feedback", status_code=status.HTTP_200_OK)
@@ -116,16 +120,27 @@ def build_router(guard) -> APIRouter:
     @router.get("/session/{session_id}", tags=["Session"], summary="Inspect accumulated session state")
     def get_session(request: Request, session_id: str = Path(..., description="Session token from /chat"),
                     _client=Depends(guard)) -> dict[str, Any]:
-        snap = service(request).snapshot(session_id)
-        if snap.turn == 0 and not snap.symptoms:
+        svc = service(request)
+        snap = svc.snapshot(session_id)
+        doctor = _doctor_chat(request, svc).session_view(session_id)
+        if snap.turn == 0 and not snap.symptoms and doctor is None:
             raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found or has expired")
-        return snap.to_dict()
+        out = snap.to_dict()
+        if doctor is not None:
+            out["doctorSearch"] = doctor
+            out["selectedDoctorId"] = doctor["selectedDoctorId"]
+        return out
 
     @router.delete("/session/{session_id}", tags=["Session"], summary="Clear / reset a session",
                    status_code=status.HTTP_200_OK)
     def delete_session(request: Request, session_id: str = Path(..., description="Session token from /chat"),
                        _client=Depends(guard)) -> dict[str, str]:
-        service(request).clear(session_id)
+        svc = service(request)
+        svc.clear(session_id)
+        try:
+            request.app.state.redis.delete(DoctorChat._key(session_id))
+        except Exception:
+            log.exception("doctor session state not cleared")
         return {"deleted": session_id}
 
     return router

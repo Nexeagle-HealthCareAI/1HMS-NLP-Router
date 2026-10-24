@@ -29,8 +29,10 @@ class RoutingPolicy:
         if not (self.child_first_pediatrics and age_group == "child"):
             return ranked, False
         ids = [s for s, _ in ranked[:3]]
-        if "pediatrics" not in ids or ids[0] == "pediatrics":
+        if "pediatrics" not in ids:
             return ranked, False
+        if ids[0] == "pediatrics":            # already first: the rule still settles it, so a parent who
+            return ranked, True               # answered "child" is not asked a second question
         ped = next(x for x in ranked if x[0] == "pediatrics")
         return [ped] + [x for x in ranked if x[0] != "pediatrics"], True
 

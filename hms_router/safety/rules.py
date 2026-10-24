@@ -31,6 +31,7 @@ _RECOMMEND: dict[str, list[str]] = {
     "sudden severe headache": ["emergencymedicine", "neurology"],
     "vision loss": ["emergencymedicine", "ophthalmology"],
     "breathlessness": ["emergencymedicine", "pulmonology"],
+    "head injury": ["emergencymedicine", "neurosurgery", "neurology"],
 }
 
 

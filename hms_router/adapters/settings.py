@@ -21,6 +21,7 @@
     HMS_DOCTORS_MCP_URL     1HMSAPI's MCP endpoint, e.g. https://1hms-api.nexeagle.com/mcp - with the key, a
                             confident /chat recommendation also lists bookable doctors (hms_router/doctors.py)
     HMS_DOCTORS_MCP_KEY     this router's key in 1HMSAPI's Mcp:ServiceKeys (sent as X-Service-Key)
+                            (HMS_MCP_URL / HMS_MCP_KEY are accepted as the same settings)
     HMS_DOCTORS_LIMIT       doctors per reply, 1-10 (default 3); HMS_DOCTORS_TIMEOUT seconds (default 2.0)
     API key scope "admin"   POST/GET /admin/rebuild and GET /admin/telemetry (give it to the CMS's key)
 """
@@ -106,8 +107,8 @@ class ServiceSettings:
             cms_service_key=(e.get("HMS_CMS_SERVICE_KEY") or "").strip() or None,
             telemetry_hash_key=(e.get("HMS_TELEMETRY_HASH_KEY") or "").strip() or None,
             rebuild_on_start=(e.get("HMS_REBUILD_ON_START") or "1").strip() not in ("0", "false", "no"),
-            doctors_mcp_url=(e.get("HMS_DOCTORS_MCP_URL") or "").strip() or None,
-            doctors_mcp_key=(e.get("HMS_DOCTORS_MCP_KEY") or "").strip() or None,
+            doctors_mcp_url=(e.get("HMS_DOCTORS_MCP_URL") or e.get("HMS_MCP_URL") or "").strip() or None,
+            doctors_mcp_key=(e.get("HMS_DOCTORS_MCP_KEY") or e.get("HMS_MCP_KEY") or "").strip() or None,
             doctors_limit=int(e.get("HMS_DOCTORS_LIMIT") or "3"),
             doctors_timeout=float(e.get("HMS_DOCTORS_TIMEOUT") or "2.0"),
         )

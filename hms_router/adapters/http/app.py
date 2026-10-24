@@ -57,7 +57,12 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         app.state.redis = _build_redis(settings)
         app.state.limiter = RateLimiter(app.state.redis, {"route": settings.rate_limit_route,
                                                           "chat": settings.rate_limit_chat})
-        app.state.chat = ChatService(HMSRouterAgent(app.state.redis))
+        # /chat uses the same emergency detector as /v1/route-symptom (read on every message, so a model
+        # rebuild that replaces app.state.route is picked up); until the route service is ready, /chat
+        # falls back to its built-in safety net.
+        app.state.chat = ChatService(HMSRouterAgent(
+            app.state.redis,
+            emergency_detector=lambda: getattr(getattr(app.state, "route", None), "detector", None)))
         log.info("HMSRouterAgent ready")
         app.state.telemetry = build_recorder(settings.cms_api_url, settings.cms_service_key, settings.telemetry_hash_key)
         app.state.telemetry.start()

@@ -52,6 +52,11 @@ def evaluate(service, rows: list[tuple[str, str]] | None = None) -> EvalResult:
         top3 += expected in ids[:3]
         emergency += bool(d.emergency.flag)
         dec = d.decision.value
+        if d.method == "emergency":
+            # Emergencies are answered "Emergency Medicine" by design and are measured by emergencyFlagRate;
+            # counting them here would score every flagged Cardiology/Pulmonology sentence as a wrong answer
+            # and make routing accuracy incomparable with versions before the emergency-first rule.
+            continue
         if dec == "answer":
             answered += 1
             answered_right += hit1
