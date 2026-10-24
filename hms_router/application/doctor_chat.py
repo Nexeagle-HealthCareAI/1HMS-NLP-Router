@@ -441,13 +441,15 @@ class DoctorChat:
                               for sh in day.get("shifts") or [] if sh.get("start"))
             when = _day_label(day["date"], hi)
             h = f" ({hours})" if hours else ""
-            msg = hi(f"Yes, {name} works on {when}{h}. The hospital confirms the exact time. Shall I book an appointment?",
+            on = "" if day["date"] in _NEAR_DAYS() else "on "
+            msg = hi(f"Yes, {name} works {on}{when}{h}. The hospital confirms the exact time. Shall I book an appointment?",
                      f"Haan, {name} {when} baithte hain{h}. Sahi samay hospital confirm karega. Kya main appointment book karoon?",
                      f"हाँ, {name} {when} बैठते हैं{h}। सही समय अस्पताल कन्फ़र्म करेगा। क्या मैं अपॉइंटमेंट बुक करूँ?")
         else:
             when = _day_label(target, hi) if ask.when != "next" else hi("the next 7 days", "agle 7 din", "अगले 7 दिन")
             nxt_txt = _day_label(nxt, hi) if nxt else None
-            msg = hi(f"{name} is not available on {when}." + (f" Next working day: {nxt_txt}." if nxt_txt else ""),
+            on = "" if ask.when == "next" or target in _NEAR_DAYS() else "on "
+            msg = hi(f"{name} is not available {on}{when}." + (f" Next working day: {nxt_txt}." if nxt_txt else ""),
                      f"{name} {when} available nahi hain." + (f" Agla din: {nxt_txt}." if nxt_txt else ""),
                      f"{name} {when} उपलब्ध नहीं हैं।" + (f" अगला दिन: {nxt_txt}।" if nxt_txt else ""))
             msg += hi(" Shall I book an appointment?", " Kya main appointment book karoon?", " क्या मैं अपॉइंटमेंट बुक करूँ?")
@@ -824,6 +826,12 @@ def _bare_doctor(norm: str, ask: DoctorAsk) -> bool:
 
 def _today_ist() -> date:
     return (datetime.now(timezone.utc) + timedelta(minutes=330)).date()
+
+
+def _NEAR_DAYS() -> tuple[str, str]:  # noqa: N802
+    """Today and tomorrow (IST) as ISO dates: said without "on" ("works tomorrow", not "on tomorrow")."""
+    today = _today_ist()
+    return today.isoformat(), (today + timedelta(days=1)).isoformat()
 
 
 def _target_date(when: str | None) -> tuple[str, str]:
