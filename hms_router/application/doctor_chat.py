@@ -142,7 +142,9 @@ class DoctorChat:
     # ================================================================== entry
     def handle(self, text: str, session_id: str | None, *, city: str | None = None, lat: float | None = None,
                lng: float | None = None, hospital_id: str | None = None,
-               select_doctor_id: str | None = None, page: int = 1) -> dict:
+               select_doctor_id: str | None = None, page: int = 1, new_search: bool = False) -> dict:
+        """new_search: the screen removed a filter chip and re-sent the remaining filters as text; search
+        with exactly those, never merged into the last search."""
         ctx = {"city": city, "lat": lat, "lng": lng, "hospital_id": hospital_id,
                "located": lat is not None and lng is not None}
         if select_doctor_id:
@@ -187,7 +189,7 @@ class DoctorChat:
             filters["locationAsked"] = True
             return self._search_turn(text, session_id, filters, ctx, st)
 
-        last = st.get("last")
+        last = None if new_search else st.get("last")
         if last and (page > 1 or (ask.more and not (ask.specialty_key or ask.name_query or ask.degree))):  # step 5
             nxt = page if page > 1 else int(st.get("page") or 1) + 1
             return self._search_turn(text, session_id, dict(last), ctx, st, page=nxt)

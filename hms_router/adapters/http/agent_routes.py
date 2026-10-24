@@ -37,6 +37,8 @@ class AgentChatRequest(BaseModel):
                                          description="The doctor the patient tapped 'Choose' on; must be one shown "
                                                      "in this session (else 422)")
     page: int = Field(1, ge=1, le=10, description="'Show more doctors': the next page of the last list")
+    new_search: bool = Field(False, description="Search with exactly the asks in `text`, not merged into the last "
+                                                "search (the screen removed a filter chip)")
 
 
 def _flow(request: Request) -> DoctorChat:
@@ -59,7 +61,8 @@ def build_router(guard) -> APIRouter:
         lat, lng = (req.lat, req.lng) if req.lat is not None and req.lng is not None else (None, None)
         try:
             out = flow.handle(req.text.strip(), req.session_id, city=req.city, lat=lat, lng=lng,
-                              hospital_id=req.hospital_id, select_doctor_id=req.select_doctor_id, page=req.page)
+                              hospital_id=req.hospital_id, select_doctor_id=req.select_doctor_id, page=req.page,
+                              new_search=req.new_search)
         except ValueError as exc:              # includes SelectionError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
