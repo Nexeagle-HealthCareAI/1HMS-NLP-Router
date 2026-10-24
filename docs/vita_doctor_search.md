@@ -1,6 +1,8 @@
-# Vita doctor search in `/chat`
+# Vita: `POST /v2/agent/chat`
 
-Vita Chat requirements, Part 2 (VITA-1 to VITA-13). Code: `hms_router/doctor_intent.py` (what kind of ask),
+Vita Chat requirements, Part 2 (VITA-1 to VITA-13), and the Phase 1 rules of the NLP Router Agentic AI
+vision ("How Vita talks"). Vita is its own endpoint; **`/chat` is unchanged** (it still adds the older
+`doctors` block on a confident recommendation while lookups are on). Code: `hms_router/doctor_intent.py` (what kind of ask),
 `hms_router/doctors.py` (`DoctorDirectory`, the only way to 1HMS), `hms_router/application/doctor_chat.py`
 (the turn logic). Tests: `tests/test_vita_doctor_chat.py`.
 
@@ -13,19 +15,20 @@ Vita Chat requirements, Part 2 (VITA-1 to VITA-13). Code: `hms_router/doctor_int
 | `HMS_DOCTORS_LIMIT` | doctors per reply, 1–10, default 3 |
 | `HMS_DOCTORS_TIMEOUT` | seconds per MCP call, default 2.0 (each call is retried once) |
 
-Unset = `/chat` behaves exactly as before (no new kinds, no `doctors` block).
+Unset = Vita still talks and triages, but every doctor search answers with `degraded: ["doctor_lookup"]`.
 
 ## Request
 
 ```json
-POST /chat
+POST /v2/agent/chat          (same API keys and rate limit as /chat)
 {
   "text": "skin ka doctor chahiye",
   "session_id": "…",              // from the previous reply; omit on the first message
   "city": "Kolkata",               // optional, used when no location is shared
   "lat": 22.58, "lng": 88.41,      // optional; used for this search only, never stored
   "hospital_id": "…",              // optional: Vita in a hospital's own channel (VITA-11)
-  "select_doctor_id": "…"          // optional: the doctor the patient tapped Choose on (VITA-8)
+  "select_doctor_id": "…",         // optional: the doctor the patient tapped Choose on (VITA-8)
+  "page": 2                        // optional: "Show more doctors" button (or the patient types "aur doctor dikhao")
 }
 ```
 
@@ -44,16 +47,31 @@ Combinations work in one turn ("MD cardiologist near Salt Lake"). Refinements re
 `clarify.kind = "ask_kind"` with the five options.
 
 Body words alone ("pet mein dard", "kaan mein dard") are symptoms and go to triage; "pet ka doctor" is a
-specialty ask.
+specialty ask. Triage asks **at most two** follow-up questions before showing something (`/chat` keeps 3).
+
+## How Vita talks (conversation moves)
+
+| Patient | Vita |
+|---|---|
+| "Dr Sharma ka number do" | `kind=info`: never a personal number; offers to book, or the hospital front desk number from 1HMS |
+| "bas dekh raha tha", "no thanks", "thank you" | `kind=info`: "No problem. I'm here whenever you need a doctor…", no push to book |
+| "hello", "namaste" | `follow_up` with the five ways to ask as chips |
+| "talk to a person", "kisi insaan se baat" | `kind=handoff`, `handoff.reason="asked"`: the channel passes the chat to support |
+| two dead ends in a row | the chips also offer `{"id": "human", "label": "Talk to a person"}` |
+| "dr sharma" matching two doctors | `clarify.kind="which_doctor"`, options "Dr. Neha Sharma · Salt Lake Care, Kolkata" (id = doctorId: send it as `select_doctor_id`); typing "howrah wale" also picks |
+| "aur doctor dikhao" / `page` | the next page of the last list; `doctors.page`, `doctors.hasMore`; past the end `clarify.kind="no_more"` |
+
+A short "nahi" or "ok" while triage is waiting for an answer goes to triage, not to small talk.
+Specialties are named in plain words first: "bone doctors (Orthopaedic)", "haddi ke doctor (Orthopaedic)".
 
 ## Reply
 
 Every reply has the AgentReply fields (`session_id`, `turn`, `kind`, `message`, `question`, `card`,
-`state`, `severity`, `keywords`, `language`, `degraded`) plus `clarify` on new kinds. New kinds:
+`state`, `severity`, `keywords`, `language`, `degraded`) plus `clarify` on new kinds. New kinds: `doctor_list`, `doctor_selected`, `info`, `handoff`.
 
 - `doctor_list`: `doctors` block below.
 - `doctor_selected`: `doctor` (current profile from `get_doctor`) and `selectedDoctorId`.
-  `GET /session/{id}` then shows `selectedDoctorId` and `doctorSearch`.
+  `GET /v2/agent/session/{id}` then shows `selectedDoctorId` and `doctorSearch`.
 
 ```json
 "doctors": {
@@ -64,6 +82,7 @@ Every reply has the AgentReply fields (`session_id`, `turn`, `kind`, `message`, 
   "fallbackUsed": false,
   "source": "1hms-mcp",
   "lookupMs": 182.4,
+  "page": 1, "hasMore": true,
   "groups": [{"title": "Salt Lake Care", "doctorIds": ["…"]}, {"title": "Other doctors nearby", "doctorIds": ["…"]}],
   "specialist": "Dermatologist", "specialtyId": "Dermatologist (Skin)", "doctors": [ /* same as items */ ]
 }
@@ -86,4 +105,7 @@ of this block working. Items are only re-sorted when the patient asked for lower
 
 Session state for doctor search lives in Redis at `vita:doctor:{session_id}` (30 min): last filters,
 doctors shown, a pending location ask, narrowing options and the selected doctor.
-`DELETE /session/{id}` clears it too.
+`DELETE /v2/agent/session/{id}` clears it.
+
+Dead ends (no doctor found, "what kind of doctor?", handoff) are sent with the text to the CMS review
+queue (`reviewText`), like abstained route-symptom queries, so the router can learn the phrase.

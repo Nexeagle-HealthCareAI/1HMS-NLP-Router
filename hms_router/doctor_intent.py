@@ -82,6 +82,22 @@ _CHEAP = re.compile(r"\b(kam fees|kam fee|sasta|sasti|saste|cheap|cheaper|cheape
 _EXPERIENCED = re.compile(r"\b(zyada experience|jyada experience|experienced|senior|most experienced|"
                           r"purane|anubhavi)\b")
 
+# Conversation moves that are not a search (vision, "How Vita talks")
+_PRIVATE_NUMBER = re.compile(r"\b(number|nambar|no\.?|mobile|phone|contact|whatsapp)\b.*\b(do|de|dena|dijiye|chahiye|"
+                             r"bhejo|share|send|give|batao|bataiye|milega|hai)\b|\b(give|share|send)\b.*\b(number|mobile|phone|"
+                             r"contact)\b|\b(phone|mobile|contact) (number|no)\b|\bdoctor (ka |ki )?(number|mobile|phone|contact)\b")
+_OWN_NUMBER = re.compile(r"\b(mera|meri|mere|my|apna|hamara)\b.{0,12}\b(number|mobile|phone|no)\b")
+_HUMAN = re.compile(r"\b(human|insaan|insan|real person|kisi (insaan|aadmi|vyakti) se|customer care|customer support|"
+                    r"support team|helpline|receptionist|staff se|agent se baat|person se baat|talk to (a )?(person|someone)|"
+                    r"call me back|callback|call back)\b")
+_JUST_LOOKING = re.compile(r"^(bas |sirf |just )?(dekh raha|dekh rahi|dekh rahe|looking|checking|browsing|time pass|"
+                           r"no thanks?|nahi chahiye|abhi nahi|not now|later|baad mein|thanks?|thank you|thanku|shukriya|"
+                           r"dhanyavad|dhanyawad|ok bye|bye|ok thanks?|theek hai|thik hai|ok|okay)\b")
+_DECLINE = re.compile(r"^(nahi|nahin|nhi|no|na|nope)( (abhi|ji|thanks?|thank you|bas|sir|madam))*( (nahi|nahin|nhi))?$")
+_GREETING = re.compile(r"^(hi+|hello|helo|hey|namaste|namaskar|good (morning|afternoon|evening)|kaise ho|hii)\b")
+_MORE = re.compile(r"\b(show more|more doctors|aur doctor|aur doctors|aur dikhao|aur dikhaiye|aur batao|dusre doctor|doosre doctor|"
+                   r"other doctors|next page|aur options|more options|aur koi)\b")
+
 _NAME_CUE = re.compile(r"\b(se milna|se milni|se milwa|ko dikhana|ko dikhaana|se dikhana|ka appointment|"
                        r"se appointment|ki appointment|appointment with|see dr|meet dr)\b")
 # Words that end a "dr <name>" span or can never be a name
@@ -91,7 +107,8 @@ _NAME_STOP = DOCTOR_WORDS | _LINKS | {
     "accha", "achha", "best", "good", "top", "for", "the", "a", "and", "aur", "ya", "me", "mein", "my", "mera",
     "meri", "please", "plz", "pls", "sir", "madam", "ji", "sahab", "saab", "ne", "bola", "kaha", "list", "show",
     "find", "need", "want", "chahta", "chahti", "hu", "hoon", "appointment", "book", "booking", "today", "aaj",
-    "kal", "abhi", "now", "kahan", "kidhar", "wala", "wali", "fees", "fee",
+    "kal", "abhi", "now", "kahan", "kidhar", "wala", "wali", "fees", "fee", "number", "mobile", "phone",
+    "contact", "whatsapp", "nambar", "do", "de", "dena",
 }
 # Everyday words the health vocabulary also contains; they never make a message "about symptoms"
 _FILLER = {"milna", "milni", "chahiye", "chaahiye", "paas", "andar", "liye", "wala", "wali", "wale", "koi", "kuch",
@@ -110,6 +127,8 @@ class DoctorAsk:
     refine: bool = False                     # builds on the previous list ("inme se ...")
     sort: str | None = None                  # "fee" | "experience" (refinements)
     symptomish: bool = False                 # describes symptoms -> triage decides the specialty
+    more: bool = False                       # "aur doctor dikhao": the next page of the last list
+    move: str | None = None                  # not a search: private_number | human | just_looking | greeting
     modes: list[str] = field(default_factory=list)
 
     @property
@@ -214,11 +233,26 @@ def parse(text: str, *, names: Iterable[str] | None = None,
     if _REFINE.search(norm):
         ask.refine = True
 
+    if _MORE.search(norm):
+        ask.more = ask.refine = True
+    if _HUMAN.search(norm):
+        ask.move = "human"
+    elif _PRIVATE_NUMBER.search(norm) and not _OWN_NUMBER.search(norm):
+        ask.move = "private_number"
+
     if medical_terms is not None:
         terms = [t for t in medical_terms(norm)
                  if t not in consumed and t not in _FILLER and t not in DOCTOR_WORDS and t not in _NAME_STOP]
         ask.symptomish = bool(terms)
 
+    plain = not (ask.specialty_key or ask.name_query or ask.degree or ask.near)
+    if ask.move is None and plain:
+        m = _JUST_LOOKING.match(norm) or _DECLINE.match(norm)
+        rest = norm[m.end():] if m else ""
+        if m and not (medical_terms and [t for t in medical_terms(rest) if t not in _FILLER]):
+            ask.move, ask.symptomish = "just_looking", False   # "bas dekh raha tha", "nahi abhi nahi"
+        elif not ask.symptomish and _GREETING.match(norm) and len(norm.split()) <= 4:
+            ask.move = "greeting"
     if ask.symptomish and not (ask.specialty_key or ask.name_query or ask.degree):
         ask.modes.append("symptom")
     if ask.specialty_key:

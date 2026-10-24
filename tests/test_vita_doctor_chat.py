@@ -44,8 +44,9 @@ def _km(lat1, lng1, lat2, lng2):
 
 def _name_score(query, name):
     import difflib
-    q = query.lower().replace("dr", "").strip()
-    return max(difflib.SequenceMatcher(None, q, t).ratio() for t in name.lower().replace(".", "").split())
+    tokens = name.lower().replace(".", "").split()
+    words = [w for w in query.lower().replace(".", "").split() if w != "dr"]
+    return sum(max(difflib.SequenceMatcher(None, w, t).ratio() for t in tokens) for w in words) / max(len(words), 1)
 
 
 class Fake1Hms:
@@ -137,8 +138,11 @@ def hms(client):
     client.app.state.doctors = DoctorDirectory(None)
 
 
+URL = "/v2/agent/chat"
+
+
 def chat(client, text, **kw):
-    r = client.post("/chat", json={"text": text, **kw})
+    r = client.post(URL, json={"text": text, **kw})
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -205,10 +209,17 @@ def test_symptom_fallback_to_general_physician():
 
 
 # ============================================================================ /chat journeys
-def test_off_means_original_chat(client):
+def test_chat_v1_is_unchanged_with_lookups_on(client, hms):
+    """/chat keeps its pre-Vita contract; doctor search lives on /v2/agent/chat (vision: /chat unchanged)."""
+    r = client.post("/chat", json={"text": "skin ka doctor chahiye", "city": "Kolkata"})
+    assert r.status_code == 200 and r.json()["kind"] in ("follow_up", "recommendation", "emergency")
+    assert client.post("/chat", json={"text": "x", "select_doctor_id": DOCTORS[0]["doctorId"]}).status_code == 200
+
+
+def test_v2_with_lookups_off_says_so(client):
     client.app.state.doctors = DoctorDirectory(None)
     body = chat(client, "skin ka doctor chahiye")
-    assert body["kind"] != "doctor_list" and "doctors" not in body
+    assert body["kind"] == "doctor_list" and body["degraded"] == ["doctor_lookup"] and body["message"]
 
 
 def test_specialty_ask_lists_doctors_same_turn(client, hms):            # VITA-3
@@ -232,14 +243,13 @@ def test_misspelt_name_finds_the_doctor(client, hms):                   # VITA-4
     assert body["doctors"]["items"][0]["name"].endswith("Sharma")
 
 
-def test_equal_name_matches_ask_one_narrowing_question(client, hms):    # VITA-4
+def test_equal_name_matches_are_told_apart_by_hospital_and_city(client, hms):   # VITA-4 / vision
     body = chat(client, "dr sharma")
-    assert body["clarify"]["kind"] == "narrow"
+    assert body["clarify"]["kind"] == "which_doctor"
     labels = [o["label"] for o in body["clarify"]["options"]]
-    assert set(labels) == {"Cardiologist (Heart)", "Orthopaedic Surgeon (Bone)"}
-    nxt = chat(client, "Orthopaedic", session_id=body["session_id"])
-    assert [d["name"] for d in nxt["doctors"]["items"]] == ["Dr. Rakesh Sharma"]
-    assert searches(hms)[-1]["query"] == "sharma"
+    assert labels == ["Dr. Neha Sharma · Salt Lake Care, Kolkata", "Dr. Rakesh Sharma · Howrah General, Kolkata"]
+    nxt = chat(client, "howrah wale", session_id=body["session_id"])        # typed answer picks one
+    assert nxt["kind"] == "doctor_selected" and nxt["doctor"]["name"] == "Dr. Rakesh Sharma"
 
 
 def test_unknown_name_says_so_and_offers_specialty(client, hms):
@@ -306,16 +316,16 @@ def test_select_doctor_and_session_shows_it(client, hms):               # VITA-8
     pick = first["doctors"]["items"][1]["doctorId"]
     body = chat(client, "Choose", session_id=first["session_id"], select_doctor_id=pick)
     assert body["kind"] == "doctor_selected" and body["doctor"]["doctorId"] == pick
-    snap = client.get(f"/session/{first['session_id']}").json()
+    snap = client.get(f"/v2/agent/session/{first['session_id']}").json()
     assert snap["selectedDoctorId"] == pick
 
 
 def test_select_doctor_not_shown_is_422(client, hms):                    # VITA-8
     first = chat(client, "skin specialist", city="Kolkata")
     cardio = DOCTORS[0]["doctorId"]
-    r = client.post("/chat", json={"text": "Choose", "session_id": first["session_id"], "select_doctor_id": cardio})
+    r = client.post(URL, json={"text": "Choose", "session_id": first["session_id"], "select_doctor_id": cardio})
     assert r.status_code == 422
-    r = client.post("/chat", json={"text": "Choose", "select_doctor_id": cardio})
+    r = client.post(URL, json={"text": "Choose", "select_doctor_id": cardio})
     assert r.status_code == 422
 
 
@@ -391,3 +401,104 @@ def test_telemetry_fields(client, hms):                                 # VITA-1
     rec = chat_record(body, recorder=Rec, caller="t", latency_ms=1, text="skin ka doctor", model_version=None)
     assert rec["searchMode"] == "specialty" and rec["doctorsShown"] == 2 and rec["lookupMs"] is not None
     assert rec["reviewText"] is None
+
+
+# ============================================================================ Phase 1 gaps (vision, "How Vita talks")
+def test_two_questions_at_most_before_showing_something(client, hms):
+    body = chat(client, "dard hai")
+    turns = 1
+    while body["kind"] == "follow_up" and turns < 5:
+        body = chat(client, "pata nahi", session_id=body["session_id"])
+        turns += 1
+    assert turns <= 3, "Vita asked more than two follow-up questions"
+
+
+def test_plain_words_first(client, hms):
+    body = chat(client, "I need an orthopaedic doctor", city="Kolkata")
+    assert "bone doctors (Orthopaedic)" in body["message"]
+    hi = chat(client, "mujhe haddi ka doctor chahiye", city="Kolkata")
+    assert "haddi ke doctor (Orthopaedic)" in hi["message"]
+
+
+@pytest.mark.parametrize("text", ["Dr Sharma ka number do", "dr anita sen ka mobile number chahiye"])
+def test_never_shares_a_private_number(client, hms, text):
+    body = chat(client, text, city="Kolkata")
+    assert body["kind"] == "info" and "personal number" in body["message"]
+    assert not any(ch.isdigit() for ch in body["message"].replace("98", ""))  # no phone digits made up
+    assert "doctors" not in body
+
+
+def test_front_desk_number_only_from_1hms(client, hms):
+    import copy
+    from tests import test_vita_doctor_chat as me
+    saved = copy.deepcopy(me.HOSPITALS[H1])
+    me.HOSPITALS[H1]["contact"] = "033-4000-1234"
+    try:
+        body = chat(client, "dr anita sen ka number do", city="Kolkata")
+        assert "033-4000-1234" in body["message"]
+    finally:
+        me.HOSPITALS[H1].clear()
+        me.HOSPITALS[H1].update(saved)
+
+
+@pytest.mark.parametrize("text", ["bas dekh raha tha", "no thanks", "thank you"])
+def test_just_looking_is_fine(client, hms, text):
+    body = chat(client, text)
+    assert body["kind"] == "info" and "No problem" in body["message"] or "Koi baat nahi" in body["message"]
+    assert searches(hms) == []
+
+
+def test_greeting_offers_the_five_ways(client, hms):
+    body = chat(client, "namaste")
+    assert body["clarify"]["kind"] == "ask_kind" and len(body["clarify"]["options"]) == 5
+
+
+def test_short_answer_mid_triage_stays_with_triage(client, hms):
+    first = chat(client, "dard hai")
+    assert first["kind"] == "follow_up"
+    second = chat(client, "nahi", session_id=first["session_id"])
+    assert second["kind"] != "info"
+
+
+def test_talk_to_a_person(client, hms):
+    body = chat(client, "mujhe kisi insaan se baat karni hai")
+    assert body["kind"] == "handoff" and body["handoff"]["reason"] == "asked"
+
+
+def test_repeated_confusion_offers_a_person(client, hms):
+    first = chat(client, "doctor chahiye")
+    second = chat(client, "koi doctor batao", session_id=first["session_id"])
+    assert "human" in [o["id"] for o in second["clarify"]["options"]]
+
+
+def test_show_more_doctors(client, hms):
+    hms_dir = client.app.state.doctors
+    hms_dir.limit = 1
+    try:
+        first = chat(client, "cardiologist", city="Kolkata")
+        assert len(first["doctors"]["items"]) == 1 and first["doctors"]["hasMore"]
+        more = chat(client, "aur doctor dikhao", session_id=first["session_id"], city="Kolkata")
+        assert more["doctors"]["page"] == 2 and more["doctors"]["items"][0]["name"] == "Dr. Amit Das"
+        assert not more["doctors"]["hasMore"]
+        end = chat(client, "show more", session_id=first["session_id"], city="Kolkata")
+        assert end["clarify"]["kind"] == "no_more"
+    finally:
+        hms_dir.limit = 3
+
+
+def test_emergency_beats_a_conversation_move(client, hms):
+    body = chat(client, "hello, seene mein bahut dard aur saans nahi aa rahi")
+    assert body["kind"] == "emergency"
+
+
+def test_dead_ends_reach_the_review_queue(client, hms):
+    from hms_router.telemetry import chat_record
+
+    class Rec:
+        @staticmethod
+        def query_hash(t):
+            return "h"
+
+    body = chat(client, "dr zzyzxq")
+    rec = chat_record(body, recorder=Rec, caller="t", latency_ms=1, text="dr zzyzxq", model_version=None)
+    assert rec["reviewText"] == "dr zzyzxq" and rec["clarifyKind"] == "no_match"
