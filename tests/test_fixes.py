@@ -120,12 +120,12 @@ def test_alternative_is_always_gp_or_telemedicine():
 def test_emergency_gets_response_card_not_three_outputs():
     card = _card({"symptoms": ["chest pain"]})
     assert card.kind == "emergency" and len(card.outputs) == 1 and card.outputs[0].specialist == "Emergency Medicine"
-    assert "112" in card.alert and "Cardiologist" in card.after_stabilisation
+    assert "108" in card.alert and "Cardiologist" in card.after_stabilisation
 
 
 def test_watch_for_has_no_duplicates_and_always_has_emergency_line():
     card = _card({"symptoms": ["stomach pain", "vomiting", "fever"], "intensity": "moderate"})
-    assert len(card.watch_for) == len(set(card.watch_for)) and "112" in card.watch_for[-1]
+    assert len(card.watch_for) == len(set(card.watch_for)) and "108" in card.watch_for[-1]
 
 
 # ---------------------------------------------------------------- keywords

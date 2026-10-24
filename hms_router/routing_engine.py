@@ -53,7 +53,7 @@ from typing import Any
 
 from .output import OutputGenerator, ResponseCard
 from .retrieval import RetrievalLayer, RetrievalResult
-from .severity import EMERGENCY, SeverityClassifier, SeverityResult, emergency_check
+from .severity import EMERGENCY, EMERGENCY_NUMBER, SeverityClassifier, SeverityResult, emergency_check
 
 log = logging.getLogger("hms_router.routing_engine")
 
@@ -305,7 +305,7 @@ class RoutingEngine:
                 summary="Emergency symptoms detected",
                 severity_level="EMERGENCY",
                 severity_score=100,
-                disposition="Go to ER / call 112 immediately",
+                disposition=f"Go to ER / call {EMERGENCY_NUMBER} immediately",
                 outputs=[SpecialistOutput("EMERGENCY", EMERGENCY_SPECIALIST, 1.0,
                                          "Emergency flag raised", [])],
                 watch_for=[],

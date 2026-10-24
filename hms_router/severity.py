@@ -227,7 +227,11 @@ class SeverityModel(Protocol):
 # ----------------------------------------------------------------------------- 4. result + classifier
 LEVELS = [(30, "MILD", "Self-care / OPD"), (60, "MODERATE", "GP / Family Physician"),
           (85, "SEVERE", "Specialist - Urgent"), (100, "EMERGENCY", "ER / Ambulance NOW")]
-ALERT = "EMERGENCY: Turant 112 par call karein ya nearest ER jaayein. / Call 112 or go to the nearest ER now."
+# The one emergency number every patient-facing text names: 108 (ambulance), decided 2026-10-24 so the
+# router, Doctor Dekho and the WhatsApp bot all show the same number. Change it here only.
+EMERGENCY_NUMBER = "108"
+ALERT = (f"EMERGENCY: Turant {EMERGENCY_NUMBER} par call karein ya nearest ER jaayein. / "
+         f"Call {EMERGENCY_NUMBER} or go to the nearest ER now.")
 
 
 def band(score: float) -> tuple[str, str]:

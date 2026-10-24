@@ -20,7 +20,7 @@ def say(graph, thread, text):
 
 def test_emergency_short_circuits(graph):
     s = say(graph, "e1", "seene mein dard ho raha hai")
-    assert s["done"] and "112" in s["reply"] and "result" not in s       # triage never ran
+    assert s["done"] and "108" in s["reply"] and "result" not in s       # triage never ran
 
 
 def test_asks_age_then_answers_without_repeating(graph):

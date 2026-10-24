@@ -118,7 +118,7 @@ def test_sudden_severe_headache_gets_its_canonical_symptom(agent):
 def test_reply_language_follows_user(agent):
     assert "Symptom summary" in say(agent, "I have fever and cough for 3 days", "no other").message
     r = say(HMSRouterAgent(fakeredis.FakeRedis(decode_responses=True)), "seene mein dard")
-    assert "Turant 112" in r.message
+    assert "Turant 108" in r.message
 
 
 def test_unknown_token_queue_gets_original_word_not_our_guess(agent):

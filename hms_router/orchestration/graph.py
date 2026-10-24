@@ -19,14 +19,15 @@ from typing import Annotated, TypedDict
 
 from ..application.route_symptom import RouteSymptomService
 from ..domain.models import Query
+from ..severity import EMERGENCY_NUMBER
 from ..textnorm import preprocess
 from .tools import route_symptom_payload
 
 MAX_CLARIFY_TURNS = 2
 
 _T = {  # (english, hinglish) - deterministic wording; needs clinician review before patient use
-    "emergency": ("This may be an emergency: {reasons}. Call 112 or go to the nearest emergency room now.",
-                  "Yeh emergency ho sakti hai: {reasons}. Abhi 112 par call karein ya nazdeeki emergency jaayein."),
+    "emergency": ("This may be an emergency: {reasons}. Call " + EMERGENCY_NUMBER + " or go to the nearest emergency room now.",
+                  "Yeh emergency ho sakti hai: {reasons}. Abhi " + EMERGENCY_NUMBER + " par call karein ya nazdeeki emergency jaayein."),
     "answer": ("Please see a {name} doctor. {reason}", "Aap {name} doctor ko dikhayein. {reason}"),
     "gp": ("I could not match this to a specialty. A General Physician can assess it first.",
            "Main ise kisi specialty se match nahi kar paya. Pehle General Physician ko dikhayein."),
