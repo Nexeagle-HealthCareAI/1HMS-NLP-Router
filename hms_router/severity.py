@@ -227,11 +227,13 @@ class SeverityModel(Protocol):
 # ----------------------------------------------------------------------------- 4. result + classifier
 LEVELS = [(30, "MILD", "Self-care / OPD"), (60, "MODERATE", "GP / Family Physician"),
           (85, "SEVERE", "Specialist - Urgent"), (100, "EMERGENCY", "ER / Ambulance NOW")]
-# The one emergency number every patient-facing text names: 108 (ambulance), decided 2026-10-24 so the
-# router, Doctor Dekho and the WhatsApp bot all show the same number. Change it here only.
+# Emergency numbers every patient-facing text uses (decided 2026-10-24): 108 is the medical ambulance and
+# always comes first; 112 is India's single number for any emergency. Screens may also show 102 (ambulance
+# in some states). The router, Doctor Dekho and the WhatsApp bot use these; change them here only.
 EMERGENCY_NUMBER = "108"
-ALERT = (f"EMERGENCY: Turant {EMERGENCY_NUMBER} par call karein ya nearest ER jaayein. / "
-         f"Call {EMERGENCY_NUMBER} or go to the nearest ER now.")
+GENERAL_EMERGENCY_NUMBER = "112"
+ALERT = (f"EMERGENCY: Turant {EMERGENCY_NUMBER} (ambulance) ya {GENERAL_EMERGENCY_NUMBER} par call karein, ya nearest ER jaayein. / "
+         f"Call {EMERGENCY_NUMBER} (ambulance) or {GENERAL_EMERGENCY_NUMBER}, or go to the nearest ER now.")
 
 
 def band(score: float) -> tuple[str, str]:

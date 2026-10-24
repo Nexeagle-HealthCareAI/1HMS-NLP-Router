@@ -8,7 +8,7 @@
        "Cardiologist",
        "General Physician"
       ],
-      "alert": "EMERGENCY: Turant 108 par call karein ya nearest ER jaayein. / Call 108 or go to the nearest ER now.",
+      "alert": "EMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.",
       "disclaimer": "Triage support only - not a diagnosis.",
       "disposition": "ER / Ambulance NOW",
       "emergency_reasons": [
@@ -67,10 +67,10 @@
      ],
      "kind": "emergency",
      "language": "hinglish",
-     "message": "[!] EMERGENCY\nEMERGENCY: Turant 108 par call karein ya nearest ER jaayein. / Call 108 or go to the nearest ER now.\n\nChest pain\nAapke symptoms: chest pain\nAfter the ER: Cardiologist, General Physician\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "[!] EMERGENCY\nEMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.\n\nChest pain\nAapke symptoms: chest pain\nAfter the ER: Cardiologist, General Physician\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
-      "alert": "EMERGENCY: Turant 108 par call karein ya nearest ER jaayein. / Call 108 or go to the nearest ER now.",
+      "alert": "EMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.",
       "disposition": "ER / Ambulance NOW",
       "emergency": true,
       "emergency_hits": [
@@ -151,7 +151,7 @@
        "Pulmonologist",
        "Cardiologist"
       ],
-      "alert": "EMERGENCY: Turant 108 par call karein ya nearest ER jaayein. / Call 108 or go to the nearest ER now.",
+      "alert": "EMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.",
       "disclaimer": "Triage support only - not a diagnosis.",
       "disposition": "ER / Ambulance NOW",
       "emergency_reasons": [
@@ -210,10 +210,10 @@
      ],
      "kind": "emergency",
      "language": "hindi",
-     "message": "[!] EMERGENCY\nEMERGENCY: Turant 108 par call karein ya nearest ER jaayein. / Call 108 or go to the nearest ER now.\n\nBreathlessness\nAapke symptoms: breathlessness\nAfter the ER: Pulmonologist, Cardiologist\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "[!] EMERGENCY\nEMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.\n\nBreathlessness\nAapke symptoms: breathlessness\nAfter the ER: Pulmonologist, Cardiologist\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
-      "alert": "EMERGENCY: Turant 108 par call karein ya nearest ER jaayein. / Call 108 or go to the nearest ER now.",
+      "alert": "EMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.",
       "disposition": "ER / Ambulance NOW",
       "emergency": true,
       "emergency_hits": [
