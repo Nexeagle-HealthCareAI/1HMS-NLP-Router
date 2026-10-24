@@ -4,7 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .config import Settings
-from .language import LanguageDetector, LanguageResult
+from .language import LanguageDetector, LanguageResult, resolve
 from .lexicon import Lexicon
 from .script import normalize_script
 from .session import SessionManager
@@ -41,16 +41,19 @@ class HMSRouterPipeline:
         self.corrector = SpellingCorrector(self.lex, self.cfg, RedisReviewQueue(redis_client, self.cfg.review_queue_key))
 
     # -------- Step 1
-    def ingest(self, text: str, session_id: str | None = None) -> IngestionResult:
+    def ingest(self, text: str, session_id: str | None = None, language_hint: str | None = None) -> IngestionResult:
+        """language_hint: the channel's UI language, used only while the conversation has no language yet."""
         text = (text or "").strip()
         if not text:
             raise ValueError("empty message")
         text = text[: self.cfg.max_input_chars]
 
         sid, is_new = self.sessions.open(session_id)             # active session? append : init new (TTL 30 min)
-        lang = self.detector.detect(text)                        # fasttext / marker heuristic
+        heard = self.detector.detect(text)                       # this message: script, then word scores
+        previous = None if is_new else self.sessions.context(sid).get("language")
+        lang = resolve(heard, previous, language_hint)           # the conversation's language after it
         normalized = normalize_script(text)                      # Devanagari -> lowercase Roman
-        turn = self.sessions.append(sid, {"raw": text, "normalized": normalized, "language": lang.language})
+        turn = self.sessions.append(sid, {"raw": text, "normalized": normalized, "language": heard.language})
         self.sessions.set_context(sid, language=lang.language, script=lang.script)
         combined = " | ".join(m["normalized"] for m in self.sessions.history(sid))
         return IngestionResult(sid, is_new, turn, text, lang, normalized, combined)

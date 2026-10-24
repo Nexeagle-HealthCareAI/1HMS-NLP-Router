@@ -29,7 +29,8 @@ POST /v2/agent/chat          (same API keys and rate limit as /chat)
   "hospital_id": "…",              // optional: Vita in a hospital's own channel (VITA-11)
   "select_doctor_id": "…",         // optional: the doctor the patient tapped Choose on (VITA-8)
   "page": 2,                       // optional: "Show more doctors" button (or the patient types "aur doctor dikhao")
-  "new_search": true               // optional: search with exactly the asks in `text` (a filter chip was removed)
+  "new_search": true,              // optional: search with exactly the asks in `text` (a filter chip was removed)
+  "ui_language": "hi"              // optional: the channel's UI language (en, hi, hinglish, bn), see below
 }
 ```
 
@@ -59,6 +60,30 @@ Combinations work in one turn ("MD cardiologist near Salt Lake"). Refinements re
 
 Body words alone ("pet mein dard", "kaan mein dard") are symptoms and go to triage; "pet ka doctor" is a
 specialty ask. Triage asks **at most two** follow-up questions before showing something (`/chat` keeps 3).
+
+## Language: Vita mirrors the patient
+
+Vita answers in the language the patient writes in, for the whole conversation: English, Hinglish (Roman
+Hindi) or Hindi (Devanagari). `language` on every reply says which.
+
+| Patient | Vita |
+|---|---|
+| writes English | English, including triage questions, chips and the emergency text |
+| writes Hinglish | Hinglish |
+| writes Hindi script | Hindi script; Hindi asks ("मुझे स्किन डॉक्टर चाहिए") are understood like Hinglish ones |
+| writes Bangla | a short note in Bangla, Hindi and English: "please write in Hindi or English", with 108 |
+| sends a neutral reply ("Kolkata", a name, "ok", "thank you", a tapped chip) | the conversation keeps its language |
+| clearly switches language mid-chat | Vita switches too, from that reply on |
+
+- One message: `hms_router/language.py` scores Hindi words against English words; script (Devanagari,
+  Bengali) decides outright. Words that are the same in both ("me", "to") count for neither.
+- The conversation: the session's `context.language`, updated only by a message with clear evidence.
+- `ui_language` is used only when the first message is neutral (a doctor's name, a city).
+- Every phrase is in `hms_router/voice.py` in all three languages. Emergency replies lead with 108 / 112 in
+  the patient's language and keep one English line as a backup.
+- The triage result is said like a person ("Samajh gaya: 3 din se bukhar aur khansi. Iske liye General
+  Physician ko dikhana sahi rahega…"), not the printed card; `card` still carries the full detail.
+- `/chat` keeps its own wording; only its language detection improved.
 
 ## How Vita talks (conversation moves)
 

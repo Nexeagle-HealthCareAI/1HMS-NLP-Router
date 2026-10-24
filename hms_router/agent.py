@@ -87,8 +87,8 @@ class HMSRouterAgent:
         self.feedback = self.learning.feedback
 
     # ------------------------------------------------------------------ main entry
-    def handle(self, text: str, session_id: str | None = None) -> AgentReply:
-        ing = self.pipeline.ingest(text, session_id)                              # Layer 1
+    def handle(self, text: str, session_id: str | None = None, language_hint: str | None = None) -> AgentReply:
+        ing = self.pipeline.ingest(text, session_id, language_hint)               # Layer 1
         lang = ing.language.language
         degraded: list[str] = []
 

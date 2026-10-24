@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from ...application.doctor_chat import DoctorChat
 from ...doctors import DoctorDirectory
+from ...language import ui_language
 from ...telemetry import DECISIONS, chat_record
 
 log = logging.getLogger("hms_router.agent")
@@ -37,6 +38,9 @@ class AgentChatRequest(BaseModel):
                                          description="The doctor the patient tapped 'Choose' on; must be one shown "
                                                      "in this session (else 422)")
     page: int = Field(1, ge=1, le=10, description="'Show more doctors': the next page of the last list")
+    ui_language: str | None = Field(None, max_length=16,
+                                    description="The channel's UI language (en, hi, hinglish, bn). Used only until the "
+                                                "patient's own words show a language; Vita then mirrors the patient")
     new_search: bool = Field(False, description="Search with exactly the asks in `text`, not merged into the last "
                                                 "search (the screen removed a filter chip)")
 
@@ -62,7 +66,7 @@ def build_router(guard) -> APIRouter:
         try:
             out = flow.handle(req.text.strip(), req.session_id, city=req.city, lat=lat, lng=lng,
                               hospital_id=req.hospital_id, select_doctor_id=req.select_doctor_id, page=req.page,
-                              new_search=req.new_search)
+                              new_search=req.new_search, ui_language=ui_language(req.ui_language))
         except ValueError as exc:              # includes SelectionError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:

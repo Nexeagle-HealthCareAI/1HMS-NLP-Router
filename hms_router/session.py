@@ -47,5 +47,8 @@ class SessionManager:
         self.r.hset(self._k(sid, ":context"), mapping=fields)
         self.r.expire(self._k(sid, ":context"), self.ttl)
 
+    def context(self, sid: str) -> dict:
+        return self.r.hgetall(self._k(sid, ":context")) or {}
+
     def history(self, sid: str) -> list[dict]:
         return [json.loads(x) for x in self.r.lrange(self._k(sid, ":buffer"), 0, -1)]
