@@ -2,7 +2,8 @@
 
 The conversation's language (language.resolve) picks the column, so a patient who writes in Hindi script reads
 Hindi script, one who writes Hinglish reads Hinglish, and one who writes English reads English, for the whole
-chat. Vita speaks in the first person, masculine ("sakta hoon", "jod raha hoon"), as it always has.
+chat. Vita speaks in the first person, feminine ("sakti hoon", "jod rahi hoon"), matching the
+Doctor Dekho site (decided 2026-10-25).
 
 This module only words things. What Vita decides (which doctors, emergency or not) is decided elsewhere and
 never changes with the language.
@@ -158,7 +159,7 @@ def triage_question(v: Voice, key: str | None, symptoms: list[str], first: bool)
         return q
     if first:
         said = symptom_words(v, symptoms)
-        ack = v(f"Got it: {said}.", f"Samajh gaya, {said}.", f"समझ गया, {said}।")
+        ack = v(f"Got it: {said}.", f"Samajh gayi, {said}.", f"समझ गई, {said}।")
     else:
         ack = v("Okay.", "Theek hai.", "ठीक है।")
     return f"{ack} {q}"
@@ -171,8 +172,8 @@ def recommendation(v: Voice, *, symptoms: list[str], duration: str | None, speci
     said = symptom_words(v, symptoms)
     dur = duration_words(v, duration)
     heard = v(f"Got it: {said}" + (f", {dur}" if dur else "") + ".",
-              f"Samajh gaya: {dur + ' ' if dur else ''}{said}.",
-              f"समझ गया: {dur + ' ' if dur else ''}{said}।") if said else ""
+              f"Samajh gayi: {dur + ' ' if dur else ''}{said}.",
+              f"समझ गई: {dur + ' ' if dur else ''}{said}।") if said else ""
     name = plain(v, specialty_key)
     spec = specialist or v("a General Physician", "General Physician", "जनरल फ़िज़िशियन")
     who = (f"{name} doctor ({spec})" if v.code == "en" and name and name.lower() not in spec.lower() else
@@ -227,7 +228,7 @@ def emergency(v: Voice, signs: list[str]) -> str:
 # ------------------------------------------------------------------------------------------------ Bangla
 BANGLA_NOTE = ("দুঃখিত, আমি এখনও বাংলায় উত্তর দিতে পারি না। দয়া করে হিন্দি বা ইংরেজিতে লিখুন। "
                f"জরুরি অবস্থায় এখনই {EMERGENCY_NUMBER} নম্বরে ফোন করুন।\n"
-               "Maaf kijiye, main abhi Bangla mein jawab nahi de sakta. Hindi ya English mein likhein. "
+               "Maaf kijiye, main abhi Bangla mein jawab nahi de sakti. Hindi ya English mein likhein. "
                f"Emergency ho to turant {EMERGENCY_NUMBER} par call karein.\n"
                "Sorry, I can't reply in Bangla yet. Please write in Hindi or English. "
                f"In an emergency, call {EMERGENCY_NUMBER} now.")

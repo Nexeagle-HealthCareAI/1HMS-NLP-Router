@@ -32,7 +32,7 @@ from typing import Any
 
 from .. import voice as V
 from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's own wording, mapped to voice keys
-from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, parse
+from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
 from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
                        specialty_key)
 from ..severity import EMERGENCY, emergency_check
@@ -173,11 +173,17 @@ class DoctorChat:
         norm = intent_text(text)
         names = self.directory.names(city) if _wants_names(norm) else None
         ask = parse(text, names=names, medical_terms=self.terms)
+        if (st.get("selected") and not ask.when and not ask.name_query and not ask.specialty_key
+                and not ask.symptomish and not ask.degree):
+            follow = availability_when(norm)                     # "kal milenge kya?" about the doctor just chosen
+            if follow:
+                ask.when, ask.available_today, ask.refine = follow, False, False
 
         pending = st.get("pending")
         which_id = self._which_pick(norm, st)
         hospital_pick = self._pick_option(norm, st.get("which_hospital"))
         skips_triage = (ask.direct or ask.refine or bool(pending) or which_id is not None or ask.move is not None
+                        or ask.when is not None
                         or hospital_pick is not None or page > 1 or _bare_doctor(norm, ask))
         if skips_triage and self._emergency(text):                                       # step 3
             if session_id and (pending or st.get("which") or st.get("which_hospital")):
@@ -487,7 +493,7 @@ class DoctorChat:
             msg += hi(" Shall I book an appointment?", " Kya main appointment book karoon?", " क्या मैं अपॉइंटमेंट बुक करूँ?")
         out = self._reply(base, INFO, msg, question=msg, clarify={"kind": "book_offer", "question": msg, "options": [
             {"id": doctor["doctorId"], "label": hi("Yes, book", "Haan, book karein", "हाँ, बुक करें")},
-            {"id": "no", "label": hi("No, just checking", "Nahi, bas pooch raha tha", "नहीं, बस पूछ रहा था")}]})
+            {"id": "no", "label": hi("No, just checking", "Nahi, bas jaanna tha", "नहीं, बस जानना था")}]})
         out["doctor"] = doctor
         out["availability"] = {"doctorId": doctor["doctorId"], "days": sched.get("days"),
                                "nextAvailableDate": nxt or sched.get("nextAvailableDate"), "note": sched.get("note")}
@@ -656,8 +662,8 @@ class DoctorChat:
         st["handoff"] = {"reason": reason, "at": int(time.time())}
         self._save(ing.session_id, st)
         msg = hi("I'm passing you to our support team. Someone will reply to you shortly.",
-                 "Main aapko hamari support team se jod raha hoon. Koi jaldi aapse baat karega.",
-                 "मैं आपको हमारी सपोर्ट टीम से जोड़ रहा हूँ। कोई जल्द ही आपसे बात करेगा।")
+                 "Main aapko hamari support team se jod rahi hoon. Koi jaldi aapse baat karega.",
+                 "मैं आपको हमारी सपोर्ट टीम से जोड़ रही हूँ। कोई जल्द ही आपसे बात करेगा।")
         out = self._reply(base, HANDOFF, msg)
         out["handoff"] = {"reason": reason}
         return out
@@ -682,14 +688,14 @@ class DoctorChat:
         hosp = (doctor or {}).get("hospital") or {}
         desk = hosp.get("contact")                     # the hospital front desk, as 1HMS publishes it
         if hi.code == "hi":
-            msg = ("मैं डॉक्टरों के निजी नंबर शेयर नहीं कर सकता। "
-                   + (f"मैं {name} के साथ अपॉइंटमेंट बुक कर सकता हूँ" if name else
-                      "मैं आपके लिए अपॉइंटमेंट बुक कर सकता हूँ"))
+            msg = ("मैं डॉक्टरों के निजी नंबर शेयर नहीं कर सकती। "
+                   + (f"मैं {name} के साथ अपॉइंटमेंट बुक कर सकती हूँ" if name else
+                      "मैं आपके लिए अपॉइंटमेंट बुक कर सकती हूँ"))
             msg += f", या {hosp.get('name')} का फ्रंट डेस्क नंबर: {desk}।" if desk else "।"
         elif hi:
-            msg = ("Main doctors ke personal number share nahi kar sakta. "
-                   + (f"Main {name} ke saath appointment book kar sakta hoon" if name else
-                      "Main aapke liye appointment book kar sakta hoon"))
+            msg = ("Main doctors ke personal number share nahi kar sakti. "
+                   + (f"Main {name} ke saath appointment book kar sakti hoon" if name else
+                      "Main aapke liye appointment book kar sakti hoon"))
             msg += f", ya {hosp.get('name')} ka front desk number: {desk}." if desk else "."
         else:
             msg = ("I can't share doctors' personal numbers, but "

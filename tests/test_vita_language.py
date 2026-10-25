@@ -134,7 +134,7 @@ def test_english_triage_is_english_throughout(client):
 
 def test_hindi_triage_is_hindi_throughout(client):
     q = chat(client, "मुझे तीन दिन से बुखार और सिर दर्द है")
-    assert q["language"] == "hindi" and q["message"].startswith("समझ गया")
+    assert q["language"] == "hindi" and q["message"].startswith("समझ गई")
     rec = chat(client, "हाँ, थोड़ी खाँसी भी है", session_id=q["session_id"])
     assert rec["kind"] == "recommendation" and is_hindi(rec["message"])
     assert "3 दिन से" in rec["message"] and "निदान नहीं" in rec["message"]
@@ -142,9 +142,9 @@ def test_hindi_triage_is_hindi_throughout(client):
 
 def test_hinglish_triage_reads_like_a_person(client):
     q = chat(client, "3 din se bukhar aur sar dard hai")
-    assert q["message"] == "Samajh gaya, bukhar aur sar dard. Koi aur symptoms hain?"
+    assert q["message"] == "Samajh gayi, bukhar aur sar dard. Koi aur symptoms hain?"
     rec = chat(client, "haan thodi khasi bhi", session_id=q["session_id"])
-    assert rec["message"].startswith("Samajh gaya: 3 din se bukhar, sar dard aur khansi.")
+    assert rec["message"].startswith("Samajh gayi: 3 din se bukhar, sar dard aur khansi.")
     assert "Gambhirta" not in rec["message"]
 
 

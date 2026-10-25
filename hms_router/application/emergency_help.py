@@ -84,8 +84,8 @@ class EmergencyHelp:
         if ctx.get("lat") is None or ctx.get("lng") is None:
             out["emergency"] = {"places": [], "needsLocation": True, "canShareNumber": False}
             out["message"] += "\n" + v("Share your location and I'll show the nearest emergency hospitals and tell them you may be coming.",
-                                       "Apni location share karein, main sabse nazdeeki emergency hospital dikhaunga aur unhe bata dunga.",
-                                       "अपनी लोकेशन शेयर करें, मैं सबसे नज़दीकी इमरजेंसी अस्पताल दिखाऊँगा और उन्हें बता दूँगा।")
+                                       "Apni location share karein, main sabse nazdeeki emergency hospital dikhaungi aur unhe bata dungi.",
+                                       "अपनी लोकेशन शेयर करें, मैं सबसे नज़दीकी इमरजेंसी अस्पताल दिखाऊँगी और उन्हें बता दूँगी।")
             return
         self._alert(out, em, ctx, v, session_ref=out.get("session_id"))
 
@@ -153,8 +153,8 @@ class EmergencyHelp:
             log.warning("emergency number not shared: %s", exc)
             return {"kind": "info", "clarify": None,
                     "message": v("I couldn't send your number. Please call the hospital or 112 now.",
-                                 "Aapka number nahi bhej paaya. Abhi hospital ya 112 par call karein.",
-                                 "आपका नंबर नहीं भेज पाया। अभी अस्पताल या 112 पर कॉल करें।")}
+                                 "Aapka number nahi bhej paayi. Abhi hospital ya 112 par call karein.",
+                                 "आपका नंबर नहीं भेज पाई। अभी अस्पताल या 112 पर कॉल करें।")}
         em["numberShared"] = True
         return {"kind": "info", "clarify": None,
                 "message": v("Done. The hospitals have your number and may call you. Keep your phone free, and call 112 if it gets worse.",

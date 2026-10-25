@@ -91,7 +91,7 @@ _OWN_NUMBER = re.compile(r"\b(mera|meri|mere|my|apna|hamara)\b.{0,12}\b(number|m
 _HUMAN = re.compile(r"\b(human|insaan|insan|real person|kisi (insaan|aadmi|vyakti) se|customer care|customer support|"
                     r"support team|helpline|receptionist|staff se|agent se baat|person se baat|talk to (a )?(person|someone)|"
                     r"call me back|callback|call back)\b")
-_JUST_LOOKING = re.compile(r"^((nahi|nahin|no|na) )?(bas |sirf |just )?(pooch raha|pooch rahi|puch raha|puch rahi|dekh raha|dekh rahi|dekh rahe|looking|checking|browsing|time pass|"
+_JUST_LOOKING = re.compile(r"^((nahi|nahin|no|na) )?(bas |sirf |just )?(pooch raha|pooch rahi|puch raha|puch rahi|dekh raha|dekh rahi|dekh rahe|jaanna tha|janna tha|looking|checking|browsing|time pass|"
                            r"no thanks?|nahi chahiye|abhi nahi|not now|later|baad mein|thanks?|thank you|thanku|shukriya|"
                            r"dhanyavad|dhanyawad|ok bye|bye|ok thanks?|theek hai|thik hai|ok|okay)\b")
 _DECLINE = re.compile(r"^(nahi|nahin|nhi|no|na|nope)( (abhi|ji|thanks?|thank you|bas|sir|madam))*( (nahi|nahin|nhi))?$")
@@ -107,8 +107,8 @@ _FEMALE_WORDS = {"lady", "ladies", "mahila", "female", "woman", "aurat", "stree"
 _TODAY = re.compile(r"\b(aaj|today|abhi)\b.{0,20}\b(available|milenge|mil sakte|mil sakta|baithte|baithenge|hai kya|"
                     r"open|free)\b|\b(available|milenge|baithte)\b.{0,12}\b(aaj|today)\b|\baaj ke doctor\b")
 # "Is Dr Sharma available Sunday?", "Dr Sen kal milenge?", "kab baithte hain"
-_WHEN_Q = re.compile(r"\b(available|availability|milenge|mil sakte|mil sakti|baithte|baithti|baithenge|aate|aati|"
-                     r"aayenge|schedule|timing|timings|kab)\b")
+_WHEN_Q = re.compile(r"\b(available|availability|milenge|milengi|milega|milegi|mil sakte|mil sakti|baithte|baithti|baithenge|"
+                     r"baithengi|aate|aati|aayenge|aayengi|aaenge|schedule|timing|timings|kab)\b")
 _WEEKDAYS = {"monday": 0, "mon": 0, "somvar": 0, "somwar": 0, "tuesday": 1, "tue": 1, "mangalvar": 1, "mangalwar": 1,
              "wednesday": 2, "wed": 2, "budhvar": 2, "budhwar": 2, "thursday": 3, "thu": 3, "guruvar": 3,
              "guruwar": 3, "brihaspativar": 3, "friday": 4, "fri": 4, "shukravar": 4, "shukrawar": 4,
@@ -422,9 +422,23 @@ def _find_hospital(norm: str) -> str | None:
 
 def _find_when(norm: str) -> str:
     """'aaj' -> '+0', 'kal' -> '+1', 'sunday' -> 'dow:6', otherwise 'next' (the next working day)."""
+    if re.search(r"\bday after tomorrow\b", norm):
+        return "+2"
     for w in norm.split():
         if w in _RELATIVE_DAYS:
             return f"+{_RELATIVE_DAYS[w]}"
         if w in _WEEKDAYS:
             return f"dow:{_WEEKDAYS[w]}"
     return "next"
+
+
+def availability_when(norm: str) -> str | None:
+    """A question about when the chosen doctor sits, without naming them: "kal milenge kya?", "parso milengi?",
+    "monday ko baithte hain?", "is she available tomorrow?", "kab milenge?". Returns the day ('+1', 'dow:0', 'next')
+    or None. Needs an availability word, so a bare "kal" (an answer to "which day?") is not a question."""
+    if not (_WHEN_Q.search(norm) or _TODAY.search(norm) or re.search(r"\b(is (she|he|the doctor)|are they) (in|free)\b", norm)):
+        return None
+    has_day = any(w in _RELATIVE_DAYS or w in _WEEKDAYS for w in norm.split()) or "day after tomorrow" in norm
+    if not has_day and not re.search(r"\b(kab|when|available|availability|milenge|milengi|baithte|baithti|schedule|timings?)\b", norm):
+        return None
+    return _find_when(norm)

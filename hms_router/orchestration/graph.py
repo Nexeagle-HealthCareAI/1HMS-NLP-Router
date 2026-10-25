@@ -32,7 +32,7 @@ _T = {  # (english, hinglish) - deterministic wording; needs clinician review be
                   + " par call karein, ya nazdeeki emergency jaayein."),
     "answer": ("Please see a {name} doctor. {reason}", "Aap {name} doctor ko dikhayein. {reason}"),
     "gp": ("I could not match this to a specialty. A General Physician can assess it first.",
-           "Main ise kisi specialty se match nahi kar paya. Pehle General Physician ko dikhayein."),
+           "Main ise kisi specialty se match nahi kar paayi. Pehle General Physician ko dikhayein."),
 }
 
 
