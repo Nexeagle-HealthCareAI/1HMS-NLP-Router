@@ -265,6 +265,20 @@ class DoctorChat:
             q = V.triage_question(voice, key, list(state.get("symptoms") or []), first=key == "more")
             if q:
                 out["message"] = out["question"] = q
+            sid = out.get("session_id")
+            if key == "describe" and not state.get("symptoms") and sid:
+                est = self.load(sid)
+                if est.get("asked_describe"):                  # never the same question twice: say so, show the ways to ask
+                    q = V.not_understood(voice)
+                    out["message"] = out["question"] = q
+                    out["clarify"] = self._confused(est, {"kind": "ask_kind", "question": q,
+                                                          "options": V.ask_kind_options(voice)}, voice)
+                est["asked_describe"] = True
+                self._save(sid, est)
+            elif sid and state.get("symptoms"):
+                est = self.load(sid)
+                if est.pop("asked_describe", None):
+                    self._save(sid, est)
             return out
         if out.get("kind") == "emergency":                     # number first, in the patient's language
             signs = [s for o in card.get("outputs") or [] for s in o.get("matched_symptoms") or []] \
@@ -752,6 +766,10 @@ class DoctorChat:
 
     def _small_talk(self, text, session_id, move: str) -> dict:
         ing, st, base, hi = self._ingest(text, session_id)
+        if move == "greeting" and ing.language.strength != "strong":
+            # "heyyy", "hello" do not say which language the patient will use: the next message decides
+            self.agent.pipeline.sessions.set_context(ing.session_id, language="")
+            st.pop("language", None)
         self._save(ing.session_id, st)
         if move == "greeting":
             q = hi("Hello! I'm Vita. How can I help you find a doctor?",

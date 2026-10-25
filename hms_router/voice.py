@@ -149,6 +149,16 @@ QUESTIONS = {  # accumulator question key -> (English, Hinglish, Hindi)
 }
 
 
+def not_understood(v: Voice) -> str:
+    """The second time nothing medical was recognised: say so, give an example, and offer the other ways to ask."""
+    return v("Sorry, I didn't quite get that. Could you say it another way, like \"headache since 2 days\" or "
+             "\"fever and cough\"? Or choose one below.",
+             "Maaf kijiye, main samajh nahi paayi. Thoda alag tarah se batayein, jaise \"2 din se sar dard\" ya "
+             "\"bukhar aur khansi\". Ya neeche se chunein.",
+             "माफ़ कीजिए, मैं समझ नहीं पाई। थोड़ा अलग तरह से बताएँ, जैसे \"2 दिन से सिर दर्द\" या \"बुखार और खाँसी\"। "
+             "या नीचे से चुनें।")
+
+
 def triage_question(v: Voice, key: str | None, symptoms: list[str], first: bool) -> str | None:
     """The next triage question, with a short acknowledgement first so it reads like a person listening:
     'Got it: fever and headache. Since when has this been going on?'"""

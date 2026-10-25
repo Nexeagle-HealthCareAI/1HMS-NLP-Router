@@ -100,7 +100,10 @@ _JUST_LOOKING = re.compile(r"^((nahi|nahin|no|na) )?(bas |sirf |just )?(pooch ra
                            r"no thanks?|nahi chahiye|abhi nahi|not now|later|baad mein|thanks?|thank you|thanku|shukriya|"
                            r"dhanyavad|dhanyawad|ok bye|bye|ok thanks?|theek hai|thik hai|ok|okay)\b")
 _DECLINE = re.compile(r"^(nahi|nahin|nhi|no|na|nope)( (abhi|ji|thanks?|thank you|bas|sir|madam))*( (nahi|nahin|nhi))?$")
-_GREETING = re.compile(r"^(hi+|hello|helo|hey|namaste|namaskar|good (morning|afternoon|evening)|kaise ho|hii)\b")
+_GREETING = re.compile(r"^(h+i+|h+e+y+a*|h+e+l+o+w?|hlo+|hy+|hola|yo+|namast[ea]+y?|namaskar|pranam|pranaam|"
+                       r"salaam|salam|assalam\w*|adaab|sat sri akal|jai shri krishna|radhe radhe|ram ram|"
+                       r"good (morning|afternoon|evening|night)|gm|kaise ho|kaisi ho|kaise hain|kya haal|how are you|"
+                       r"what'?s up|wassup|sup)\b")
 _MORE = re.compile(r"\b(show more|more doctors|aur doctor|aur doctors|aur dikhao|aur dikhaiye|aur batao|dusre doctor|doosre doctor|"
                    r"other doctors|next page|aur options|more options|aur koi)\b")
 

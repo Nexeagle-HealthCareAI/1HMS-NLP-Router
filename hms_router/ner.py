@@ -243,7 +243,14 @@ class SymptomExtractor:
                 and any(w in _NEGATORS_AFTER for w in lookahead)
                 and any(w in {"aa", "a", "raha", "rahi", "rahe"} for w in lookahead)
             )
-            if idiomatic_breathlessness:
+            # "neend nahi aa rahi", "so nahi pa raha": the "nahi" is part of the complaint (cannot sleep), not a denial
+            idiomatic_sleeplessness = (
+                e.canonical == "insomnia"
+                and any(w in _NEGATORS_AFTER for w in lookahead)
+                and (any(w in {"aa", "a", "aati", "aata", "aaya", "aayi", "raha", "rahi", "rahe", "pa", "paa", "paata", "paati",
+                               "pata", "pati", "pate", "hoti", "hota"} for w in lookahead) or len(lookahead) == 1)
+            )
+            if idiomatic_breathlessness or idiomatic_sleeplessness:
                 negated = False
             elif e.start > 0 and words[e.start - 1] in _NEGATORS_BEFORE:
                 negated = True
