@@ -82,7 +82,7 @@ def test_any_of_only_adds_urgency():
     combined = AnyOf([rules, ModelDetector(lambda _q: 0.0, 0.6)])
     assert combined.detect(q("seene mein dard")).flag
     both = AnyOf([rules, ModelDetector(lambda _q: 0.99, 0.6)]).detect(q("seene mein dard"))
-    assert both.source == "rules+model" and "Similar to emergency cases in the training data" not in both.reasons
+    assert both.source == "rules+model" and both.reasons == ["Chest pain"]
 
 
 # ----------------------------------------------------------------------------- reasoning

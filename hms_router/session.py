@@ -50,5 +50,9 @@ class SessionManager:
     def context(self, sid: str) -> dict:
         return self.r.hgetall(self._k(sid, ":context")) or {}
 
+    def clear_history(self, sid: str) -> None:
+        """Forget the messages so far (the turn count and the language stay): a finished triage starts over."""
+        self.r.delete(self._k(sid, ":buffer"))
+
     def history(self, sid: str) -> list[dict]:
         return [json.loads(x) for x in self.r.lrange(self._k(sid, ":buffer"), 0, -1)]

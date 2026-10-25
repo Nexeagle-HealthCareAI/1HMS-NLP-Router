@@ -111,6 +111,13 @@ emergency: {places: [{settingId, name, kind, phone, alternatePhone, distanceKm, 
 - **Capability** sent to 1HMS from what was said: cardiac, maternity, paediatric or trauma (puts the right hospital first among
   nearly-as-close ones).
 - 1HMS unreachable: the numbers still go out, `degraded: ["emergency_places"]`. No doctor list, no booking, ever.
+- **Signs:** `card.emergency_reasons` names the red flags in English ("Breathlessness"); `card.emergency_signs` says them in the
+  reply's language ("saans phoolna") for the screen's banner. When only the emergency model flagged the message there are no
+  signs (its "similar to emergency cases in the training data" is not shown to patients).
+- **After the emergency** (2 hours): that triage is over, so the next message is judged on its own. A new red flag is an emergency
+  again; "pet mein dard" is triaged as a stomach ache, with "Pehle: agar saans phoolna abhi bhi hai, to turant 108 par call
+  karein." said once before the answer. "ambulance aa gayi" / "hospital pahunch gaye", "ab theek hoon", "108 nahi lag raha"
+  (try 112, go with someone now) and "ok" / "thank you" each get their own `kind=info` reply.
 
 ## After booking (vision Phase 4)
 

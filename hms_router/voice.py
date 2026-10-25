@@ -235,6 +235,54 @@ def emergency(v: Voice, signs: list[str]) -> str:
     return "\n".join(lines)
 
 
+def nothing_new(v: Voice) -> str:
+    """Triage already advised and the message added nothing medical: don't repeat the advice."""
+    return v("Would you like one of the doctors above, or is there something else bothering you?",
+             "Kya aap upar diye doctors mein se kisi ko dikhana chahenge, ya koi aur takleef hai?",
+             "क्या आप ऊपर दिए डॉक्टरों में से किसी को दिखाना चाहेंगे, या कोई और तकलीफ़ है?")
+
+
+def after_emergency_reminder(v: Voice, signs: str) -> str:
+    """Said once, before the answer to whatever the patient asks next after an emergency."""
+    if signs:
+        return v(f"First: if the {signs} is still there, call {EMERGENCY_NUMBER} now.",
+                 f"Pehle: agar {signs} abhi bhi hai, to turant {EMERGENCY_NUMBER} par call karein.",
+                 f"पहले: अगर {signs} अभी भी है, तो तुरंत {EMERGENCY_NUMBER} पर कॉल करें।")
+    return v(f"First: if it is still an emergency, call {EMERGENCY_NUMBER} now.",
+             f"Pehle: agar abhi bhi emergency hai, to turant {EMERGENCY_NUMBER} par call karein.",
+             f"पहले: अगर अभी भी इमरजेंसी है, तो तुरंत {EMERGENCY_NUMBER} पर कॉल करें।")
+
+
+def after_emergency(v: Voice, what: str, signs: str) -> str:
+    """The reply to "ambulance aa gayi", "ab theek hoon", "108 nahi lag raha", "thank you" after an emergency."""
+    tell = (v(f" Tell the doctor about the {signs}.", f" Doctor ko {signs} ke baare mein zaroor batayein.",
+              f" डॉक्टर को {signs} के बारे में ज़रूर बताएँ।") if signs else "")
+    if what == "cant_call":
+        return v(f"Try {GENERAL_EMERGENCY_NUMBER}. If no one answers, ask someone to take you to the nearest hospital "
+                 "emergency right now; don't wait.",
+                 f"{GENERAL_EMERGENCY_NUMBER} par try karein. Koi na uthaye to kisi ko saath lekar abhi nazdeeki hospital ki "
+                 "emergency mein jaayein, intezaar mat kijiye.",
+                 f"{GENERAL_EMERGENCY_NUMBER} पर कोशिश करें। कोई न उठाए तो किसी को साथ लेकर अभी नज़दीकी अस्पताल की "
+                 "इमरजेंसी में जाएँ, इंतज़ार मत कीजिए।")
+    if what == "arrived":
+        return v("Good, help is there." + tell + " I'm here if you need a doctor's appointment later.",
+                 "Achha hai, madad pahunch gayi." + tell + " Baad mein doctor ka appointment chahiye to main yahin hoon.",
+                 "अच्छा है, मदद पहुँच गई।" + tell + " बाद में डॉक्टर का अपॉइंटमेंट चाहिए तो मैं यहीं हूँ।")
+    if what == "better":
+        check = v(f" Still, get the {signs} checked by a doctor." if signs else " Still, see a doctor soon.",
+                  f" Phir bhi {signs} ki jaanch doctor se zaroor karwayein." if signs else " Phir bhi jaldi doctor ko dikhayein.",
+                  f" फिर भी {signs} की जाँच डॉक्टर से ज़रूर करवाएँ।" if signs else " फिर भी जल्दी डॉक्टर को दिखाएँ।")
+        return v("Glad you feel better." + check + f" If it comes back, call {EMERGENCY_NUMBER} straight away. "
+                 "Shall I find you a doctor?",
+                 "Sunkar achha laga." + check + f" Takleef dobara ho to turant {EMERGENCY_NUMBER} par call karein. "
+                 "Kya main doctor dhoondhun?",
+                 "सुनकर अच्छा लगा।" + check + f" तकलीफ़ दोबारा हो तो तुरंत {EMERGENCY_NUMBER} पर कॉल करें। "
+                 "क्या मैं डॉक्टर ढूँढूँ?")
+    return v(f"Take care. If it gets worse, call {EMERGENCY_NUMBER}. I'm here if you need a doctor.",
+             f"Apna dhyan rakhiye. Takleef badhe to {EMERGENCY_NUMBER} par call karein. Doctor chahiye to main yahin hoon.",
+             f"अपना ध्यान रखिए। तकलीफ़ बढ़े तो {EMERGENCY_NUMBER} पर कॉल करें। डॉक्टर चाहिए तो मैं यहीं हूँ।")
+
+
 # ------------------------------------------------------------------------------------------------ Bangla
 BANGLA_NOTE = ("দুঃখিত, আমি এখনও বাংলায় উত্তর দিতে পারি না। দয়া করে হিন্দি বা ইংরেজিতে লিখুন। "
                f"জরুরি অবস্থায় এখনই {EMERGENCY_NUMBER} নম্বরে ফোন করুন।\n"
