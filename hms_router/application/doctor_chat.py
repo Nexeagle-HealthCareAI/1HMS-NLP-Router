@@ -169,15 +169,20 @@ class DoctorChat:
             out = self._visit_turn(text, session_id, st, ctx)
             if out is not None:
                 return out
+        reshow = False
         if st.get("booking"):                                                             # booking in progress
             if self._emergency(text):                                                     # emergency still first
                 st.pop("booking", None)
                 self._save(session_id, st)
                 return self._agent_turn(text, session_id, parse(text), ctx, emergency_checked=True)
+            mid = ctx["ask"] = parse(text, medical_terms=self.terms)                     # to notice a new ask mid-way
             out = self._booking_turn(text, session_id, st, ctx)
+            ctx.pop("ask", None)
             if out is not None:
                 return out
             st = self.load(session_id)                                                    # booking ended: a new ask
+            if mid.more and st.get("last") and not (mid.specialty_key or mid.name_query or mid.degree):
+                reshow = True                      # "koi aur doctor dikhao" while booking: the list they chose from, again
         norm = intent_text(text)
         names = self.directory.names(city) if _wants_names(norm) else None
         ask = parse(text, names=names, medical_terms=self.terms)
@@ -224,7 +229,7 @@ class DoctorChat:
 
         last = None if new_search else st.get("last")
         if last and (page > 1 or (ask.more and not (ask.specialty_key or ask.name_query or ask.degree))):  # step 5
-            nxt = page if page > 1 else int(st.get("page") or 1) + 1
+            nxt = page if page > 1 else 1 if reshow else int(st.get("page") or 1) + 1
             return self._search_turn(text, session_id, dict(last), ctx, st, page=nxt)
         if last and ask.refine and not ask.symptomish:
             return self._search_turn(text, session_id, _merge(last, ask), ctx, st)

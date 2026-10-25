@@ -171,6 +171,18 @@ Hindi) or Hindi (Devanagari). `language` on every reply says which.
 | "aur doctor dikhao" / `page` | the next page of the last list; `doctors.page`, `doctors.hasMore`; past the end `clarify.kind="no_more"` |
 
 A short "nahi" or "ok" while triage is waiting for an answer goes to triage, not to small talk.
+
+**Changing your mind mid-way.** The patient is never held to the first flow:
+
+| When | Patient | Vita |
+|---|---|---|
+| after a list | "dil ka", "nahi, haddi ka", "eye wala" | a new list for that specialty (a one-word answer counts; "dil ki dhadkan tez hai" is still a symptom) |
+| after a list | "Patna mein dikhao", "nahi, kolkata me" | the same search in that place ("subah mein", "agle hafte mein" are times, not places) |
+| after triage | "nahi, mujhe bachche ke liye doctor chahiye" | children's doctors ("X ke liye doctor" names the specialty) |
+| while booking (any step but mobile / OTP) | a specialty, a doctor's name, a place, a symptom said as a sentence, "talk to a person" | the booking ends, nothing is booked, and the message is answered as a new ask |
+| while booking | "koi aur doctor dikhao" | the list the doctor was chosen from, again |
+| name / age / sex / confirm | "actually mummy ke liye", "nahi, mere liye" | switches who it is for: a known family member or the patient's own profile is filled in, otherwise "Patient ka poora naam?" |
+| name step | anything that is a request, not a name ("dil ka doctor chahiye") | never taken as the name |
 Specialties are named in plain words first: "bone doctors (Orthopaedic)", "haddi ke doctor (Orthopaedic)".
 
 ## Reply
