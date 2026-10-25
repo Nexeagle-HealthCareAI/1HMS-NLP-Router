@@ -48,9 +48,28 @@ class RuleDetector:
                                    recommendedSpecialtyIds=recommended_specialties([h["canonical"] for h in hits]))
 
 
+# A message that only says "I can't sleep" ("so nahi pa raha", "neend nahi aa rahi") is never an emergency on its own.
+# The model learned "X nahi pa raha" from "saans nahi le pa raha" and flags it; these words alone are not a red flag.
+# Anything else in the message (a symptom, a body part) keeps the model's verdict, and the red-flag rules always apply.
+_SLEEP_ONLY_WORDS = frozenset("""
+neend nind nindh sleep sleeping sleepless sleeplessness insomnia so sota soti sone soya soyi
+nahi nahin nhi na not no cant cannot can t unable able to properly well theek thik thik se achhi achchi acchi
+aa a aati aata aaya aayi aa rahi raha rahi rahe pa paa paata paati pata pati pate paya payi hoti hota ho hai h hain hu hoon hun
+mujhe main mai mera meri mere i me my am have been at night raat ko mein me bhar se din dino hafte hafta mahine
+mahina saal week weeks days months kal aaj kai kuch bahut bilkul ji
+""".split())
+
+
+def sleep_only(query: Query) -> bool:
+    words = [w for w in query.normalized.replace("'", " ").split() if not w.isdigit()]
+    has_sleep = any(w in ("neend", "nind", "sleep", "insomnia", "sleeplessness", "so", "sona", "sota", "soti") for w in words)
+    return has_sleep and all(w in _SLEEP_ONLY_WORDS for w in words)
+
+
 class ModelDetector:
-    def __init__(self, score: Callable[[Query], float], threshold: float):
-        self.score, self.threshold = score, threshold
+    def __init__(self, score: Callable[[Query], float], threshold: float,
+                 not_urgent: Callable[[Query], bool] | None = sleep_only):
+        self.score, self.threshold, self.not_urgent = score, threshold, not_urgent
 
     def detect(self, query: Query) -> EmergencyAssessment:
         try:
@@ -58,6 +77,8 @@ class ModelDetector:
         except Exception:
             log.exception("emergency model failed; rules still apply")
             return EmergencyAssessment(flag=False)
+        if s >= self.threshold and self.not_urgent is not None and self.not_urgent(query):
+            return EmergencyAssessment(flag=False, score=round(s, 4))
         if s >= self.threshold:
             return EmergencyAssessment(flag=True, reasons=["Similar to emergency cases in the training data"],
                                        source="model", score=round(s, 4),
