@@ -80,7 +80,9 @@ class ModelDetector:
         if s >= self.threshold and self.not_urgent is not None and self.not_urgent(query):
             return EmergencyAssessment(flag=False, score=round(s, 4))
         if s >= self.threshold:
-            return EmergencyAssessment(flag=True, reasons=["Similar to emergency cases in the training data"],
+            # No reason text: "similar to emergency cases in the training data" is not a sign a patient can read
+            # (it was shown as "Humne yeh lakshan dekhe: ..."). source="model" and the score say why.
+            return EmergencyAssessment(flag=True, reasons=[],
                                        source="model", score=round(s, 4),
                                        recommendedSpecialtyIds=["emergencymedicine"])
         return EmergencyAssessment(flag=False, score=round(s, 4))
@@ -104,7 +106,5 @@ class AnyOf:
         for r in flagged:                            # rule reasons first: they are specific
             reasons += [x for x in r.reasons if x not in reasons]
             recs += [x for x in r.recommendedSpecialtyIds if x not in recs]
-        if any(r.source == "rules" for r in flagged):
-            reasons = [x for x in reasons if x != "Similar to emergency cases in the training data"] or reasons
         return EmergencyAssessment(flag=True, reasons=reasons, source="+".join(sources), score=score,
                                    recommendedSpecialtyIds=recs)

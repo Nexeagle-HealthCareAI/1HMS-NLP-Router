@@ -42,6 +42,23 @@ from .booking import BookingFlow, token_mobile
 from .emergency_help import EmergencyHelp
 from .visit_help import VisitHelp, wants as visit_wants
 
+AFTER_EMERGENCY_S = 2 * 3600      # how long "ambulance aa gayi", "ab theek hoon" are read as about that emergency
+# what patients say after Vita told them to call 108
+_AFTER_EMERGENCY = (
+    ("cant_call", re.compile(r"\b(call|phone|108|112|number) (nahi|nhi|nahin) (lag|ja|mil|lagg?) ?(raha|rahi|rha|rhi)?|"
+                             r"\bambulance (nahi|nhi|nahin) (aa|aayi|aaya|aa rahi|mil)|\bno ambulance|can'?t (call|get through|reach)|"
+                             r"\bnot (connecting|answering)|\bkoi (phone|call) nahi utha")),
+    ("arrived", re.compile(r"\bambulance (aa gayi|aa gaya|aa gai|agyi|agayi|pahunch gayi|pahunch gaya|aa rahi hai|bula li|bulayi|"
+                           r"bula liya|is here|arrived|has come|is coming|on the way)|\b(hospital|emergency|er) (pahunch|pohoch|aa) "
+                           r"(gaye|gayi|gaya|gya|gyi|gye)|\b(hospital|er|emergency) (mein|me|main) (hoon|hu|hun|hain|he|hai)\b|"
+                           r"\breached (the )?(hospital|er)|\bat the (hospital|er)\b|\bdoctor (aa gaye|dekh rahe)|\bcalled 108|"
+                           r"\b(108|112) (call|phone) kar (diya|di|liya|li)\b")),
+    ("thanks", re.compile(r"^(ok|okay|thik hai|theek hai|thanks|thank you|thank u|thx|shukriya|dhanyavad|dhanyawad|ji|hmm)\W*$")),
+    ("better", re.compile(r"^(ab |abhi |main |mai |me |i am |i'?m |now )*(theek|thik|teek|better|fine|accha|achha|thoda better|"
+                          r"behtar)( (hoon|hu|hun|hai|he|hu ab|lag raha|lag rahi|feel kar raha|feel kar rahi|now|ab))*$|"
+                          r"\b(feeling better|i'?m fine now|aaram hai|aaram mil gaya|ab theek|ab thik|ab normal|"
+                          r"saans (theek|thik|normal) (hai|ho gayi)|dard (kam|chala gaya))")),
+)
 _LOCATION_ONLY = re.compile(r"^\s*(location|my location|share (my )?location|meri location|location bhej di|मेरी लोकेशन)\s*$", re.I)
 
 log = logging.getLogger("hms_router.doctor_chat")
@@ -155,6 +172,13 @@ class DoctorChat:
                # after booking: the visit the website says the patient is looking at
                "visit_appointment_id": visit_appointment_id}
         self._hint = ui_language
+        out = self._handle(text, session_id, ctx, select_doctor_id=select_doctor_id, page=page, new_search=new_search)
+        reminder = ctx.get("reminder")
+        if reminder and out and out.get("kind") != "emergency" and out.get("message"):
+            out["message"] = f"{reminder}\n\n{out['message']}"      # once, after an emergency: the number comes first
+        return out
+
+    def _handle(self, text, session_id, ctx, *, select_doctor_id, page, new_search) -> dict:
         if select_doctor_id:
             return self._select(text, session_id, select_doctor_id, ctx)
 
@@ -165,6 +189,11 @@ class DoctorChat:
             out = self._emergency_followup(text, session_id, st, ctx)
             if out is not None:
                 return out
+        if st.get("after_emergency"):                                                     # "ambulance aa gayi", "ab theek hoon"
+            out = self._after_emergency(text, session_id, st, ctx)
+            if out is not None:
+                return out
+            st = self.load(session_id)
         if self.visit.enabled and not st.get("booking"):                                   # after booking (vision Phase 4)
             out = self._visit_turn(text, session_id, st, ctx)
             if out is not None:
@@ -184,7 +213,7 @@ class DoctorChat:
             if mid.more and st.get("last") and not (mid.specialty_key or mid.name_query or mid.degree):
                 reshow = True                      # "koi aur doctor dikhao" while booking: the list they chose from, again
         norm = intent_text(text)
-        names = self.directory.names(city) if _wants_names(norm) else None
+        names = self.directory.names(ctx["city"]) if _wants_names(norm) else None
         ask = parse(text, names=names, medical_terms=self.terms)
         if (st.get("selected") and not ask.when and not ask.name_query and not ask.specialty_key
                 and not ask.symptomish and not ask.degree):
@@ -281,9 +310,13 @@ class DoctorChat:
                     self._save(sid, est)
             return out
         if out.get("kind") == "emergency":                     # number first, in the patient's language
-            signs = [s for o in card.get("outputs") or [] for s in o.get("matched_symptoms") or []] \
-                or list(card.get("emergency_reasons") or [])
+            # the red flags themselves ("Chest pain" -> seene mein dard), not every symptom said in the conversation
+            signs = [r.lower() for r in card.get("emergency_reasons") or []] \
+                or [s for o in card.get("outputs") or [] for s in o.get("matched_symptoms") or []]
             out["message"] = V.emergency(voice, signs)
+            self._emergency_done(out.get("session_id"), signs)
+            if out.get("card") is not None:                    # the signs in the patient's language, for the screen's banner
+                out["card"]["emergency_signs"] = [w for w in (V.symptom_words(voice, [x]) for x in signs) if w]
             if self.emergency.enabled:                         # nearest emergency-ready places, alerted (vision Phase 3)
                 sid = out.get("session_id")
                 est = self.load(sid)
@@ -294,6 +327,17 @@ class DoctorChat:
             return out
         if out.get("kind") != "recommendation":
             return out
+        sid = out.get("session_id")
+        heard = [sorted(state.get("symptoms") or []), state.get("duration"), state.get("intensity")]
+        if sid:                                    # nothing new since the last advice ("ambulance aa gayi", "acha"): don't repeat it
+            est = self.load(sid)
+            if est.get("last_advice") == heard:
+                q = V.nothing_new(voice)
+                out.update(kind=INFO, message=q, card=None,
+                           clarify={"kind": "ask_kind", "question": q, "options": V.ask_kind_options(voice)})
+                return out
+            est["last_advice"] = heard
+            self._save(sid, est)
         outputs = card.get("outputs") or []
         primary = next((o for o in outputs if o.get("role") == "PRIMARY"), None)
         said = dict(symptoms=list(state.get("symptoms") or []), duration=state.get("duration"),
@@ -669,6 +713,60 @@ class DoctorChat:
             return None
         self._save(ing.session_id, st)
         return out
+
+    # ================================================================== after an emergency
+    def _emergency_done(self, sid: str | None, signs: list[str]) -> None:
+        """The emergency was said. That triage is over: the next message is judged on its own, so "pet mein dard" or
+        "ambulance aa gayi" do not repeat the alarm for the breathlessness said before (a new red flag still raises it)."""
+        if not sid:
+            return
+        try:
+            self.agent.accumulator.clear(sid)
+            self.agent.pipeline.sessions.clear_history(sid)
+        except Exception:
+            log.exception("triage not reset after an emergency")
+        est = self.load(sid)
+        est["after_emergency"] = {"signs": signs, "at": int(time.time())}
+        est.pop("asked_describe", None)
+        self._save(sid, est)
+
+    def _after_emergency(self, text, session_id, st, ctx) -> dict | None:
+        """The message after an emergency: help arrived, feeling better, cannot get through, thanks. A new red flag
+        goes the normal way (and is an emergency again); anything else too, with the number said once first."""
+        info = st.get("after_emergency") or {}
+        if time.time() - info.get("at", 0) > AFTER_EMERGENCY_S:
+            st.pop("after_emergency", None)
+            self._save(session_id, st)
+            return None
+        if self._emergency(text):
+            return None
+        norm = intent_text(text)
+        what = next((k for k, rx in _AFTER_EMERGENCY if rx.search(norm)), None)
+        ing = self._ingest_only(text, session_id)
+        lang = ing.language.language
+        v = Voice(lang)
+        signs = V.symptom_words(v, info.get("signs") or [])
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": lang}
+        st["language"], st["turn"] = lang, ing.turn
+        if what is None:
+            if not info.get("reminded"):
+                info["reminded"] = True
+                ctx["reminder"] = V.after_emergency_reminder(v, signs)
+            self._save(ing.session_id, st)
+            return None
+        if what == "cant_call":
+            msg = V.after_emergency(v, what, signs)
+            out = self._reply(base, "emergency", msg)
+            if not self.emergency.location_followup(out, st, ctx, v):  # a shared location still gets the nearest places
+                out["kind"] = INFO          # screens show an emergency's numbers, not its text: this text must be read
+            self._save(ing.session_id, st)
+            return out
+        self._save(ing.session_id, st)                     # kept: "ambulance aa gayi" then "ab theek hoon" both fit
+        clarify = None
+        if what == "better":
+            q = V.after_emergency(v, what, signs)
+            clarify = {"kind": "ask_kind", "question": q, "options": V.ask_kind_options(v)}
+        return self._reply(base, INFO, V.after_emergency(v, what, signs), clarify=clarify)
 
     def _booking_turn(self, text, session_id, st, ctx) -> dict | None:
         """One message while booking. None: it was not about booking (a new ask), and booking has ended."""
