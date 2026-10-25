@@ -79,6 +79,8 @@ Choosing a doctor starts booking when `HMS_PUBLIC_API_URL` / `HMS_PUBLIC_API_KEY
   pre-appointment; the hospital confirms the exact time.
 - **Signed in = no OTP:** send `patient_token` (the 1HMS patient JWT, server to server). Vita reads the
   mobile from it, offers the saved profile and family, and books as that patient.
+  A saved family member is booked without their own code: the signed-in account holder is the one booking, and 1HMS records
+  them as BookedByMobile (decided 2026-10-25; the vision doc's "member's own OTP" answer is superseded).
 - **A channel that verified the number** (WhatsApp sender): `verified_mobile`, honoured only for API keys
   with the `verified_mobile` scope.
 - After an OTP the reply carries `patient_session` (token + mobile) so the website can sign the patient in.
