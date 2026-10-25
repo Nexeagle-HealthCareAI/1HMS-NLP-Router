@@ -28,6 +28,11 @@ from .textnorm import intent_text, preprocess
 # ----------------------------------------------------------------------------- vocabulary
 DOCTOR_WORDS = {"doctor", "doctors", "docter", "daktar", "dactor", "dr", "specialist", "specialists", "sahab", "saab"}
 _LINKS = {"ka", "ke", "ki", "wala", "wale", "wali", "vala", "vale", "vali", "waala"}
+_LOOKBACK_LINKS = _LINKS | {"liye", "lie", "liya"}
+# words that may surround a one-word specialty answer ("nahi, dil ka", "actually aankh wala chahiye")
+_SHORT_FILLER = _LINKS | {"nahi", "nahin", "nhi", "no", "actually", "bas", "sirf", "to", "toh", "ab", "phir", "please", "plz",
+                         "chahiye", "chaiye", "dikhao", "batao", "wala", "doctor", "doctors", "specialist", "mujhe", "hume",
+                         "humein", "liye", "ok", "okay", "acha", "accha", "achha"}
 
 # A specialist noun on its own is enough: "cardiologist", "ortho", "ent specialist"
 _SPECIALIST_NOUN = re.compile(
@@ -215,12 +220,18 @@ def _find_specialty(text: str) -> tuple[str | None, str | None, set[str]]:
     for i, w in enumerate(words):
         if w not in DOCTOR_WORDS or w == "dr":
             continue
-        # look back over at most one link word: "dil ka doctor", "skin doctor", "medicine wala doctor"
+        # look back over link words: "dil ka doctor", "skin doctor", "medicine wala doctor", "bachche ke liye doctor"
         j = i - 1
-        while j >= 0 and words[j] in _LINKS and i - j <= 2:
+        while j >= 0 and words[j] in _LOOKBACK_LINKS and i - j <= 3:
             j -= 1
         if j >= 0 and words[j] in _ALIASES:
             return _ALIASES[words[j]], words[j], {words[j]}
+    # a short answer without the word doctor: "dil ka", "aankh wala", "nahi, haddi ka", "skin" (a reply to "which doctor?",
+    # or a change of mind after a list). Only when nothing else is said, so "dil ki dhadkan tez hai" stays a symptom.
+    if 1 <= len(words) <= 4:
+        rest = [w for w in words if w not in _SHORT_FILLER]
+        if len(rest) == 1 and rest[0] in _ALIASES:
+            return _ALIASES[rest[0]], rest[0], {rest[0]}
     return None, None, set()
 
 
@@ -267,6 +278,8 @@ def parse(text: str, *, names: Iterable[str] | None = None,
     ask.degree, used = _find_degree(norm)
     consumed |= used
     ask.place = _find_place(norm, medical_terms)
+    if ask.place and not (ask.specialty_key or ask.name_query or ask.degree or ask.hospital_query):
+        ask.refine = True                        # "Patna mein dikhao": the same search, somewhere else
     place_words = set(ask.place.split()) if ask.place else set()
     ask.name_query, used = _find_name(norm, names, exclude=place_words)
     consumed |= used | place_words
@@ -350,6 +363,13 @@ def _find_place(norm: str, medical_terms) -> str | None:
     lead = _leading_place(words, norm, medical_terms)      # Hindi order: "kolkata mein skin doctor"
     if lead:
         return lead
+    only = _PLACE_ONLY.match(norm)                         # "patna mein dikhao", "nahi, kolkata me": the same search elsewhere
+    if only:
+        cand = only.group(1).split()
+        if not (any(len(w) < 4 for w in cand) or set(cand) & (_NOT_PLACE | DOCTOR_WORDS | _NAME_STOP | set(_ALIASES) | _TIME_WORDS)
+                or _GENDER_WORD.search(only.group(1))
+                or (medical_terms and [t for t in medical_terms(only.group(1)) if t not in _FILLER])):
+            return only.group(1)
     if len(words) >= 2 and words[-1] in ("mein", "me"):
         tail, cut = words[:-1], None                       # "... kolkata mein"
     elif len(words) >= 2 and any(w in ("near", "in", "at") for w in words[-3:-1]):
@@ -361,7 +381,7 @@ def _find_place(norm: str, medical_terms) -> str | None:
         cand = tail[-size:] if cut is None else tail[:size]
         if len(cand) != size or (cut is not None and len(tail) != size):
             continue
-        if any(len(w) < 4 for w in cand) or set(cand) & (_NOT_PLACE | DOCTOR_WORDS | _NAME_STOP | set(_ALIASES)):
+        if any(len(w) < 4 for w in cand) or set(cand) & (_NOT_PLACE | DOCTOR_WORDS | _NAME_STOP | set(_ALIASES) | _TIME_WORDS):
             continue
         place = " ".join(cand)
         if _SPECIALIST_NOUN.search(place) or (medical_terms and [t for t in medical_terms(place) if t not in _FILLER]):
@@ -371,6 +391,14 @@ def _find_place(norm: str, medical_terms) -> str | None:
 
 
 _LEAD_PLACE_END = {"mein", "me", "ke"}
+# "subah mein", "agle hafte mein" say when, not where
+_TIME_WORDS = {"subah", "sawere", "savere", "sham", "shaam", "dopahar", "raat", "morning", "evening", "afternoon", "night",
+               "hafte", "hafta", "week", "mahine", "mahina", "month", "abhi", "jaldi", "baad", "agle", "agla", "next",
+               "this", "today", "tomorrow", "parso", "parson", "ghante", "ghanta", "minute", "monday", "tuesday",
+               "wednesday", "thursday", "friday", "saturday", "sunday", "somvar", "mangalvar", "budhvar", "guruvar",
+               "shukravar", "shanivar", "ravivar", "itvaar", "time", "samay", "waqt", "date", "tarikh"}
+_PLACE_ONLY = re.compile(r"^(?:(?:nahi|nahin|aur|ab|to|toh|phir|actually|ok|acha|accha)\s+)*([a-z]+(?: [a-z]+)?) (?:mein|me|main)"
+                         r"(?: (?:bhi|dikhao|batao|dekho|chahiye|dikhaiye|bataiye|please))*$")
 
 
 def _leading_place(words: list[str], norm: str, medical_terms) -> str | None:
@@ -383,7 +411,7 @@ def _leading_place(words: list[str], norm: str, medical_terms) -> str | None:
         if len(words) <= size + 1 or words[size] not in _LEAD_PLACE_END:
             continue
         cand = words[:size]
-        if any(len(w) < 4 for w in cand) or set(cand) & (_NOT_PLACE | DOCTOR_WORDS | _NAME_STOP | set(_ALIASES)):
+        if any(len(w) < 4 for w in cand) or set(cand) & (_NOT_PLACE | DOCTOR_WORDS | _NAME_STOP | set(_ALIASES) | _TIME_WORDS):
             continue
         place = " ".join(cand)
         if _SPECIALIST_NOUN.search(place) or _GENDER_WORD.search(place) or _find_specialty(place)[0] \

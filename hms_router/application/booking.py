@@ -52,6 +52,31 @@ _NAME_LEAD = re.compile(r"^(mera naam|my name is|name is|naam|name|patient (ka )
 _MALE = {"male", "m", "man", "boy", "purush", "aadmi", "ladka", "mard", "gents"}
 _FEMALE = {"female", "f", "woman", "girl", "mahila", "aurat", "ladki", "stree", "lady"}
 _OTHER = {"other", "anya", "dusra", "doosra", "transgender"}
+# "actually mummy ke liye", "for my son", "nahi, mere liye": the patient changes who the appointment is for, mid-way
+_RELATIONS = {
+    "Mother": ("mummy", "mumma", "mummi", "mom", "mother", "maa", "mata", "mataji", "ammi", "amma"),
+    "Father": ("papa", "pappa", "dad", "daddy", "father", "pita", "pitaji", "abbu", "baba"),
+    "Son": ("beta", "bete", "son", "ladke", "ladka"),
+    "Daughter": ("beti", "daughter", "bitiya", "ladki"),
+    "Spouse": ("wife", "biwi", "patni", "husband", "pati", "pati ji"),
+    "Brother": ("bhai", "bhaiya", "brother"),
+    "Sister": ("behen", "bahen", "bahan", "didi", "sister"),
+    "Grandparent": ("dadi", "dada", "nani", "nana", "grandma", "grandpa", "grandmother", "grandfather"),
+    "Child": ("bachche", "bachcha", "baccha", "bacche", "bachchi", "child", "kid", "baby"),
+}
+_REL_WORD = {w: rel for rel, ws in _RELATIONS.items() for w in ws}
+_REL_ALT = "|".join(sorted((re.escape(w) for w in _REL_WORD), key=len, reverse=True))
+_FOR_OTHER = re.compile(rf"\b(?:(?:mere|meri|mera|my|apne|apni|apna)\s+)?({_REL_ALT})\s+(?:ke|ki|ka)\s+liye\b"
+                        rf"|\bfor\s+my\s+({_REL_ALT})\b")
+_FOR_SELF = re.compile(r"^(?:(?:nahi|nahin|no|actually|acha|accha|ok|sorry|asal mein)[\s,]+)*"
+                       r"(?:mere|apne|khud ke|mera)\s+(?:hi\s+)?liye(?:\s+hai| hi)?$|^(?:(?:no|actually)[\s,]+)*for\s+(?:me|myself)$")
+# a symptom said as a sentence ("mujhe bukhar hai", "pet mein dard ho raha"), not a time or a name that only looks medical
+_SYMPTOM_CUE = re.compile(r"\b(hai|hain|tha|thi|ho raha|ho rahi|ho gaya|ho gayi|dard|bukhar|takleef|taklif|problem|pain|fever|"
+                          r"khansi|ulti|chakkar|sujan|jalan|khujli|hurts?|ache)\b")
+# words that are not part of a name: "dil ka doctor chahiye" or "mujhe bukhar hai" typed when we asked for the name
+_NOT_NAME = re.compile(r"\b(doctor|dr|daktar|chahiye|chaiye|dikhao|dikhaiye|batao|hai|hain|tha|thi|mein|mujhe|mujhko|liye|"
+                       r"ka|ke|ki|ko|se|nahi|nahin|nhi|kya|koi|aur|doosra|doosre|dusra|dusre|specialist|hospital|clinic|"
+                       r"book|appointment|dard|bukhar|takleef|problem|pain|fever|want|need|show|please|the|is|my|for)\b", re.I)
 
 
 # ------------------------------------------------------------------------------------------------- helpers
@@ -142,6 +167,8 @@ def _clean_name(text: str) -> str | None:
     t = re.sub(r"\s+(hai|he|h)$", "", t, flags=re.I)
     if not (2 <= len(t) <= 60) or re.search(r"\d", t) or len(t.split()) > 5:
         return None
+    if t.isascii() and (_NOT_NAME.search(t) or re.search(r"[?,]", t)):
+        return None
     return " ".join(w[:1].upper() + w[1:] for w in t.split()) if t.isascii() else t
 
 
@@ -204,6 +231,17 @@ class BookingFlow:
             return self._say(v("Okay, nothing was booked. I'm here if you need a doctor.",
                                "Theek hai, kuch book nahi hua. Doctor chahiye to main yahin hoon.",
                                "ठीक है, कुछ बुक नहीं हुआ। डॉक्टर चाहिए तो मैं यहीं हूँ।"), kind="info")
+
+        # The patient asks for something else mid-way ("dil ka doctor chahiye", "koi aur doctor dikhao", "mujhe bukhar
+        # hai", "Patna mein dikhao"): booking ends and the message is handled as a new ask. Not at the mobile / OTP steps,
+        # where only digits are expected, and never for a tapped option or a name that is really a name.
+        if step not in ("mobile", "otp") and self._picked(b, text) is None and self._switches(b, text, norm, ctx):
+            st.pop("booking", None)
+            return None
+        if step in ("name", "age", "sex", "confirm", "mobile"):           # "actually mummy ke liye" after "Mere liye"
+            changed = self._who_changed(b, norm)
+            if changed:
+                return self._switch_who(st, b, changed, v, ctx)
 
         if step in ("day", "shift", "who", "sex", "confirm"):              # "kal milenge kya?" mid-booking
             from ..doctor_intent import availability_when
@@ -610,6 +648,51 @@ class BookingFlow:
             if m:
                 target = next((d for d in days if int(d[8:]) == int(m.group(1))), None)
         return target if target in days else None
+
+    @staticmethod
+    def _switches(b: dict, text: str, norm: str, ctx: dict) -> bool:
+        """The message asks for doctors again (a specialty, a name, a place, other doctors, a symptom, a person to talk
+        to) rather than answering the booking question."""
+        ask = ctx.get("ask")
+        if ask is None:
+            from ..doctor_intent import parse
+            ask = parse(text)
+        if ask.direct or ask.more or ask.move == "human" or ask.place:
+            return True
+        if ask.symptomish:
+            if b.get("step") == "name" and _clean_name(text):            # "Sunita Devi" is a name, not a symptom
+                return False
+            if b.get("step") == "age" and _age_of(text):
+                return False
+            return bool(_SYMPTOM_CUE.search(norm))
+        return False
+
+    @staticmethod
+    def _who_changed(b: dict, norm: str) -> tuple[str, str | None] | None:
+        """("family", "Mother") for "actually mummy ke liye", ("self", None) for "nahi, mere liye"; None otherwise."""
+        m = _FOR_OTHER.search(norm)
+        if m:
+            rel = _REL_WORD.get(m.group(1) or m.group(2))
+            if b.get("for") != "family" or (b.get("patient") or {}).get("relation") != rel:
+                return "family", rel
+            return None
+        if _FOR_SELF.match(norm) and b.get("for") != "self":
+            return "self", None
+        return None
+
+    def _switch_who(self, st, b, changed, v, ctx):
+        who, rel = changed
+        if who == "self":
+            person = dict((b.get("people") or {}).get("self") or {})
+        else:
+            person = next((dict(p) for k, p in (b.get("people") or {}).items()
+                           if k.startswith("member:") and rel and (p.get("relation") or "").lower() == rel.lower()), {"relation": rel})
+        b["for"] = who
+        b["patient"] = {k: person.get(k) for k in ("name", "age", "ageUnit", "sex", "relation") if person.get(k)}
+        if b["patient"].get("age") and not b["patient"].get("ageUnit"):
+            b["patient"]["ageUnit"] = "years"
+        b.pop("options", None)
+        return self._next_detail(st, b, v, ctx)
 
     @staticmethod
     def _looks_like_new_ask(text: str) -> bool:
