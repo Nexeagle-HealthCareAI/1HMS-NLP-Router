@@ -23,7 +23,14 @@
     HMS_DOCTORS_MCP_KEY     this router's key in 1HMSAPI's Mcp:ServiceKeys (sent as X-Service-Key)
                             (HMS_MCP_URL / HMS_MCP_KEY are accepted as the same settings)
     HMS_DOCTORS_LIMIT       doctors per reply, 1-10 (default 3); HMS_DOCTORS_TIMEOUT seconds (default 2.0)
+    HMS_PUBLIC_API_URL      1HMS public API base for Vita booking (default: HMS_DOCTORS_MCP_URL without /mcp)
+    HMS_PUBLIC_API_KEY      1HMS public API key (X-Api-Key, the same kind Doctor Dekho uses); unset = booking OFF
+    HMS_PROXY_FORWARDING_SECRET  1HMSAPI Internal:ProxyForwardingSecret: lets 1HMS rate-limit by the visitor's
+                            IP (sent by the channel as client_ip) instead of the router's one IP
+    HMS_BOOKING_TIMEOUT     seconds per 1HMS booking call (default 8)
     API key scope "admin"   POST/GET /admin/rebuild and GET /admin/telemetry (give it to the CMS's key)
+    API key scope "verified_mobile"  the channel already verified the patient's number (the WhatsApp bot): its
+                            verified_mobile is trusted for booking without an OTP
 """
 from __future__ import annotations
 
@@ -70,6 +77,10 @@ class ServiceSettings:
     doctors_mcp_key: str | None = None
     doctors_limit: int = 3
     doctors_timeout: float = 2.0
+    public_api_url: str | None = None
+    public_api_key: str | None = None
+    proxy_forwarding_secret: str | None = None
+    booking_timeout: float = 8.0
     extra: dict = field(default_factory=dict)
 
     @property
@@ -111,6 +122,10 @@ class ServiceSettings:
             doctors_mcp_key=(e.get("HMS_DOCTORS_MCP_KEY") or e.get("HMS_MCP_KEY") or "").strip() or None,
             doctors_limit=int(e.get("HMS_DOCTORS_LIMIT") or "3"),
             doctors_timeout=float(e.get("HMS_DOCTORS_TIMEOUT") or "2.0"),
+            public_api_url=(e.get("HMS_PUBLIC_API_URL") or "").strip() or None,
+            public_api_key=(e.get("HMS_PUBLIC_API_KEY") or "").strip() or None,
+            proxy_forwarding_secret=(e.get("HMS_PROXY_FORWARDING_SECRET") or "").strip() or None,
+            booking_timeout=float(e.get("HMS_BOOKING_TIMEOUT") or "8"),
         )
         s.validate()
         return s

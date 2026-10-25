@@ -2,13 +2,15 @@
 HMS_API_KEYS (store only that). Usage:  python scripts/make_api_key.py doctordekho route
                                         python scripts/make_api_key.py whatsapp chat route
                                         python scripts/make_api_key.py cms route admin   (CMS AI Agents tab)
+                                        python scripts/make_api_key.py whatsapp chat verified_mobile
+                                          (a channel that has already verified the patient's number)
 """
 import hashlib
 import secrets
 import sys
 
-if len(sys.argv) < 3 or not set(sys.argv[2:]) <= {"route", "chat", "admin"}:
-    sys.exit("usage: make_api_key.py <client-name> <scope> [scope...]   scopes: route, chat, admin")
+if len(sys.argv) < 3 or not set(sys.argv[2:]) <= {"route", "chat", "admin", "verified_mobile"}:
+    sys.exit("usage: make_api_key.py <client-name> <scope> [scope...]   scopes: route, chat, admin, verified_mobile")
 name, scopes = sys.argv[1], "|".join(sys.argv[2:])
 if not name.replace("-", "").replace("_", "").isalnum():
     sys.exit("client name: letters, digits, - and _ only")
