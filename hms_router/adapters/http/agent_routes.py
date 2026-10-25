@@ -59,6 +59,10 @@ class AgentChatRequest(BaseModel):
     verified_mobile: str | None = Field(None, max_length=16, pattern=r"^\+?\d{10,13}$",
                                         description="Booking: a number the channel already verified (the WhatsApp "
                                                     "sender). Honoured only for API keys with the verified_mobile scope")
+    visit_appointment_id: str | None = Field(None, pattern=r"^[0-9a-fA-F-]{36}$",
+                                             description="After booking: the appointment the patient is looking at (the "
+                                                         "website's visit page or its latest booking), for directions, "
+                                                         "\"I've reached\", check-in and token status")
     new_search: bool = Field(False, description="Search with exactly the asks in `text`, not merged into the last "
                                                 "search (the screen removed a filter chip)")
 
@@ -96,7 +100,8 @@ def build_router(guard) -> APIRouter:
             out = flow.handle(text, req.session_id, city=req.city, lat=lat, lng=lng,
                               client_ip=req.client_ip, patient_token=req.patient_token, verified_mobile=verified,
                               hospital_id=req.hospital_id, select_doctor_id=select, page=req.page,
-                              new_search=req.new_search, ui_language=ui_language(req.ui_language))
+                              new_search=req.new_search, ui_language=ui_language(req.ui_language),
+                              channel=req.channel, visit_appointment_id=req.visit_appointment_id)
         except ValueError as exc:              # includes SelectionError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:

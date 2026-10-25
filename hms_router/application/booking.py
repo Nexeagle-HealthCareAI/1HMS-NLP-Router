@@ -94,6 +94,11 @@ def _date_words(v: Voice, d: date) -> str:
     return d.strftime("%a %d %b")
 
 
+def _mid_sentence(label: str) -> str:
+    """'Tomorrow (Mon 26 Oct)' -> 'tomorrow (Mon 26 Oct)' inside a sentence; dates stay as they are."""
+    return label[0].lower() + label[1:] if label.split(" ")[0] in ("Today", "Tomorrow", "Aaj", "Kal") else label
+
+
 def _day_label(v: Voice, iso: str) -> str:
     d = date.fromisoformat(iso)
     if d == _today():
@@ -200,6 +205,12 @@ class BookingFlow:
                                "Theek hai, kuch book nahi hua. Doctor chahiye to main yahin hoon.",
                                "ठीक है, कुछ बुक नहीं हुआ। डॉक्टर चाहिए तो मैं यहीं हूँ।"), kind="info")
 
+        if step in ("day", "shift", "who", "sex", "confirm"):              # "kal milenge kya?" mid-booking
+            from ..doctor_intent import availability_when
+            when = availability_when(norm)
+            if when:
+                return self._when_question(st, b, when, v, ctx)
+
         handler = getattr(self, f"_on_{step}", None)
         if handler is None:
             st.pop("booking", None)
@@ -219,13 +230,62 @@ class BookingFlow:
         shifts = next((d["shifts"] for d in b["days"] if d["date"] == iso), [])
         if len(shifts) <= 1:
             b["shift"] = shifts[0] if shifts else None
-            return self._after_when(st, b, v, ctx)
+            return self._continue(st, b, v, ctx)
+        return self._ask_shift(b, shifts, v)
+
+    def _when_question(self, st, b, when, v, ctx):
+        """Answer "is the doctor in that day?" first, then go on with the booking on that day (keeping who it is for and
+        the details already given), or offer the days the doctor is in."""
+        days = {d["date"]: d for d in b.get("days", [])}
+        iso = self._date_for(when, list(days))
+        name = b["doctor"]["name"]
+        if iso not in days:
+            label = _mid_sentence(_day_label(v, iso)) if iso else v("that day", "us din", "उस दिन")
+            out = self._ask_day(b, v)
+            out["message"] = v(f"{name} isn't in {label}. ", f"{name} {label} nahi baithte. ", f"{name} {label} नहीं बैठते। ") + out["message"]
+            out["clarify"]["question"] = out["message"]
+            return out
+        shifts = days[iso]["shifts"]
+        hours = ", ".join(_shift_label(sh, v) for sh in shifts)
+        day = _mid_sentence(_day_label(v, iso))
+        yes = v(f"Yes, {name} is in {day}" + (f": {hours}." if hours else "."),
+                f"Haan, {name} {day} baithte hain" + (f": {hours}." if hours else "."),
+                f"हाँ, {name} {day} बैठते हैं" + (f": {hours}।" if hours else "।"))
+        b["date"] = iso
+        b.pop("shift", None)
+        if len(shifts) > 1:
+            out = self._ask_shift(b, shifts, v)
+        else:
+            b["shift"] = shifts[0] if shifts else None
+            out = self._continue(st, b, v, ctx)
+        out["message"] = yes + " " + out["message"]
+        if out.get("clarify"):
+            out["clarify"]["question"] = out["message"]
+        return out
+
+    def _continue(self, st, b, v, ctx):
+        """Day and time set: on to who it is for, or straight back to the summary when everything else is known."""
+        p = b.get("patient") or {}
+        if p.get("name") and p.get("age") and p.get("sex") and b.get("mobile") and b.get("verified"):
+            return self._confirm(b, v)
+        return self._after_when(st, b, v, ctx)
+
+    def _ask_shift(self, b, shifts, v):
         b["step"] = "shift"
         b["options"] = {_norm(_shift_label(s, v)): f"shift:{i}" for i, s in enumerate(shifts)}
         b["options"].update({_norm(_shift_label(s)): f"shift:{i}" for i, s in enumerate(shifts)})
         q = v("Which time suits you?", "Kaun sa samay theek rahega?", "कौन-सा समय ठीक रहेगा?")
         return self._ask(q, "book_shift", [{"id": f"shift:{i}", "label": _shift_label(s, v)} for i, s in enumerate(shifts)]
                          + [self._not_now(b, v)])
+
+    @staticmethod
+    def _date_for(when: str, days: list[str]) -> str | None:
+        today = _today()
+        if when.startswith("+"):
+            return (today + timedelta(days=int(when[1:]))).isoformat()
+        if when.startswith("dow:"):
+            return (today + timedelta(days=(int(when[4:]) - today.weekday()) % 7)).isoformat()
+        return days[0] if days else None                        # "kab milenge?": the next day the doctor is in
 
     def _on_shift(self, st, b, text, norm, v, ctx):
         picked = self._picked(b, text)
@@ -249,7 +309,7 @@ class BookingFlow:
                              "book_shift", [{"id": f"shift:{i}", "label": _shift_label(s, v)} for i, s in enumerate(shifts)]
                              + [self._not_now(b, v)])
         b["shift"] = shifts[idx]
-        return self._after_when(st, b, v, ctx)
+        return self._continue(st, b, v, ctx)
 
     def _after_when(self, st, b, v, ctx):
         """Day and time are set: who is it for? (signed in: saved profile and family as options)"""
@@ -358,8 +418,8 @@ class BookingFlow:
         else:
             b["step"] = "mobile"
             return self._ask(v("Your 10-digit mobile number? I'll send a code on WhatsApp to confirm it's you.",
-                               "Aapka 10 digit mobile number? Confirm karne ke liye WhatsApp par code bhejunga.",
-                               "आपका 10 अंकों का मोबाइल नंबर? पुष्टि के लिए WhatsApp पर कोड भेजूँगा।"), "book_mobile", [])
+                               "Aapka 10 digit mobile number? Confirm karne ke liye WhatsApp par code bhejungi.",
+                               "आपका 10 अंकों का मोबाइल नंबर? पुष्टि के लिए WhatsApp पर कोड भेजूँगी।"), "book_mobile", [])
         return self._confirm(b, v)
 
     def _on_mobile(self, st, b, text, norm, v, ctx):
@@ -374,8 +434,8 @@ class BookingFlow:
         try:
             self.client.send_otp(mobile, client_ip=ctx.get("client_ip"))
         except BookingError as exc:
-            return self._ask(v(f"I couldn't send the code: {exc}", f"Code nahi bhej paaya: {exc}",
-                               f"कोड नहीं भेज पाया: {exc}"), "book_mobile", [])
+            return self._ask(v(f"I couldn't send the code: {exc}", f"Code nahi bhej paayi: {exc}",
+                               f"कोड नहीं भेज पाई: {exc}"), "book_mobile", [])
         b.update(step="otp", mobile=mobile, otp_tries=0)
         opts = [{"id": "resend", "label": v("Send code again", "Code dobara bhejo", "कोड दोबारा भेजो")},
                 {"id": "change_number", "label": v("Change number", "Number badlo", "नंबर बदलो")}]
@@ -463,7 +523,8 @@ class BookingFlow:
                 doctor_id=d["doctorId"], patient=patient, preferred_date=b["date"],
                 preferred_time=f"{start}:00" if start and len(start) == 5 else start,
                 reason=f"Booked with Vita ({_shift_label(b['shift'])})" if b.get("shift") else "Booked with Vita",
-                token=token, client_ip=ctx.get("client_ip"))
+                token=token, client_ip=ctx.get("client_ip"),
+                language={"hindi": "hi", "hinglish": "hinglish"}.get(v.language, "en"))
         except BookingError as exc:
             return self._failed(st, b, v, exc)
         summary = self._summary(b, v)
@@ -491,9 +552,9 @@ class BookingFlow:
             b["options"] = {_norm(o["label"]): o["id"] for o in opts}
             return self._ask(v("I couldn't reach the hospital system, so nothing was booked. If you get a WhatsApp "
                                "confirmation anyway, it went through. Try again?",
-                               "Hospital system tak nahi pahunch paaya, isliye kuch book nahi hua. Agar WhatsApp par "
+                               "Hospital system tak nahi pahunch paayi, isliye kuch book nahi hua. Agar WhatsApp par "
                                "confirmation aaye to booking ho gayi hai. Dobara try karun?",
-                               "अस्पताल सिस्टम तक नहीं पहुँच पाया, इसलिए कुछ बुक नहीं हुआ। अगर WhatsApp पर "
+                               "अस्पताल सिस्टम तक नहीं पहुँच पाई, इसलिए कुछ बुक नहीं हुआ। अगर WhatsApp पर "
                                "कन्फ़र्मेशन आए तो बुकिंग हो गई है। दोबारा कोशिश करूँ?"), "book_confirm", opts)
         others = [d for d in b.get("days", []) if d["date"] != b.get("date")][:2]
         b["step"] = "day"

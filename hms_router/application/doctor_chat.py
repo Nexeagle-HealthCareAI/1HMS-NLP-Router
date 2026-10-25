@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
@@ -31,13 +32,17 @@ from typing import Any
 
 from .. import voice as V
 from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's own wording, mapped to voice keys
-from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, parse
+from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
 from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
                        specialty_key)
 from ..severity import EMERGENCY, emergency_check
 from ..textnorm import intent_text, preprocess
 from ..voice import Voice
-from .booking import BookingFlow
+from .booking import BookingFlow, token_mobile
+from .emergency_help import EmergencyHelp
+from .visit_help import VisitHelp, wants as visit_wants
+
+_LOCATION_ONLY = re.compile(r"^\s*(location|my location|share (my )?location|meri location|location bhej di|मेरी लोकेशन)\s*$", re.I)
 
 log = logging.getLogger("hms_router.doctor_chat")
 
@@ -100,6 +105,8 @@ class DoctorChat:
     def __init__(self, agent, directory: DoctorDirectory, redis, *, terms=medical_terms, booking_client=None):
         self.agent, self.directory, self.r, self.terms = agent, directory, redis, terms
         self.booking = BookingFlow(directory, booking_client)
+        self.emergency = EmergencyHelp(booking_client)
+        self.visit = VisitHelp(booking_client)
 
     # ================================================================== session state
     @staticmethod
@@ -136,14 +143,17 @@ class DoctorChat:
                lng: float | None = None, hospital_id: str | None = None,
                select_doctor_id: str | None = None, page: int = 1, new_search: bool = False,
                ui_language: str | None = None, client_ip: str | None = None, patient_token: str | None = None,
-               verified_mobile: str | None = None) -> dict:
+               verified_mobile: str | None = None, channel: str = "web", visit_appointment_id: str | None = None) -> dict:
         """new_search: the screen removed a filter chip and re-sent the remaining filters as text; search
         with exactly those, never merged into the last search."""
         ctx = {"city": city, "lat": lat, "lng": lng, "hospital_id": hospital_id,
                "located": lat is not None and lng is not None,
                # booking only: the visitor's IP for 1HMS's per-visitor limits, the channel's signed-in patient
                # token (no OTP needed), a number the channel already verified (WhatsApp)
-               "client_ip": client_ip, "patient_token": patient_token, "verified_mobile": verified_mobile}
+               "client_ip": client_ip, "patient_token": patient_token, "verified_mobile": verified_mobile,
+               "token_mobile": token_mobile(patient_token) if patient_token else None, "channel": channel,
+               # after booking: the visit the website says the patient is looking at
+               "visit_appointment_id": visit_appointment_id}
         self._hint = ui_language
         if select_doctor_id:
             return self._select(text, session_id, select_doctor_id, ctx)
@@ -151,6 +161,14 @@ class DoctorChat:
         if self.agent.pipeline.detector.detect(text).language == "bangla":
             return self._bangla(text, session_id)
         st = self.load(session_id)
+        if st.get("emergency"):                                                           # emergency takeover follow-ups
+            out = self._emergency_followup(text, session_id, st, ctx)
+            if out is not None:
+                return out
+        if self.visit.enabled and not st.get("booking"):                                   # after booking (vision Phase 4)
+            out = self._visit_turn(text, session_id, st, ctx)
+            if out is not None:
+                return out
         if st.get("booking"):                                                             # booking in progress
             if self._emergency(text):                                                     # emergency still first
                 st.pop("booking", None)
@@ -163,11 +181,17 @@ class DoctorChat:
         norm = intent_text(text)
         names = self.directory.names(city) if _wants_names(norm) else None
         ask = parse(text, names=names, medical_terms=self.terms)
+        if (st.get("selected") and not ask.when and not ask.name_query and not ask.specialty_key
+                and not ask.symptomish and not ask.degree):
+            follow = availability_when(norm)                     # "kal milenge kya?" about the doctor just chosen
+            if follow:
+                ask.when, ask.available_today, ask.refine = follow, False, False
 
         pending = st.get("pending")
         which_id = self._which_pick(norm, st)
         hospital_pick = self._pick_option(norm, st.get("which_hospital"))
         skips_triage = (ask.direct or ask.refine or bool(pending) or which_id is not None or ask.move is not None
+                        or ask.when is not None
                         or hospital_pick is not None or page > 1 or _bare_doctor(norm, ask))
         if skips_triage and self._emergency(text):                                       # step 3
             if session_id and (pending or st.get("which") or st.get("which_hospital")):
@@ -241,6 +265,13 @@ class DoctorChat:
             signs = [s for o in card.get("outputs") or [] for s in o.get("matched_symptoms") or []] \
                 or list(card.get("emergency_reasons") or [])
             out["message"] = V.emergency(voice, signs)
+            if self.emergency.enabled:                         # nearest emergency-ready places, alerted (vision Phase 3)
+                sid = out.get("session_id")
+                est = self.load(sid)
+                est.pop("booking", None)
+                self.emergency.attach(out, est, ctx, signs, text, voice)
+                if sid:
+                    self._save(sid, est)
             return out
         if out.get("kind") != "recommendation":
             return out
@@ -470,7 +501,7 @@ class DoctorChat:
             msg += hi(" Shall I book an appointment?", " Kya main appointment book karoon?", " क्या मैं अपॉइंटमेंट बुक करूँ?")
         out = self._reply(base, INFO, msg, question=msg, clarify={"kind": "book_offer", "question": msg, "options": [
             {"id": doctor["doctorId"], "label": hi("Yes, book", "Haan, book karein", "हाँ, बुक करें")},
-            {"id": "no", "label": hi("No, just checking", "Nahi, bas pooch raha tha", "नहीं, बस पूछ रहा था")}]})
+            {"id": "no", "label": hi("No, just checking", "Nahi, bas jaanna tha", "नहीं, बस जानना था")}]})
         out["doctor"] = doctor
         out["availability"] = {"doctorId": doctor["doctorId"], "days": sched.get("days"),
                                "nextAvailableDate": nxt or sched.get("nextAvailableDate"), "note": sched.get("note")}
@@ -568,6 +599,58 @@ class DoctorChat:
         out["selectedDoctorId"] = doctor_id
         return out
 
+    def _visit_turn(self, text, session_id, st, ctx) -> dict | None:
+        """Directions, "I've reached", check in, token status. Only for a known visit, except "I've reached" and "check in", which
+        also look up a signed-in patient's visit. The emergency check runs first."""
+        what = visit_wants(text)
+        located_reply = ((st.get("visit") or {}).get("awaiting") == "checkin" and ctx["located"]
+                         and (text == "location" or _LOCATION_ONLY.match(text or "")))
+        known = bool((st.get("last_booking") or {}).get("appointmentId") or st.get("visit") or ctx.get("visit_appointment_id"))
+        if not (located_reply or (what in ("arrival", "checkin")) or (what and known)):
+            return None
+        if what in ("directions", "status") and not known:
+            return None
+        if self._emergency(text):
+            return None
+        ing = self._ingest_only(text, session_id)
+        lang = st.get("language") or ing.language.language
+        v = Voice(lang)
+        if located_reply and what is None:
+            res = self.visit.location_followup(st, ctx, v)
+        else:
+            res = self.visit.turn(what, st, ctx, v)
+        if res is None:
+            return None
+        st["language"], st["turn"] = lang, ing.turn
+        self._save(ing.session_id, st)
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": lang}
+        out = self._reply(base, res["kind"], res["message"], clarify=res.get("clarify"), degraded=res.get("degraded"))
+        if res.get("visit"):
+            out["visit"] = res["visit"]
+            out["visit_step"] = res.get("visit_step")
+        return out
+
+    def _emergency_followup(self, text, session_id, st, ctx) -> dict | None:
+        """Right after an emergency: a shared location gets the nearest places; "share my number" sends it to them.
+        Anything else goes the normal way (and the emergency check runs on it again)."""
+        sharing = self.emergency.wants_share(text, st)
+        located = (text == "location" or _LOCATION_ONLY.match(text or "")) and ctx["located"]
+        if not (sharing or located):
+            return None
+        ing = self._ingest_only(text, session_id)
+        lang = st.get("language") or ing.language.language
+        v = Voice(lang)
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": lang}
+        if sharing:
+            res = self.emergency.share(st, ctx, v)
+            self._save(ing.session_id, st)
+            return self._reply(base, res["kind"], res["message"])
+        out = self._reply(base, "emergency", V.emergency(v, []))
+        if not self.emergency.location_followup(out, st, ctx, v):
+            return None
+        self._save(ing.session_id, st)
+        return out
+
     def _booking_turn(self, text, session_id, st, ctx) -> dict | None:
         """One message while booking. None: it was not about booking (a new ask), and booking has ended."""
         before = st.get("language")
@@ -618,8 +701,8 @@ class DoctorChat:
         st["handoff"] = {"reason": reason, "at": int(time.time())}
         self._save(ing.session_id, st)
         msg = hi("I'm passing you to our support team. Someone will reply to you shortly.",
-                 "Main aapko hamari support team se jod raha hoon. Koi jaldi aapse baat karega.",
-                 "मैं आपको हमारी सपोर्ट टीम से जोड़ रहा हूँ। कोई जल्द ही आपसे बात करेगा।")
+                 "Main aapko hamari support team se jod rahi hoon. Koi jaldi aapse baat karega.",
+                 "मैं आपको हमारी सपोर्ट टीम से जोड़ रही हूँ। कोई जल्द ही आपसे बात करेगा।")
         out = self._reply(base, HANDOFF, msg)
         out["handoff"] = {"reason": reason}
         return out
@@ -644,14 +727,14 @@ class DoctorChat:
         hosp = (doctor or {}).get("hospital") or {}
         desk = hosp.get("contact")                     # the hospital front desk, as 1HMS publishes it
         if hi.code == "hi":
-            msg = ("मैं डॉक्टरों के निजी नंबर शेयर नहीं कर सकता। "
-                   + (f"मैं {name} के साथ अपॉइंटमेंट बुक कर सकता हूँ" if name else
-                      "मैं आपके लिए अपॉइंटमेंट बुक कर सकता हूँ"))
+            msg = ("मैं डॉक्टरों के निजी नंबर शेयर नहीं कर सकती। "
+                   + (f"मैं {name} के साथ अपॉइंटमेंट बुक कर सकती हूँ" if name else
+                      "मैं आपके लिए अपॉइंटमेंट बुक कर सकती हूँ"))
             msg += f", या {hosp.get('name')} का फ्रंट डेस्क नंबर: {desk}।" if desk else "।"
         elif hi:
-            msg = ("Main doctors ke personal number share nahi kar sakta. "
-                   + (f"Main {name} ke saath appointment book kar sakta hoon" if name else
-                      "Main aapke liye appointment book kar sakta hoon"))
+            msg = ("Main doctors ke personal number share nahi kar sakti. "
+                   + (f"Main {name} ke saath appointment book kar sakti hoon" if name else
+                      "Main aapke liye appointment book kar sakti hoon"))
             msg += f", ya {hosp.get('name')} ka front desk number: {desk}." if desk else "."
         else:
             msg = ("I can't share doctors' personal numbers, but "
