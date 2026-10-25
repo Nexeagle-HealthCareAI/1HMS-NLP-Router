@@ -523,7 +523,8 @@ class BookingFlow:
                 doctor_id=d["doctorId"], patient=patient, preferred_date=b["date"],
                 preferred_time=f"{start}:00" if start and len(start) == 5 else start,
                 reason=f"Booked with Vita ({_shift_label(b['shift'])})" if b.get("shift") else "Booked with Vita",
-                token=token, client_ip=ctx.get("client_ip"))
+                token=token, client_ip=ctx.get("client_ip"),
+                language={"hindi": "hi", "hinglish": "hinglish"}.get(v.language, "en"))
         except BookingError as exc:
             return self._failed(st, b, v, exc)
         summary = self._summary(b, v)

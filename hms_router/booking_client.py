@@ -111,13 +111,28 @@ class HmsPublicClient:
         self._call("POST", f"/public/emergency-alerts/{event_id}/share-number", client_ip=client_ip,
                    json={"mobile": mobile, "consent": True})
 
+    # ------------------------------------------------------------------ the visit (vision Phase 4)
+    def visit(self, appointment_id: str, *, client_ip: str | None = None) -> dict:
+        """GET /public/appointments/{id}/visit: where and when, the hospital's visit guide, canCheckIn, token and wait."""
+        return self._call("GET", f"/public/appointments/{appointment_id}/visit", client_ip=client_ip).get("visit") or {}
+
+    def check_in(self, appointment_id: str, lat: float, lng: float, *, client_ip: str | None = None) -> dict:
+        """POST /public/tokens: a queue token for this appointment when the patient is at the hospital (1HMS checks the distance)."""
+        return self._call("POST", "/public/tokens", client_ip=client_ip,
+                          json={"appointmentId": appointment_id, "latitude": lat, "longitude": lng})
+
+    def my_appointments(self, token: str, *, client_ip: str | None = None) -> list[dict]:
+        """GET /public/appointments/mine for a signed-in patient."""
+        return list(self._call("GET", "/public/appointments/mine", client_ip=client_ip, token=token).get("appointments") or [])
+
     # ------------------------------------------------------------------ booking
     def book(self, *, doctor_id: str, patient: dict, preferred_date: str, preferred_time: str | None,
-             reason: str | None, token: str | None, client_ip: str | None) -> str:
+             reason: str | None, token: str | None, client_ip: str | None, language: str | None = None) -> str:
         """POST /public/appointments. Never retried here: a timeout may still have booked."""
         body = self._call("POST", "/public/appointments", client_ip=client_ip, token=token, json={
             "doctorId": doctor_id, "patient": patient, "preferredDate": preferred_date,
-            "preferredTime": preferred_time, "reason": reason, "referrerUrl": "vita"})
+            "preferredTime": preferred_time, "reason": reason, "referrerUrl": "vita",
+            "language": language})                     # en / hi / hinglish: the WhatsApp confirmation and reminders use it
         appointment_id = body.get("appointmentId")
         if not appointment_id:
             raise BookingError(body.get("message") or "The booking was not accepted.", status=400)

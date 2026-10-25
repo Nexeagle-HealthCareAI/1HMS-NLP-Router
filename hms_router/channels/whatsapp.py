@@ -34,6 +34,8 @@ _CODES = {"english": 0, "hinglish": 1, "hindi": 2}
 
 # (English, Hinglish, Hindi); every one fits the limit of the place it is used
 _WORDS = {
+    "visit_checkin": ("Send your location to check in.", "Check in ke liye location bhejein.", "चेक-इन के लिए लोकेशन भेजें।"),
+    "visit_map": ("Map", "Map", "मैप"),
     "emergency_share": ("Want the hospitals to call you?", "Kya hospital aapko call karein?", "क्या अस्पताल आपको कॉल करें?"),
     "emergency_location": ("Send your location for the nearest emergency hospitals.",
                            "Sabse nazdeeki emergency hospital ke liye location bhejein.",
@@ -194,6 +196,18 @@ def render(reply: dict) -> list[dict]:
         options = [o for o in clarify.get("options") or [] if o.get("label")]
         if options:                                          # "Share my number" (consent, one tap)
             msgs.append(_options_message(_w("emergency_share", language), options, language))
+        return msgs
+
+    if kind == "visit":                                      # after booking: directions, arrival steps, token
+        visit = reply.get("visit") or {}
+        body = message
+        if reply.get("visit_step") in ("directions", "arrival") and visit.get("mapUrl"):
+            body += f"\n{_w('visit_map', language)}: {visit['mapUrl']}"          # WhatsApp makes the link tappable
+        msgs = [_text(body)]
+        if clarify.get("kind") == "visit_checkin":           # check in = send the location
+            msgs.append({"type": "interactive", "interactive": {
+                "type": "location_request_message", "body": {"text": _body(_w("visit_checkin", language))},
+                "action": {"name": "send_location"}}})
         return msgs
 
     if items:                                                # a doctor list: one list message

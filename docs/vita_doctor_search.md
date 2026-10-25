@@ -110,6 +110,23 @@ emergency: {places: [{settingId, name, kind, phone, alternatePhone, distanceKm, 
   nearly-as-close ones).
 - 1HMS unreachable: the numbers still go out, `degraded: ["emergency_places"]`. No doctor list, no booking, ever.
 
+## After booking (vision Phase 4)
+
+Vita stays with the patient until they are inside the clinic. With the 1HMS public API set up:
+
+| The patient says | Reply (`kind: "visit"`, `visit_step`) |
+|---|---|
+| "rasta batao", "how do I get there", "रास्ता बताओ" | `directions`: map link, landmark, entrance, OPD, parking |
+| "main pahunch gayi", "I've reached", "मैं पहुँच गया" | `arrival`: registration desk + booking ID, "Check in now" (`clarify.kind = "visit_checkin"`) when 1HMS allows it today, OPD, pay at the counter |
+| "check in" + the location (or the location after "Check in now") | `checked_in`: token, who is being seen now, expected wait (1HMS `POST /public/tokens`, geofenced) |
+| "mera number kab aayega", "how long" | `status`: token and wait |
+
+`visit` is 1HMS's visit page data (`GET /public/appointments/{id}/visit`). Which visit: the booking made in this chat, else
+`visit_appointment_id` (the website's visit page or latest booking), else a signed-in patient's next visit (`patient_token`).
+Directions and status need a known visit; "I've reached" without one points to "My appointments". The emergency check still
+runs first. Bookings now carry the patient's language (`en` / `hi` / `hinglish`) to 1HMS for the WhatsApp confirmation and
+reminders.
+
 ## Channels
 
 `channel: "whatsapp"` adds `whatsapp`: the reply as ready-to-send WhatsApp messages; taps come back as

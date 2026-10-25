@@ -40,6 +40,7 @@ from ..textnorm import intent_text, preprocess
 from ..voice import Voice
 from .booking import BookingFlow, token_mobile
 from .emergency_help import EmergencyHelp
+from .visit_help import VisitHelp, wants as visit_wants
 
 _LOCATION_ONLY = re.compile(r"^\s*(location|my location|share (my )?location|meri location|location bhej di|मेरी लोकेशन)\s*$", re.I)
 
@@ -105,6 +106,7 @@ class DoctorChat:
         self.agent, self.directory, self.r, self.terms = agent, directory, redis, terms
         self.booking = BookingFlow(directory, booking_client)
         self.emergency = EmergencyHelp(booking_client)
+        self.visit = VisitHelp(booking_client)
 
     # ================================================================== session state
     @staticmethod
@@ -141,7 +143,7 @@ class DoctorChat:
                lng: float | None = None, hospital_id: str | None = None,
                select_doctor_id: str | None = None, page: int = 1, new_search: bool = False,
                ui_language: str | None = None, client_ip: str | None = None, patient_token: str | None = None,
-               verified_mobile: str | None = None, channel: str = "web") -> dict:
+               verified_mobile: str | None = None, channel: str = "web", visit_appointment_id: str | None = None) -> dict:
         """new_search: the screen removed a filter chip and re-sent the remaining filters as text; search
         with exactly those, never merged into the last search."""
         ctx = {"city": city, "lat": lat, "lng": lng, "hospital_id": hospital_id,
@@ -149,7 +151,9 @@ class DoctorChat:
                # booking only: the visitor's IP for 1HMS's per-visitor limits, the channel's signed-in patient
                # token (no OTP needed), a number the channel already verified (WhatsApp)
                "client_ip": client_ip, "patient_token": patient_token, "verified_mobile": verified_mobile,
-               "token_mobile": token_mobile(patient_token) if patient_token else None, "channel": channel}
+               "token_mobile": token_mobile(patient_token) if patient_token else None, "channel": channel,
+               # after booking: the visit the website says the patient is looking at
+               "visit_appointment_id": visit_appointment_id}
         self._hint = ui_language
         if select_doctor_id:
             return self._select(text, session_id, select_doctor_id, ctx)
@@ -159,6 +163,10 @@ class DoctorChat:
         st = self.load(session_id)
         if st.get("emergency"):                                                           # emergency takeover follow-ups
             out = self._emergency_followup(text, session_id, st, ctx)
+            if out is not None:
+                return out
+        if self.visit.enabled and not st.get("booking"):                                   # after booking (vision Phase 4)
+            out = self._visit_turn(text, session_id, st, ctx)
             if out is not None:
                 return out
         if st.get("booking"):                                                             # booking in progress
@@ -589,6 +597,37 @@ class DoctorChat:
         out = self._reply(base, DOCTOR_SELECTED, msg, question=msg if clarify else None, clarify=clarify, degraded=degraded)
         out["doctor"] = doctor
         out["selectedDoctorId"] = doctor_id
+        return out
+
+    def _visit_turn(self, text, session_id, st, ctx) -> dict | None:
+        """Directions, "I've reached", check in, token status. Only for a known visit, except "I've reached" and "check in", which
+        also look up a signed-in patient's visit. The emergency check runs first."""
+        what = visit_wants(text)
+        located_reply = ((st.get("visit") or {}).get("awaiting") == "checkin" and ctx["located"]
+                         and (text == "location" or _LOCATION_ONLY.match(text or "")))
+        known = bool((st.get("last_booking") or {}).get("appointmentId") or st.get("visit") or ctx.get("visit_appointment_id"))
+        if not (located_reply or (what in ("arrival", "checkin")) or (what and known)):
+            return None
+        if what in ("directions", "status") and not known:
+            return None
+        if self._emergency(text):
+            return None
+        ing = self._ingest_only(text, session_id)
+        lang = st.get("language") or ing.language.language
+        v = Voice(lang)
+        if located_reply and what is None:
+            res = self.visit.location_followup(st, ctx, v)
+        else:
+            res = self.visit.turn(what, st, ctx, v)
+        if res is None:
+            return None
+        st["language"], st["turn"] = lang, ing.turn
+        self._save(ing.session_id, st)
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": lang}
+        out = self._reply(base, res["kind"], res["message"], clarify=res.get("clarify"), degraded=res.get("degraded"))
+        if res.get("visit"):
+            out["visit"] = res["visit"]
+            out["visit_step"] = res.get("visit_step")
         return out
 
     def _emergency_followup(self, text, session_id, st, ctx) -> dict | None:
