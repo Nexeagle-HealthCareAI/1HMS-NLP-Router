@@ -79,10 +79,16 @@ class LanguageResult:
     strength: str = "strong"   # "strong" | "weak" | "none" - how much this one message says
 
 
+def _squeeze(w: str) -> str:
+    return re.sub(r"(.)\1+", r"\1", w)
+
+
 class LanguageDetector:
     def __init__(self, lexicon: Lexicon | None = None, fasttext_model_path: str | None = None):
         markers = set(lexicon.hindi_markers) if lexicon is not None else set()
         self.hindi = (HINDI_WORDS | markers) - NEUTRAL - ENGLISH_WORDS
+        # "bataoo", "dikhaoo", "chahiyeee": a stretched Hindi word is still Hindi
+        self._hindi_squeezed = {_squeeze(w): w for w in self.hindi if len(_squeeze(w)) >= 4}   # not se/pas ("see", "pass")
         self._ft = None
         if fasttext_model_path:
             try:
@@ -102,7 +108,8 @@ class LanguageDetector:
         if dev:                                     # mostly Roman with some Devanagari: Hindi in Roman letters
             return LanguageResult("hinglish", "mixed", "script", "strong")
 
-        words = _WORD.findall(text.lower())
+        words = [w if w in self.hindi or w in ENGLISH_WORDS else self._hindi_squeezed.get(_squeeze(w), w)
+                 for w in _WORD.findall(text.lower())]
         h = sum(w in self.hindi for w in words)
         e = sum(w in ENGLISH_WORDS for w in words)
         if h == 0 and e == 0:

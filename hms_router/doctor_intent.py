@@ -148,7 +148,15 @@ _NAME_STOP = DOCTOR_WORDS | _LINKS | {
     "tomorrow", "sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "ravivar",
     "somvar", "mangalvar", "budhvar", "guruvar", "shukravar", "shanivar", "on", "is", "are", "will",
     "yahan", "idhar", "wahan", "udhar", "area", "city", "sheher",
+    # asking words, so "doctor bataoo", "dr suggest karo" are never a doctor called "bataoo" / "suggest"
+    "btao", "bata", "bataye", "batayein", "bataiye", "batana", "dikha", "dikhaye", "dikhayein", "dikhana",
+    "dikhado", "batado", "dhundo", "dhundho", "dhoondo", "dhoondho", "dhundh", "dhoondh", "dhundiye", "dhoondhiye",
+    "chahie", "chaiye", "chiye", "chaahie", "suggest", "recommend", "karo", "kariye", "do", "dijiye", "milega",
+    "milegi", "milenge", "sabse", "kaunsa", "konsa", "kaun", "achcha", "acchha", "badhiya", "badiya", "bdiya",
+    "accha", "achha", "acha", "koi", "bhi", "ek", "mujhe", "hame", "hume", "humein", "hamein", "nearest", "nazdeek",
+    "nazdik", "pass", "lao", "please", "help", "madad", "chahiye", "chaahiye", "chahiyee", "doctors", "doctr", "dctr",
 }
+_NAME_STOP_SQUEEZED = {re.sub(r"(.)\1+", r"\1", w) for w in _NAME_STOP}
 # Everyday words the health vocabulary also contains; they never make a message "about symptoms"
 _FILLER = {"available", "availability", "aaj", "today", "kal", "kab", "milenge", "hospital", "clinic", "lady",
            "mahila", "female", "male", "baithte", "milna", "milni", "chahiye", "chaahiye", "paas", "andar", "liye", "wala", "wali", "wale", "koi", "kuch",
@@ -246,6 +254,15 @@ def _find_degree(text: str) -> tuple[str | None, set[str]]:
     return _DEGREE_CANON.get(raw), {m.group(1)}
 
 
+def _squeeze(w: str) -> str:
+    """bataoo -> batao, chahiyeee -> chahiye, acchha -> acha: typed-out stretching and doubled letters ignored."""
+    return re.sub(r"(.)\1+", r"\1", w)
+
+
+def _is_stop(w: str) -> bool:
+    return w in _NAME_STOP or _squeeze(w) in _NAME_STOP_SQUEEZED
+
+
 def _find_name(text: str, names: Iterable[str] | None, exclude: set[str] = frozenset()) -> tuple[str | None, set[str]]:
     words = [w for w in _words(text) if w not in exclude]
     # 1) "dr sharma", "doctor anita sen"
@@ -253,7 +270,7 @@ def _find_name(text: str, names: Iterable[str] | None, exclude: set[str] = froze
         if w in ("dr", "doctor", "daktar", "docter"):
             span = []
             for nxt in words[i + 1:i + 3]:
-                if nxt in _NAME_STOP or nxt in _ALIASES or len(nxt) < 3 or _SPECIALIST_NOUN.fullmatch(nxt):
+                if _is_stop(nxt) or nxt in _ALIASES or len(nxt) < 3 or _SPECIALIST_NOUN.fullmatch(nxt):
                     break
                 span.append(nxt)
             if span:
@@ -261,7 +278,7 @@ def _find_name(text: str, names: Iterable[str] | None, exclude: set[str] = froze
     # 2) a listed doctor's name with a meeting cue: "anita sen se milna hai"
     if names and _NAME_CUE.search(text):
         name_tokens = {t for n in names for t in preprocess(n).split() if len(t) >= 3 and t not in DOCTOR_WORDS}
-        hits = [w for w in words if len(w) >= 3 and w not in _NAME_STOP and w not in _ALIASES
+        hits = [w for w in words if len(w) >= 3 and not _is_stop(w) and w not in _ALIASES
                 and difflib.get_close_matches(w, name_tokens, n=1, cutoff=0.84)]
         if hits:
             return " ".join(hits[:3]), set(hits)
