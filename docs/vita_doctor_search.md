@@ -179,6 +179,33 @@ Hindi) or Hindi (Devanagari). `language` on every reply says which.
 
 A short "nahi" or "ok" while triage is waiting for an answer goes to triage, not to small talk.
 
+**Everyday language** (catalog "Vita: what patients type and how Vita should reply", Oct 2026; code in
+`application/everyday.py`, test set `tests/fixtures/everyday_phrases.json`: 287 phrases, at least 90% handled and every emergency).
+
+- **Typing tidy-up first** (`textnorm.tidy`, at the door): short forms (nhi, kru, pta, h, doc, chaiye, plz), stretched letters
+  ("bukharrr", "bataoo"; a doubled letter inside a word is kept: "kaam" is not "kam"), emojis (🙏 thanks, 👍 ok, 🤒 bukhar, 🤕 chot).
+- **Words the triage knows**: about 250 everyday symptom words in `hinglish_lexicon.csv` (taap, zukam, dast, acidity, gas, kabz,
+  kamzori, periods late, safed pani, BP high, pathri, khujli, daad, ghabrahat…). Everyday words that are not symptoms are listed
+  with category `everyday`: never spell-repaired into a symptom ("kaunsi" is not khansi) and never a repair target.
+- **Specialty words** come from `data/everyday_specialty_words.csv`, the sheet a doctor signs off (`proposed` / `approved` rows
+  are used, `rejected` / `needs decision` are not): bachon, ladies (= gynaecologist; "lady doctor" is still any woman doctor),
+  delivery, BP, pathri, piles, baal…
+- **Answers** (`kind=info`, then the ways-to-ask buttons): who Vita is (an AI assistant, not a person or a doctor), what Doctor
+  Dekho is, fees (the chosen doctor's, or "shown with each doctor, paid at the hospital"), free (booking is free, no online
+  payment or refund), online consults / insurance / lab tests / medicine delivery (coming soon), my appointment ("Meri
+  appointments"), reports, timings, ambulance (108 / 112), blood and vaccines (ask the hospital), privacy (why the number and the
+  OTP), small talk, praise, upset (twice offers a person), off-topic (only doctors and appointments).
+- **No medical advice**: medicine, dose and "is it serious?" questions get "a doctor or pharmacist has to decide"; with a symptom
+  in the same message that line comes first and triage goes on.
+- **Warning signs**: a head injury or a burn on its own asks one question (fainting, vomiting, fits… / large, face, electric,
+  breathing); `clarify.kind="warning_signs"` with Haan / Nahi. Yes is an emergency; no is "see a doctor today" and general
+  physicians. Stroke ("ek taraf kamzori", "ek haath kaam nahi kar raha") and labour ("delivery ka dard", "pregnancy mein paani
+  gir gaya") are red flags. Self-harm replies name Tele-MANAS 14416. A bare "nahi" / "haan" is never an emergency for the model.
+- **Repair words**: "kya?" / "samjha nahi" repeat the last question; "aur?" the next page; "pehla / doosra wala" picks from the
+  list; "wapas" / "shuru se" / "menu" start over; "kaunsa better hai" offers sorting (`clarify.kind="sort"`); "kitna door hai"
+  sorts by distance; "haan" to "Kya main book karoon?" books; "sabse sasta doctor" keeps the filter and asks which kind.
+- **While booking**, "number kyun chahiye?", "fees kitni hai?", "kya?" get their answer and the booking question again.
+
 **Changing your mind mid-way.** The patient is never held to the first flow:
 
 | When | Patient | Vita |

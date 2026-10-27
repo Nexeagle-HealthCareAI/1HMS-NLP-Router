@@ -21,6 +21,7 @@ Rule = tuple[str, str, str, str]            # (phrase, english, canonical, flag)
 _RECOMMEND: dict[str, list[str]] = {
     "suicidal thoughts": ["emergencymedicine", "psychiatry"],
     "bleeding in pregnancy": ["emergencymedicine", "gynecology"],
+    "labour": ["emergencymedicine", "gynecology"],
     "chest pain": ["emergencymedicine", "cardiology"],
     "heart attack": ["emergencymedicine", "cardiology"],
     "seizure": ["emergencymedicine", "neurology"],

@@ -243,9 +243,10 @@ class SymptomExtractor:
                 and any(w in _NEGATORS_AFTER for w in lookahead)
                 and any(w in {"aa", "a", "raha", "rahi", "rahe"} for w in lookahead)
             )
-            # "neend nahi aa rahi", "so nahi pa raha": the "nahi" is part of the complaint (cannot sleep), not a denial
+            # "neend nahi aa rahi", "so nahi pa raha", "pet saaf nahi hota", "MC nahi aayi": the "nahi" is part of the
+            # complaint, not a denial
             idiomatic_sleeplessness = (
-                e.canonical == "insomnia"
+                e.canonical in ("insomnia", "constipation", "delayed periods", "loss of appetite")
                 and any(w in _NEGATORS_AFTER for w in lookahead)
                 and (any(w in {"aa", "a", "aati", "aata", "aaya", "aayi", "raha", "rahi", "rahe", "pa", "paa", "paata", "paati",
                                "pata", "pati", "pate", "hoti", "hota"} for w in lookahead) or len(lookahead) == 1)

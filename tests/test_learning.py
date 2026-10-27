@@ -73,35 +73,35 @@ def _flood(agent, token, n):
 
 
 def test_nightly_counts_filters_rare_and_suggests_nearest_word(agent, tmp_path):
-    _flood(agent, "ghabrahat", 3)
+    _flood(agent, "jakdan", 3)
     _flood(agent, "oncetoken", 1)                      # below novel_min_count
     csv_path = tmp_path / "novel_symptoms_review.csv"
     out = agent.learning.nightly(csv_path)
     assert out["drained"] == 4 and out["new_candidates"] == 1
     rows = list(csv.DictReader(open(csv_path)))
-    assert rows[0]["token"] == "ghabrahat" and rows[0]["count"] == "3" and rows[0]["status"] == "pending"
-    assert rows[0]["suggested_word"] == "ghabrana"
+    assert rows[0]["token"] == "jakdan" and rows[0]["count"] == "3" and rows[0]["status"] == "pending"
+    assert rows[0]["suggested_word"] == "jukaam"
 
 
 def test_rerun_never_overwrites_human_decisions(agent, tmp_path):
     p = tmp_path / "rev.csv"
-    _flood(agent, "ghabrahat", 3)
+    _flood(agent, "jakdan", 3)
     agent.learning.nightly(p)
     rows = list(csv.DictReader(open(p)))
     rows[0].update(status="approved", canonical="anxiety", category="symptom")
     with open(p, "w", newline="") as f:
         w = csv.DictWriter(f, rows[0].keys()); w.writeheader(); w.writerows(rows)
-    _flood(agent, "ghabrahat", 3)
+    _flood(agent, "jakdan", 3)
     agent.learning.nightly(p)
     again = list(csv.DictReader(open(p)))
     assert len(again) == 1 and again[0]["status"] == "approved"
 
 
 def test_queue_is_drained_atomically_and_tokens_pushed_later_survive(agent, tmp_path):
-    _flood(agent, "ghabrahat", 3)
+    _flood(agent, "jakdan", 3)
     NovelTokenReviewer(agent.r, agent.pipeline.lex, Settings(novel_min_count=2)).drain()
     assert agent.r.llen("review_queue") == 0
-    agent.feedback.submit(NEW_PHRASE, phrase="ghabrahat")
+    agent.feedback.submit(NEW_PHRASE, phrase="jakdan")
     assert agent.r.llen("review_queue") == 1
 
 
@@ -118,17 +118,17 @@ def _review(tmp_path, *rows):
 
 def test_pending_rows_change_nothing(tmp_path):
     lex = Lexicon.from_csv()
-    grown, rep = apply_approved(_review(tmp_path, {"token": "ghabrahat", "status": "pending"}), lex)
+    grown, rep = apply_approved(_review(tmp_path, {"token": "jakdan", "status": "pending"}), lex)
     assert grown is lex and not rep.added_entries
 
 
 def test_approved_needs_canonical_and_valid_category(tmp_path):
     lex = Lexicon.from_csv()
     p = _review(tmp_path,
-                {"token": "ghabrahat", "status": "approved", "canonical": "", "category": "symptom"},
+                {"token": "jakdan", "status": "approved", "canonical": "", "category": "symptom"},
                 {"token": "jhatka", "status": "approved", "canonical": "spasm", "category": "particle"})
     grown, rep = apply_approved(p, lex)
-    assert grown is lex and set(rep.skipped) == {"ghabrahat", "jhatka"}
+    assert grown is lex and set(rep.skipped) == {"jakdan", "jhatka"}
 
 
 def test_approved_token_cannot_override_existing_meaning(tmp_path):

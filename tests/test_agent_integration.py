@@ -122,10 +122,10 @@ def test_reply_language_follows_user(agent):
 
 
 def test_unknown_token_queue_gets_original_word_not_our_guess(agent):
-    say(agent, "mujhe ghabrahat ho rahi hai")
+    say(agent, "mujhe jakdan ho rahi hai")
     import json
     queued = [json.loads(x)["token"] for x in agent.r.lrange("review_queue", 0, -1)]
-    assert "ghabrahat" in queued and "ghabrana" not in queued
+    assert "jakdan" in queued and "thakan" not in queued
 
 
 def test_noise_tokens_are_not_queued(agent):

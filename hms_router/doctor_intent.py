@@ -17,9 +17,11 @@ DoctorDirectory maps to 1HMS categories.
 """
 from __future__ import annotations
 
+import csv
 import difflib
 import re
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Iterable
 
 from .doctors import specialty_key
@@ -72,6 +74,22 @@ _ALIASES: dict[str, str] = {
     "physio": "physiotherapy",
 }
 
+# Everyday words for specialties that a doctor signs off (data/everyday_specialty_words.csv): "proposed" and "approved"
+# rows are used, "rejected" and "needs decision" rows are not. A word already above keeps its meaning.
+EVERYDAY_SPECIALTY_WORDS = Path(__file__).resolve().parent / "data" / "everyday_specialty_words.csv"
+
+
+def _load_everyday_specialties(path: Path = EVERYDAY_SPECIALTY_WORDS) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8", newline="") as f:
+        return {r["word"].strip().lower(): r["specialty_key"].strip() for r in csv.DictReader(f)
+                if r.get("word") and r.get("specialty_key") and (r.get("status") or "").strip() in ("proposed", "approved")}
+
+
+for _w, _k in _load_everyday_specialties().items():
+    _ALIASES.setdefault(_w, _k)
+
 _DEGREE = re.compile(r"\b(m\.?b\.?b\.?s|m\.?d|m\.?s|d\.?m|m\.?ch|d\.?n\.?b|b\.?d\.?s|m\.?d\.?s|d\.?g\.?o|d\.?c\.?h)\b")
 _DEGREE_CANON = {"mbbs": "MBBS", "md": "MD", "ms": "MS", "dm": "DM", "mch": "MCh", "dnb": "DNB", "bds": "BDS",
                  "mds": "MDS", "dgo": "DGO", "dch": "DCH"}
@@ -95,12 +113,14 @@ _PRIVATE_NUMBER = re.compile(r"\b(number|nambar|no\.?|mobile|phone|contact|whats
 _OWN_NUMBER = re.compile(r"\b(mera|meri|mere|my|apna|hamara)\b.{0,12}\b(number|mobile|phone|no)\b")
 _HUMAN = re.compile(r"\b(human|insaan|insan|real person|kisi (insaan|aadmi|vyakti) se|customer care|customer support|"
                     r"support team|helpline|receptionist|staff se|agent se baat|person se baat|talk to (a )?(person|someone)|"
-                    r"call me back|callback|call back)\b")
+                    r"call me back|callback|call back|call me|call karo|call kijiye|mujhe call|baat karao|baat karwao|"
+                    r"(koi |kisi )?(aadmi|banda|person|vyakti|staff) se baat|complaint|shikayat|agent please|talk to (a )?human|"
+                    r"speak to (a )?(person|human|someone)|real person)\b|^agent$")
 _JUST_LOOKING = re.compile(r"^((nahi|nahin|no|na) )?(bas |sirf |just )?(pooch raha|pooch rahi|puch raha|puch rahi|dekh raha|dekh rahi|dekh rahe|jaanna tha|janna tha|looking|checking|browsing|time pass|"
                            r"no thanks?|nahi chahiye|abhi nahi|not now|later|baad mein|thanks?|thank you|thanku|shukriya|"
                            r"dhanyavad|dhanyawad|ok bye|bye|ok thanks?|theek hai|thik hai|ok|okay)\b")
 _DECLINE = re.compile(r"^(nahi|nahin|nhi|no|na|nope)( (abhi|ji|thanks?|thank you|bas|sir|madam))*( (nahi|nahin|nhi))?$")
-_GREETING = re.compile(r"^(h+i+|h+e+y+a*|h+e+l+o+w?|hlo+|hy+|hola|yo+|namast[ea]+y?|namaskar|pranam|pranaam|"
+_GREETING = re.compile(r"^(koi hai|suniye|suno|excuse me|(sir|madam|mam|maam|madam ji|sir ji|bhaiya|didi)$|h+i+|h+e+y+a*|h+e+l+o+w?|hlo+|hy+|hola|yo+|namast[ea]+y?|namaskar|pranam|pranaam|"
                        r"salaam|salam|assalam\w*|adaab|sat sri akal|jai shri krishna|radhe radhe|ram ram|"
                        r"good (morning|afternoon|evening|night)|gm|kaise ho|kaisi ho|kaise hain|kya haal|how are you|"
                        r"what'?s up|wassup|sup)\b")
@@ -108,11 +128,11 @@ _MORE = re.compile(r"\b(show more|more doctors|aur doctor|aur doctors|aur dikhao
                    r"other doctors|next page|aur options|more options|aur koi)\b")
 
 # "lady doctor", "mahila doctor", "female doctor" -> a female doctor (any specialty); "male doctor" likewise
-_GENDER = re.compile(r"\b(lady|ladies|mahila|female|woman|aurat|stree|male|gents|purush|aadmi)\s+(?:(?!ka\b|ke\b|ki\b|rog\b)[a-z]+\s+)?(doctor|doctors|daktar|dr|"
+_GENDER = re.compile(r"\b(lady|mahila|female|woman|aurat|stree|male|gents|purush|aadmi)\s+(?:(?!ka\b|ke\b|ki\b|rog\b)[a-z]+\s+)?(doctor|doctors|daktar|dr|"
                      r"specialist|physician|surgeon|dentist|gynae\w*|ortho|derma|\w+logists?|\w+icians?)\b"
                      r"|\b(doctor|daktar)\s+(lady|mahila|female)\b")
 _FEMALE_WORDS = {"lady", "ladies", "mahila", "female", "woman", "aurat", "stree"}
-_TODAY = re.compile(r"\b(aaj|today|abhi)\b.{0,20}\b(available|milenge|mil sakte|mil sakta|baithte|baithenge|hai kya|"
+_TODAY = re.compile(r"\b(aaj|today|abhi)\b.{0,20}\b(available|milenge|milega|milegi|mil sakte|mil sakta|baithte|baithenge|hai kya|"
                     r"open|free)\b|\b(available|milenge|baithte)\b.{0,12}\b(aaj|today)\b|\baaj ke doctor\b")
 # "Is Dr Sharma available Sunday?", "Dr Sen kal milenge?", "kab baithte hain"
 _WHEN_Q = re.compile(r"\b(available|availability|milenge|milengi|milega|milegi|mil sakte|mil sakti|baithte|baithti|baithenge|"
@@ -199,6 +219,7 @@ def _words(normalized: str) -> list[str]:
 
 
 _PHRASE_SPECIALTY = [(re.compile(r"\b(mahila|stree|aurton ke?) rog\b"), "gynaecology"),
+                     (re.compile(r"\bladies (doctor|doctors|dr|daktar)\b"), "gynaecology"),
                      (re.compile(r"\b(bachchon|bacchon|bachcho|shishu) rog\b"), "paediatrics"),
                      (re.compile(r"\b(twacha|chamdi|skin) rog\b"), "dermatology"),
                      (re.compile(r"\b(netra|aankh) rog\b"), "ophthalmology"),
@@ -333,7 +354,7 @@ def parse(text: str, *, names: Iterable[str] | None = None,
 
     if _MORE.search(norm):
         ask.more = ask.refine = True
-    if _HUMAN.search(norm):
+    if _HUMAN.search(norm) and not re.search(r"\b(call|baat|insaan|agent)\b.{0,15}\b(nahi|nahin|mat|no|not)\b", norm):
         ask.move = "human"
     elif _PRIVATE_NUMBER.search(norm) and not _OWN_NUMBER.search(norm):
         ask.move = "private_number"

@@ -1057,3 +1057,255 @@ sona mushkil,insomnia,symptom,hi
 paata,paata,function,hi
 paati,paati,function,hi
 paate,paate,function,hi
+taap,fever,symptom,hi
+tap,fever,symptom,hi
+temperature,fever,symptom,en
+body garam,fever,symptom,hi
+badan garam,fever,symptom,hi
+sharir garam,fever,symptom,hi
+jwar,fever,symptom,hi
+zukam,cold,symptom,hi
+jukam,cold,symptom,hi
+zukaam,cold,symptom,hi
+jukaam,cold,symptom,hi
+nazla,cold,symptom,hi
+najla,cold,symptom,hi
+sardi,cold,symptom,hi
+sardi lag,cold,symptom,hi
+cold,cold,symptom,en
+naak beh,runny nose,symptom,hi
+naak bahna,runny nose,symptom,hi
+runny nose,runny nose,symptom,en
+gala kharab,sore throat,symptom,hi
+gala baith,sore throat,symptom,hi
+gale mein kharash,sore throat,symptom,hi
+gala kharash,sore throat,symptom,hi
+throat pain,sore throat,symptom,en
+dast,diarrhoea,symptom,hi
+dast lag,diarrhoea,symptom,hi
+loose motion,diarrhoea,symptom,en
+loose motions,diarrhoea,symptom,en
+motions,diarrhoea,symptom,en
+patle dast,diarrhoea,symptom,hi
+pet kharab,upset stomach,symptom,hi
+pet gadbad,upset stomach,symptom,hi
+ji machla,nausea,symptom,hi
+jee machla,nausea,symptom,hi
+ji machlana,nausea,symptom,hi
+ulti jaisa,nausea,symptom,hi
+vomit,vomiting,symptom,en
+acidity,acidity,symptom,en
+khatti dakar,acidity,symptom,hi
+seene mein jalan,acidity,symptom,hi
+seene me jalan,acidity,symptom,hi
+heartburn,acidity,symptom,en
+gas,gas,symptom,amb
+gas ban,gas,symptom,hi
+pet phoolna,bloating,symptom,hi
+pet phool,bloating,symptom,hi
+bloating,bloating,symptom,en
+kabz,constipation,symptom,hi
+kabj,constipation,symptom,hi
+qabz,constipation,symptom,hi
+pet saaf nahi,constipation,symptom,hi
+constipation,constipation,symptom,en
+giddiness,dizziness,symptom,en
+sar ghoom,dizziness,symptom,hi
+sir ghoom,dizziness,symptom,hi
+kamzori,weakness,symptom,hi
+kamjori,weakness,symptom,hi
+thakan,fatigue,symptom,hi
+thakaan,fatigue,symptom,hi
+thakawat,fatigue,symptom,hi
+tiredness,fatigue,symptom,en
+body pain,body ache,symptom,en
+badan toot,body ache,symptom,hi
+haath pair dard,body ache,symptom,hi
+ghutno mein dard,knee pain,symptom,hi
+ghutna dard,knee pain,symptom,hi
+jodo mein dard,joint pain,symptom,hi
+joint pain,joint pain,symptom,en
+periods late,delayed periods,symptom,en
+period late,delayed periods,symptom,en
+mahwari nahi,delayed periods,symptom,hi
+mc nahi,delayed periods,symptom,hi
+mc late,delayed periods,symptom,en
+periods nahi,delayed periods,symptom,hi
+mahwari dard,period pain,symptom,hi
+mahwari mein dard,period pain,symptom,hi
+periods mein dard,period pain,symptom,hi
+period pain,period pain,symptom,en
+periods pain,period pain,symptom,en
+safed pani,white discharge,symptom,hi
+safed paani,white discharge,symptom,hi
+white discharge,white discharge,symptom,en
+bp high,high blood pressure,symptom,en
+high bp,high blood pressure,symptom,en
+bp badh,high blood pressure,symptom,hi
+bp zyada,high blood pressure,symptom,hi
+bp low,low blood pressure,symptom,en
+low bp,low blood pressure,symptom,en
+bp kam,low blood pressure,symptom,hi
+bp gir,low blood pressure,symptom,hi
+sugar badh,high blood sugar,symptom,hi
+sugar high,high blood sugar,symptom,en
+sugar zyada,high blood sugar,symptom,hi
+sugar,diabetes,symptom,amb
+diabetes,diabetes,symptom,en
+madhumeh,diabetes,symptom,hi
+pathri,kidney stone,symptom,hi
+pathari,kidney stone,symptom,hi
+stone,kidney stone,symptom,en
+kidney stone,kidney stone,symptom,en
+baar baar peshab,frequent urination,symptom,hi
+bar bar peshab,frequent urination,symptom,hi
+baar baar pishab,frequent urination,symptom,hi
+pishab mein jalan,burning urination,symptom,hi
+urine mein jalan,burning urination,symptom,hi
+khujli,itching,symptom,hi
+khaj,itching,symptom,hi
+daad,ringworm,symptom,hi
+dad khaj,ringworm,symptom,hi
+ringworm,ringworm,symptom,en
+daane,rash,symptom,hi
+dane,rash,symptom,hi
+chakatte,rash,symptom,hi
+muhase,acne,symptom,hi
+muhanse,acne,symptom,hi
+pimples,acne,symptom,en
+pimple,acne,symptom,en
+acne,acne,symptom,en
+baal jhad,hair fall,symptom,hi
+baal gir,hair fall,symptom,hi
+baal jhadna,hair fall,symptom,hi
+hair fall,hair fall,symptom,en
+hairfall,hair fall,symptom,en
+tension,anxiety,symptom,amb
+chinta,anxiety,symptom,hi
+ghabrahat,anxiety,symptom,hi
+ghabrahat ho,anxiety,symptom,hi
+dil ghabra,anxiety,symptom,hi
+ji ghabra,anxiety,symptom,hi
+bechaini,anxiety,symptom,hi
+anxiety,anxiety,symptom,en
+stress,anxiety,symptom,en
+udaas,low mood,symptom,hi
+udasi,low mood,symptom,hi
+depression,low mood,symptom,en
+dhadkan tez,palpitations,symptom,hi
+dil tez dhadak,palpitations,symptom,hi
+palpitations,palpitations,symptom,en
+aankh laal,red eye,symptom,hi
+aankhen laal,red eye,symptom,hi
+aankh mein jalan,red eye,symptom,hi
+aankh se paani,watery eyes,symptom,hi
+aankhon se paani,watery eyes,symptom,hi
+dhundhla dikh,blurred vision,symptom,hi
+kam dikh,blurred vision,symptom,hi
+kaan dard,ear pain,symptom,hi
+kaan beh,ear discharge,symptom,hi
+daant mein dard,toothache,symptom,hi
+daant dard,toothache,symptom,hi
+dant dard,toothache,symptom,hi
+toothache,toothache,symptom,en
+munh mein chhale,mouth ulcers,symptom,hi
+muh mein chhale,mouth ulcers,symptom,hi
+chhale,mouth ulcers,symptom,hi
+mouth ulcer,mouth ulcers,symptom,en
+pair sujh,swelling,symptom,hi
+pair mein sujan,swelling,symptom,hi
+sujan,swelling,symptom,hi
+soojan,swelling,symptom,hi
+haath sunn,numbness,symptom,hi
+pair sunn,numbness,symptom,hi
+jhunjhuni,numbness,symptom,hi
+weight badh,weight gain,symptom,hi
+vajan badh,weight gain,symptom,hi
+wajan badh,weight gain,symptom,hi
+motapa,weight gain,symptom,hi
+obesity,weight gain,symptom,en
+weight kam,weight loss,symptom,hi
+vajan kam,weight loss,symptom,hi
+bhookh nahi,loss of appetite,symptom,hi
+bhook nahi,loss of appetite,symptom,hi
+khana nahi khaya ja,loss of appetite,symptom,hi
+pet mein dard,stomach pain,symptom,hi
+migraine,headache,symptom,en
+gardan dard,neck pain,symptom,hi
+kaunsi,kaunsi,everyday,hi
+kaunsa,kaunsa,everyday,hi
+konsa,konsa,everyday,hi
+konsi,konsi,everyday,hi
+bekaar,bekaar,everyday,hi
+bekar,bekar,everyday,hi
+dawai,dawai,everyday,hi
+dawaai,dawaai,everyday,hi
+goli,goli,everyday,hi
+tablet,tablet,everyday,en
+syrup,syrup,everyday,en
+injection,injection,everyday,en
+medicine,medicine,everyday,en
+report,report,everyday,en
+normal,normal,everyday,en
+card,card,everyday,en
+ayushman,ayushman,everyday,hi
+insurance,insurance,everyday,en
+paani,paani,everyday,hi
+pani,pani,everyday,hi
+paisa,paisa,everyday,hi
+paise,paise,everyday,hi
+fees,fees,everyday,en
+free,free,everyday,en
+online,online,everyday,en
+video,video,everyday,en
+payment,payment,everyday,en
+refund,refund,everyday,en
+cancel,cancel,everyday,en
+appointment,appointment,everyday,en
+booking,booking,everyday,en
+samay,samay,everyday,hi
+time,time,everyday,en
+mausam,mausam,everyday,hi
+cricket,cricket,everyday,en
+news,news,everyday,en
+job,job,everyday,en
+naukri,naukri,everyday,hi
+loan,loan,everyday,en
+homework,homework,everyday,en
+joke,joke,everyday,en
+pagal,pagal,everyday,hi
+pyaar,pyaar,everyday,hi
+badhiya,badhiya,everyday,hi
+achhi,achhi,everyday,hi
+acchi,acchi,everyday,hi
+samajh,samajh,everyday,hi
+matlab,matlab,everyday,hi
+wapas,wapas,everyday,hi
+shuru,shuru,everyday,hi
+menu,menu,everyday,en
+pehla,pehla,everyday,hi
+doosra,doosra,everyday,hi
+teesra,teesra,everyday,hi
+door,door,everyday,amb
+better,better,everyday,en
+data,data,everyday,en
+safe,safe,everyday,en
+otp,otp,everyday,en
+details,details,everyday,en
+zaroori,zaroori,everyday,hi
+banaya,banaya,everyday,hi
+insaan,insaan,everyday,hi
+bot,bot,everyday,en
+kaun,kaun,everyday,hi
+naam,naam,everyday,hi
+help,help,everyday,en
+madad,madad,everyday,hi
+vaccine,vaccine,everyday,en
+blood,blood,everyday,en
+lab,lab,everyday,en
+delivery,delivery,everyday,en
+beh,beh,everyday,hi
+sunn,sunn,everyday,hi
+shubh,shubh,everyday,hi
+ratri,ratri,everyday,hi
+raatri,raatri,everyday,hi
