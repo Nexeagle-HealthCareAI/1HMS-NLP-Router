@@ -86,8 +86,12 @@ class SpellingCorrector:
         # fuzzy targets: never very short words - at edit distance 2 anything matches "the", "hai", "ek"
         self._fuzzy_list = sorted(w for w in lexicon.spellable_vocab if len(w) >= 4)
         self._key_index: dict[str, list[str]] = {}
+        # everyday words ("kaunsi", "free", "report") are listed only so they are never repaired INTO a symptom;
+        # they are never a repair target themselves ("for" must not become "free")
+        everyday = {e.variant for e in lexicon.entries if e.category == "everyday"}
         for w in self._vocab_list:
-            self._key_index.setdefault(phonetic_key(w), []).append(w)
+            if w not in everyday:
+                self._key_index.setdefault(phonetic_key(w), []).append(w)
 
     # ---- A. word-level repair
     def repair_word(self, word: str) -> tuple[str, str]:

@@ -1450,18 +1450,11 @@
      "degraded": [],
      "keywords": [
       {
-       "canonical": null,
-       "discriminative": false,
-       "idf": 0.0,
-       "level": "UNKNOWN",
-       "token": "aankh"
-      },
-      {
-       "canonical": null,
-       "discriminative": false,
-       "idf": 0.0,
-       "level": "UNKNOWN",
-       "token": "laal"
+       "canonical": "red eye",
+       "discriminative": true,
+       "idf": 5.30406509320417,
+       "level": "HIGH",
+       "token": "aankh laal"
       },
       {
        "canonical": "hai",
@@ -1473,8 +1466,8 @@
      ],
      "kind": "follow_up",
      "language": "hinglish",
-     "message": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
-     "question": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+     "message": "Koi aur symptoms hain?",
+     "question": "Koi aur symptoms hain?",
      "severity": {
       "alert": null,
       "disposition": "Self-care / OPD",
@@ -1495,14 +1488,18 @@
       "body_parts": [],
       "duration": null,
       "durations": [],
-      "first_seen_turn": {},
+      "first_seen_turn": {
+       "red eye": 1
+      },
       "intensity": null,
       "language": "hinglish",
       "negated_symptoms": [],
-      "next_question": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+      "next_question": "Koi aur symptoms hain?",
       "ready": false,
-      "ready_reason": "no_symptoms",
-      "symptoms": [],
+      "ready_reason": "",
+      "symptoms": [
+       "red eye"
+      ],
       "turn": 1
      },
      "turn": 1
@@ -1529,45 +1526,51 @@
        "token": "mein"
       },
       {
-       "canonical": null,
-       "discriminative": false,
-       "idf": 0.0,
-       "level": "UNKNOWN",
+       "canonical": "itching",
+       "discriminative": true,
+       "idf": 4.610917912644224,
+       "level": "HIGH",
        "token": "khujli"
       }
      ],
      "kind": "follow_up",
      "language": "hinglish",
-     "message": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
-     "question": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+     "message": "Kitne time se?",
+     "question": "Kitne time se?",
      "severity": {
       "alert": null,
       "disposition": "Self-care / OPD",
       "emergency": false,
       "emergency_hits": [],
       "factors": [
-       "no scorable symptoms"
+       "base 10 from itching"
       ],
       "level": "MILD",
       "ml_score": null,
       "note": "Triage support only - not a diagnosis.",
       "red_flags": [],
-      "rule_score": 0,
-      "score": 0,
-      "triggered_by": "none"
+      "rule_score": 10,
+      "score": 10,
+      "triggered_by": "rules"
      },
      "state": {
       "body_parts": [],
       "duration": null,
       "durations": [],
-      "first_seen_turn": {},
+      "first_seen_turn": {
+       "itching": 2,
+       "red eye": 1
+      },
       "intensity": null,
       "language": "hinglish",
       "negated_symptoms": [],
-      "next_question": "Aapko kya takleef ho rahi hai? Thoda detail mein batayein.",
+      "next_question": "Kitne time se?",
       "ready": false,
-      "ready_reason": "no_symptoms",
-      "symptoms": [],
+      "ready_reason": "",
+      "symptoms": [
+       "red eye",
+       "itching"
+      ],
       "turn": 2
      },
      "turn": 2
@@ -1586,14 +1589,14 @@
       "low_confidence": false,
       "outputs": [
        {
-        "cluster_id": "ORTH1",
-        "confidence": 0.668,
+        "cluster_id": "DERM1",
+        "confidence": 0.299,
         "matched_symptoms": [
-         "pain"
+         "itching"
         ],
-        "reason": "Musculoskeletal pain and joint symptoms",
+        "reason": "Skin symptoms including itching and rash",
         "role": "PRIMARY",
-        "specialist": "Orthopedist"
+        "specialist": "Dermatologist"
        },
        {
         "cluster_id": null,
@@ -1614,8 +1617,8 @@
       ],
       "red_flags": [],
       "severity_level": "MILD",
-      "severity_score": 25,
-      "summary": "pain",
+      "severity_score": 10,
+      "summary": "red eye + itching + watery eyes",
       "watch_for": [
        "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
        "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately"
@@ -1624,30 +1627,16 @@
      "degraded": [],
      "keywords": [
       {
-       "canonical": null,
-       "discriminative": false,
-       "idf": 0.0,
-       "level": "UNKNOWN",
-       "token": "aankh"
-      },
-      {
-       "canonical": "se",
-       "discriminative": false,
-       "idf": 0.0,
-       "level": "FILLER",
-       "token": "se"
-      },
-      {
-       "canonical": "pain",
+       "canonical": "watery eyes",
        "discriminative": true,
-       "idf": 4.610917912644224,
+       "idf": 5.30406509320417,
        "level": "HIGH",
-       "token": "paani"
+       "token": "aankh se paani"
       }
      ],
      "kind": "recommendation",
      "language": "hinglish",
-     "message": "Aapke symptoms: pain\nGambhirta: GREEN MILD - Self-care / OPD\n\nKin doctors ko dikhayein:\n  1. ORTHOPEDIST            (Pehla option) -> Musculoskeletal pain and joint symptoms\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "Aapke symptoms: red eye + itching + watery eyes\nGambhirta: GREEN MILD - Self-care / OPD\n\nKin doctors ko dikhayein:\n  1. DERMATOLOGIST          (Pehla option) -> Skin symptoms including itching and rash\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": null,
@@ -1655,14 +1644,14 @@
       "emergency": false,
       "emergency_hits": [],
       "factors": [
-       "base 25 from pain"
+       "base 10 from itching"
       ],
       "level": "MILD",
       "ml_score": null,
       "note": "Triage support only - not a diagnosis.",
       "red_flags": [],
-      "rule_score": 25,
-      "score": 25,
+      "rule_score": 10,
+      "score": 10,
       "triggered_by": "rules"
      },
      "state": {
@@ -1670,7 +1659,9 @@
       "duration": null,
       "durations": [],
       "first_seen_turn": {
-       "pain": 3
+       "itching": 2,
+       "red eye": 1,
+       "watery eyes": 3
       },
       "intensity": null,
       "language": "hinglish",
@@ -1679,7 +1670,9 @@
       "ready": true,
       "ready_reason": "max_turns",
       "symptoms": [
-       "pain"
+       "red eye",
+       "itching",
+       "watery eyes"
       ],
       "turn": 3
      },
@@ -1694,7 +1687,9 @@
     "duration": null,
     "durations": [],
     "first_seen_turn": {
-     "pain": 3
+     "itching": 2,
+     "red eye": 1,
+     "watery eyes": 3
     },
     "intensity": null,
     "language": "hinglish",
@@ -1703,7 +1698,9 @@
     "ready": false,
     "ready_reason": "",
     "symptoms": [
-     "pain"
+     "red eye",
+     "itching",
+     "watery eyes"
     ],
     "turn": 3
    },

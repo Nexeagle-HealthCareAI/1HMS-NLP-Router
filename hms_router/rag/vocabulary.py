@@ -70,6 +70,8 @@ class MedicalVocabulary:
                 continue
             with path.open(encoding="utf-8-sig", newline="") as f:
                 for row in csv.DictReader(f):
+                    if (row.get("category") or "").strip() in ("everyday", "function", "particle", "number", "time"):
+                        continue                     # everyday words the lexicon lists only to keep them from spell repair
                     words.update(_words(row.get(column) or ""))
         return cls(words - _NOT_SIGNAL)
 

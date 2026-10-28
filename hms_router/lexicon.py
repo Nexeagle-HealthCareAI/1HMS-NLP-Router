@@ -13,7 +13,7 @@ DEFAULT_VARIANTS = Path(__file__).parent / "data" / "spelling_variants.csv"   # 
 class Entry:
     variant: str       # normalized lowercase Roman form, may be multi-word
     canonical: str
-    category: str      # symptom | body_part | time | intensity | particle | function
+    category: str      # symptom | body_part | time | intensity | particle | function | everyday (never repaired, never a repair target)
     lang: str          # hi | en | amb (also a valid English word)
 
 

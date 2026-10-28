@@ -93,3 +93,63 @@ def intent_text(text: str) -> str:
     t = t.replace("ॉ", "ो")                            # ऑ/ॉ (English 'o') has no ITRANS form: read it as ो
     out = preprocess(t).split()
     return " ".join(re.sub(r"(?<=[a-z]{2})aa$", "a", w) for w in out)   # mahilaa -> mahila, sastaa -> sasta
+
+
+# ------------------------------------------------------------------------------------------------- typing tidy-up
+# How patients type in Roman Hindi: short forms ("nhi", "kru", "doc chaiye"), stretched letters ("bukharrr", "plzzz"),
+# emojis instead of words. tidy() rewrites these to the spelling the rules and the lexicon know, once, at the door,
+# so every later step (emergency check, doctor search, triage) reads the same words. Hindi script is left alone.
+SHORT_FORMS = {
+    # no / yes / ok
+    "nhi": "nahi", "nhin": "nahi", "ni": "nahi", "nahii": "nahi", "hn": "haan", "hnji": "haanji", "hanji": "haanji",
+    "okk": "ok", "okkk": "ok", "kk": "ok", "k": "ok", "okey": "okay", "tk": "theek", "thk": "theek", "thik": "theek",
+    "thx": "thanks", "thnx": "thanks", "thanx": "thanks", "tq": "thanks", "ty": "thanks", "thanku": "thank you",
+    "plz": "please", "pls": "please", "plss": "please", "plzz": "please", "gn": "good night",
+    # question words, verbs
+    "ky": "kya", "kyaa": "kya", "kyu": "kyun", "kb": "kab", "kaha": "kahan", "kitna": "kitna",
+    "kru": "karu", "kroon": "karu", "kro": "karo", "kr": "kar", "krna": "karna", "krni": "karni", "krein": "karein",
+    "krdo": "kar do", "kardo": "kar do", "krte": "karte", "pta": "pata", "ptaa": "pata", "btao": "batao",
+    "btaye": "bataye", "btaiye": "bataiye", "btana": "batana", "dikhayo": "dikhao", "chaiye": "chahiye",
+    "chahie": "chahiye", "chaahiye": "chahiye", "chiye": "chahiye", "chahiyee": "chahiye", "jldi": "jaldi",
+    # people, pronouns, fillers
+    "mjhe": "mujhe", "muje": "mujhe", "mujhay": "mujhe", "mko": "mujhko", "h": "hai",
+    "bhot": "bahut", "bohot": "bahut", "bhut": "bahut", "bahot": "bahut", "bht": "bahut", "yr": "yaar",
+    "u": "you", "ur": "your", "bcz": "because", "coz": "because",
+    # health words
+    "doc": "doctor", "dctr": "doctor", "doctr": "doctor", "docter": "doctor", "daktar": "doctor",
+    "hosp": "hospital", "hospitl": "hospital", "dawa": "dawai", "davai": "dawai", "dvai": "dawai", "dwai": "dawai",
+    "medicin": "medicine", "apointment": "appointment", "appoinment": "appointment", "appt": "appointment",
+    "tbiyat": "tabiyat", "tabiyat": "tabiyat", "tabeeyat": "tabiyat",
+}
+EMOJI_WORDS = {
+    "🙏": "thank you", "👍": "ok", "👌": "ok", "🤒": "bukhar", "🤕": "chot", "😷": "zukam", "🤧": "zukam",
+    "🤮": "ulti", "🤢": "ji machlana", "🦷": "daant", "😴": "neend", "🩸": "khoon", "💊": "dawai",
+}
+_EMOJI_RE = re.compile("|".join(re.escape(e) for e in EMOJI_WORDS))
+_RUN3 = re.compile(r"([a-z])\1{2,}")                  # three or more of a letter: "bukharrr", "plzzz"
+
+
+def tidy(text: str, known: frozenset[str] | set[str] = frozenset()) -> str:
+    """Short forms, stretched letters and emojis -> plain words. known: the vocabulary a squeezed word must land in
+    ("bataoo" -> "batao" only when "batao" is a word Vita knows). Never touches Hindi script or digits."""
+    if not text:
+        return text or ""
+    t = _EMOJI_RE.sub(lambda m: f" {EMOJI_WORDS[m.group()]} ", text)
+
+    def fix(m: re.Match) -> str:
+        w = m.group()
+        low = w.lower()
+        if low in SHORT_FORMS:
+            if low == "k" and len(text.split()) > 1:                  # "k" is only "ok" when it is the whole message
+                return w
+            return SHORT_FORMS[low]
+        if known and low not in known:
+            # runs of 3+ anywhere ("bukharrr"), a doubled last letter ("bataoo", "chahiyee"); never a doubled letter
+            # inside a word, where it changes the word ("kaam" is not "kam", "paani" is not "pani")
+            for cand in (_RUN3.sub(r"\1\1", low), _RUN3.sub(r"\1", low), re.sub(r"([a-z])\1+$", r"\1", _RUN3.sub(r"\1\1", low))):
+                if cand != low and (cand in known or cand in SHORT_FORMS):
+                    return SHORT_FORMS.get(cand, cand)
+        return w
+
+    t = re.sub(r"[A-Za-z]+", fix, t)
+    return re.sub(r"\s+", " ", t).strip()

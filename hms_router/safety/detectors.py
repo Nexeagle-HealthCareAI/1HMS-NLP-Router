@@ -66,9 +66,27 @@ def sleep_only(query: Query) -> bool:
     return has_sleep and all(w in _SLEEP_ONLY_WORDS for w in words)
 
 
+# A message that says nothing at all ("nahi", "haan", "ok", "pata nahi") is never an emergency on its own: the model
+# flagged a bare "nahi" (it learned the word from "saans nahi aa rahi"). The question it answers was already checked.
+_EMPTY_WORDS = frozenset("""
+nahi nahin nhi nai ni na no nope haan han ha haa ji jee yes ok okay okk kk theek thik tk thk hai h hain pata pta malum
+maloom kuch bhi abhi nhi pta acha achha accha hmm hm sure thanks thank you shukriya
+""".split())
+
+
+def says_nothing(query: Query) -> bool:
+    words = query.normalized.replace("'", " ").split()
+    return bool(words) and all(w in _EMPTY_WORDS for w in words)
+
+
+def not_urgent_alone(query: Query) -> bool:
+    """Messages the emergency model may not flag on its own (the red-flag rules still apply to them)."""
+    return sleep_only(query) or says_nothing(query)
+
+
 class ModelDetector:
     def __init__(self, score: Callable[[Query], float], threshold: float,
-                 not_urgent: Callable[[Query], bool] | None = sleep_only):
+                 not_urgent: Callable[[Query], bool] | None = not_urgent_alone):
         self.score, self.threshold, self.not_urgent = score, threshold, not_urgent
 
     def detect(self, query: Query) -> EmergencyAssessment:

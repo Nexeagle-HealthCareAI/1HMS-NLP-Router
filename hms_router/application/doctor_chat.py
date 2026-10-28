@@ -22,6 +22,7 @@ search in hand and not stored.
 """
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import re
@@ -36,9 +37,10 @@ from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
 from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
                        specialty_key)
 from ..severity import EMERGENCY, emergency_check
-from ..textnorm import intent_text, preprocess
+from ..textnorm import intent_text, preprocess, tidy
 from ..voice import Voice
 from .booking import BookingFlow, token_mobile
+from . import everyday
 from .emergency_help import EmergencyHelp
 from .visit_help import VisitHelp, wants as visit_wants
 
@@ -108,6 +110,15 @@ class SelectionError(ValueError):
     """select_doctor_id was not shown in this session -> 422."""
 
 
+@functools.lru_cache(maxsize=1)
+def _known_words() -> frozenset[str]:
+    """Every word Vita knows: a stretched word is squeezed back only onto one of these ("bataoo" -> "batao")."""
+    from ..doctor_intent import _NAME_STOP
+    from ..language import HINDI_WORDS
+    from ..lexicon import Lexicon
+    return frozenset(Lexicon.from_csv().vocab) | DOCTOR_WORDS | _NAME_STOP | HINDI_WORDS
+
+
 def _hinglish(lang: str | None) -> Voice:
     """The conversation's voice (truthy for Hinglish and Hindi)."""
     return Voice(lang)
@@ -172,11 +183,35 @@ class DoctorChat:
                # after booking: the visit the website says the patient is looking at
                "visit_appointment_id": visit_appointment_id}
         self._hint = ui_language
+        text = tidy(text, _known_words())          # "doc chaiye", "nhi pta", "bukharrr", "🤒" -> words the rules know
         out = self._handle(text, session_id, ctx, select_doctor_id=select_doctor_id, page=page, new_search=new_search)
         reminder = ctx.get("reminder")
         if reminder and out and out.get("kind") != "emergency" and out.get("message"):
             out["message"] = f"{reminder}\n\n{out['message']}"      # once, after an emergency: the number comes first
+        lead = ctx.get("lead")
+        if lead and out and out.get("kind") != "emergency" and out.get("message"):
+            out["message"] = f"{lead} {out['message']}"           # "Main dawai ki salah nahi de sakti." + the triage
+        self._remember_reply(out, ctx)
         return out
+
+    def _remember_reply(self, out: dict | None, ctx: dict) -> None:
+        """What the next message may refer to: whether triage is waiting for an answer ("nahi" answers it), and the
+        last question asked ("kya?" / "samjha nahi" repeats it in simpler words)."""
+        sid = (out or {}).get("session_id")
+        if not sid:
+            return
+        est = self.load(sid)
+        before = (est.get("triage_waiting"), est.get("last_reply"))
+        if ctx.get("triage_waiting"):
+            est["triage_waiting"] = True
+        else:
+            est.pop("triage_waiting", None)
+        if out.get("kind") not in ("emergency", "handoff") and out.get("message") and not ctx.get("repeated"):
+            clarify = out.get("clarify")
+            est["last_reply"] = {"kind": out["kind"], "message": out["message"][:600],
+                                 "clarify": clarify if clarify and len(json.dumps(clarify)) < 4000 else None}
+        if (est.get("triage_waiting"), est.get("last_reply")) != before:
+            self._save(sid, est)
 
     def _handle(self, text, session_id, ctx, *, select_doctor_id, page, new_search) -> dict:
         if select_doctor_id:
@@ -204,6 +239,9 @@ class DoctorChat:
                 st.pop("booking", None)
                 self._save(session_id, st)
                 return self._agent_turn(text, session_id, parse(text), ctx, emergency_checked=True)
+            side = self._side_question(text, session_id, st, ctx)                         # "number kyun chahiye?" at the
+            if side is not None:                                                          # mobile step: answer, ask again
+                return side
             mid = ctx["ask"] = parse(text, medical_terms=self.terms)                     # to notice a new ask mid-way
             out = self._booking_turn(text, session_id, st, ctx)
             ctx.pop("ask", None)
@@ -235,6 +273,22 @@ class DoctorChat:
                 self._save(session_id, st)
             return self._agent_turn(text, session_id, ask, ctx, emergency_checked=True)
 
+        if st.get("warn"):                                                                 # answer to the warning-sign question
+            out = self._warn_answer(text, session_id, st, ctx, norm)
+            if out is not None:
+                return out
+            st = self.load(session_id)
+        kind = everyday.warn_kind(norm)                                                    # "sar pe chot lagi", "haath jal gaya"
+        if kind and not ask.specialty_key and not ask.name_query and not self._emergency(text):
+            return self._warn_ask(text, session_id, kind)
+
+        move = everyday.detect(norm, text)                                                 # "fees kitni hai", "tum kaun ho"
+        if move:
+            out = self._everyday(text, session_id, move, ask, st, ctx, norm, emergency_checked=skips_triage)
+            if out is not None:
+                return out
+            st = self.load(session_id)
+
         if ask.move == "human":                                                            # conversation moves
             return self._handoff(text, session_id, "asked")
         if ask.move == "private_number":
@@ -260,11 +314,26 @@ class DoctorChat:
         if last and (page > 1 or (ask.more and not (ask.specialty_key or ask.name_query or ask.degree))):  # step 5
             nxt = page if page > 1 else 1 if reshow else int(st.get("page") or 1) + 1
             return self._search_turn(text, session_id, dict(last), ctx, st, page=nxt)
-        if last and ask.refine and not ask.symptomish:
+        if last and ask.refine and not self._said_symptom(text):                          # "kam fees wale pehle"
             return self._search_turn(text, session_id, _merge(last, ask), ctx, st)
 
+        if not last and ask.refine and (ask.sort or ask.available_today) and not ask.direct \
+                and not self._said_symptom(text):                                                    # "sabse sasta doctor": keep it,
+            carry = {k: val for k, val in (("sort", ask.sort), ("availableToday", ask.available_today)) if val}
+            out = self._ask_kind(text, session_id, st)                                     # ask which kind of doctor
+            est = self.load(out["session_id"])
+            est["carry"] = carry
+            self._save(out["session_id"], est)
+            ctx["lead"] = V.carry_note(Voice(out.get("language") or "english"), carry)
+            return out
         if ask.direct:                                                                     # step 6
-            return self._search_turn(text, session_id, _filters(ask), ctx, st)
+            f = _filters(ask)
+            carry = st.pop("carry", None) if st.get("carry") else None
+            for k, val in (carry or {}).items():                                           # "...skin" after "sabse sasta"
+                if not f.get(k):
+                    f[k] = val
+                    f["modes"] = sorted(set(f.get("modes") or []) | {"today" if k == "availableToday" else k})
+            return self._search_turn(text, session_id, f, ctx, st)
         if _bare_doctor(norm, ask):
             return self._ask_kind(text, session_id, st)
         return self._agent_turn(text, session_id, ask, ctx)                                 # step 7
@@ -295,6 +364,7 @@ class DoctorChat:
             if q:
                 out["message"] = out["question"] = q
             sid = out.get("session_id")
+            ctx["triage_waiting"] = True
             if key == "describe" and not state.get("symptoms") and sid:
                 est = self.load(sid)
                 if est.get("asked_describe"):                  # never the same question twice: say so, show the ways to ask
@@ -768,6 +838,162 @@ class DoctorChat:
             clarify = {"kind": "ask_kind", "question": q, "options": V.ask_kind_options(v)}
         return self._reply(base, INFO, V.after_emergency(v, what, signs), clarify=clarify)
 
+    # ================================================================== everyday questions
+    def _everyday(self, text, session_id, move, ask, st, ctx, norm, emergency_checked) -> dict | None:
+        """Questions that are not a symptom or a search (everyday.py). None: let the usual flow answer."""
+        if ask.specialty_key or ask.degree or ask.when:             # "skin doctor ki fees" -> the list; "kal free hain?" -> days
+            return None
+        if ask.name_query and move != "what_is_dd":                 # "Dr Sharma ki fees" -> that doctor
+            return None
+        if move == "privacy" and ask.move == "private_number" and re.search(r"\b(doctor|dr|unka|unki|unke)\b", norm):
+            return None                                             # a doctor's number, not the patient's
+        if self._said_symptom(text):
+            if move in everyday.PREFIX_MOVES:                       # "bukhar hai, kaunsi dawai lu" -> say so, then triage
+                ctx["lead"] = everyday.reply(move, Voice(self._lang_of(text, session_id, st)))
+            return None
+        waiting = self._mid_triage(session_id)
+        if waiting and move in ("ack", "continue", "yes"):          # "accha", "aur?", "haan" answer the triage question
+            return None
+        if move == "ack" and st.get("last_advice"):                 # "achha" after advice: offer its doctors (agent turn)
+            return None
+        if not emergency_checked and move not in everyday.REPAIR_MOVES and self._emergency(text):
+            return self._agent_turn(text, session_id, ask, ctx, emergency_checked=True)
+
+        last = st.get("last")
+        prev_clarify = (st.get("last_reply") or {}).get("clarify") or {}
+        if move == "yes" and prev_clarify.get("kind") == "book_offer":       # typed "haan" to "Kya main book karoon?"
+            doc_id = next((o["id"] for o in prev_clarify.get("options") or [] if o.get("id") not in ("no", None)), None)
+            if doc_id and doc_id in (st.get("shown") or {}):
+                return self._select(text, session_id, doc_id, ctx)
+        if move == "continue":
+            if last:
+                return self._search_turn(text, session_id, dict(last), ctx, st, page=int(st.get("page") or 1) + 1)
+            return self._ask_kind(text, session_id, st)
+        if move == "pick":
+            ids, i = st.get("page_ids") or [], everyday.ordinal(norm)
+            if i is not None and i < len(ids):
+                return self._select(text, session_id, ids[i], ctx)
+        if move == "distance" and last:
+            f = dict(last, near=True)
+            f["modes"] = sorted(set(f.get("modes") or []) | {"distance"})
+            return self._search_turn(text, session_id, f, ctx, st)
+        if move == "timings" and (st.get("selected") or {}).get("doctorId"):
+            ask.when, ask.available_today, ask.refine = "next", False, False
+            return self._availability(text, session_id, ask, st, ctx)
+
+        ing, st, base, v = self._ingest(text, session_id)
+        if move == "what" and st.get("last_reply"):                 # "kya?" / "samjha nahi": the last question again
+            prev = st["last_reply"]
+            self._save(ing.session_id, st)
+            ctx["repeated"] = True
+            msg = f"{everyday.again(v)} {prev['message']}"
+            return self._reply(base, prev.get("kind") or FOLLOW_UP, msg, question=msg, clarify=prev.get("clarify"))
+        if move == "restart":
+            keep = {k: st[k] for k in ("language", "turn") if k in st}
+            st.clear()
+            st.update(keep)
+            try:
+                self.agent.accumulator.clear(ing.session_id)
+                self.agent.pipeline.sessions.clear_history(ing.session_id)
+            except Exception:
+                log.exception("triage not reset on restart")
+        fee = doctor = None
+        sel = (st.get("selected") or {}).get("doctorId")
+        if move == "fees" and sel and sel in (st.get("shown") or {}):
+            d = st["shown"][sel]
+            fee = d.get("discountedFee") if d.get("discountedFee") is not None else d.get("consultFee")
+            doctor = d.get("name")
+        try:
+            msg = everyday.reply(move, v, fee=fee, doctor=doctor)
+        except KeyError:
+            log.warning("no everyday reply for %s", move)
+            return None
+        if move == "distance":
+            self._save(ing.session_id, st)
+            return self._reply(base, FOLLOW_UP, msg, question=msg, clarify={"kind": "location", "question": msg, "options": []})
+        if move == "upset":
+            clarify = self._confused(st, {"kind": "ask_kind", "question": msg, "options": V.ask_kind_options(v)}, v)
+        elif move == "better" and last:
+            clarify = {"kind": "sort", "question": msg, "options": everyday.sort_options(v)}
+        elif move in ("ambulance", "goodnight", "praise"):
+            clarify = None
+        else:
+            clarify = {"kind": "ask_kind", "question": msg, "options": V.ask_kind_options(v)}
+        if move != "upset":
+            st.pop("confused", None)
+        self._save(ing.session_id, st)
+        return self._reply(base, INFO, msg, clarify=clarify)
+
+    def _warn_ask(self, text, session_id, kind: str) -> dict:
+        ing, st, base, v = self._ingest(text, session_id)
+        st["warn"] = {"kind": kind, "at": int(time.time())}
+        self._save(ing.session_id, st)
+        q = everyday.warn_question(kind, v)
+        return self._reply(base, FOLLOW_UP, q, question=q, clarify={"kind": "warning_signs", "question": q,
+                                                                   "options": everyday.warn_options(v)})
+
+    def _warn_answer(self, text, session_id, st, ctx, norm) -> dict | None:
+        warn = st.pop("warn", None) or {}
+        self._save(session_id, st)
+        yes = everyday.warn_answer(norm)
+        if yes is None or time.time() - warn.get("at", 0) > 3600:
+            return None                                              # something else: the usual flow
+        kind = warn.get("kind") or "head"
+        if yes:                                                      # a warning sign: emergency, as for a red flag
+            ing, st, base, v = self._ingest(text, session_id)
+            sign = everyday.WARN_SIGN[kind]
+            self._save(ing.session_id, st)
+            out = self._reply(base, "emergency", V.emergency(v, [sign]))
+            out["card"] = {"kind": "emergency", "emergency_reasons": [sign.capitalize()],
+                           "emergency_signs": [V.symptom_words(v, [sign])]}
+            self._emergency_done(ing.session_id, [sign])
+            return out
+        v = Voice(st.get("language") or "english")
+        ctx["lead"] = everyday.warn_no(kind, v)                       # no warning sign: see a doctor, here are some
+        filters = {"specialtyKey": "general-medicine", "modes": ["specialty"]}
+        return self._search_turn(text, session_id, filters, ctx, self.load(session_id))
+
+    def _side_question(self, text, session_id, st, ctx) -> dict | None:
+        """While booking: "number kyun chahiye?", "fees kitni hai?", "kya?" get their answer, then the booking question
+        again. Anything else goes to the booking as before."""
+        norm = intent_text(text)
+        move = everyday.detect(norm)
+        prev = st.get("last_reply")
+        if move not in ("privacy", "fees", "free", "about", "what", "online", "insurance") or not prev:
+            return None
+        if availability_when(norm):                                   # "kal free hain?" is about the day, not the price
+            return None
+        if self._emergency(text):
+            return None
+        ing = self._ingest_only(text, session_id)
+        lang = st.get("language") or ing.language.language
+        v = Voice(lang)
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": lang}
+        if move == "what":
+            answer = everyday.again(v)
+        else:
+            d = (st.get("booking") or {}).get("doctor") or {}
+            answer = everyday.reply(move, v, fee=d.get("fee"), doctor=d.get("name"))
+        ctx["repeated"] = True
+        msg = f"{answer}\n\n{prev['message']}" if move != "what" else f"{answer} {prev['message']}"
+        clarify = dict(prev["clarify"], question=msg) if prev.get("clarify") else None
+        return self._reply(base, prev.get("kind") or FOLLOW_UP, msg, question=msg, clarify=clarify)
+
+    def _said_symptom(self, text: str) -> bool:
+        """A symptom the triage lexicon recognises ("bukhar", "pet dard"). Stricter than DoctorAsk.symptomish, which also
+        fires on everyday words that happen to sit inside the long symptom phrases ("kar", "aap", "karna")."""
+        corrector = getattr(self, "_corrector", None)
+        if corrector is None:
+            from ..spelling import SpellingCorrector
+            corrector = self._corrector = SpellingCorrector(self.agent.pipeline.lex)     # no review-queue side effects
+        try:
+            return bool(corrector.correct(preprocess(text)).symptoms)
+        except Exception:
+            return False
+
+    def _lang_of(self, text, session_id, st) -> str:
+        return st.get("language") or self.agent.pipeline.detector.detect(text).language or "english"
+
     def _booking_turn(self, text, session_id, st, ctx) -> dict | None:
         """One message while booking. None: it was not about booking (a new ask), and booking has ended."""
         before = st.get("language")
@@ -929,6 +1155,7 @@ class DoctorChat:
         if len(shown) > MAX_SHOWN:
             shown = dict(list(shown.items())[-MAX_SHOWN:])
         st["shown"] = shown
+        st["page_ids"] = [d["doctorId"] for d in items if d.get("doctorId")]        # "pehla wala", "doosra wala"
 
     @staticmethod
     def _which_options(items: list[dict], filters: dict) -> list[dict] | None:
@@ -974,11 +1201,7 @@ class DoctorChat:
         """The triage agent asked a question and is waiting: a short "nahi" / "ok" is its answer."""
         if not session_id:
             return False
-        try:
-            snap = self.agent.accumulator.snapshot(session_id)
-            return bool(snap.turn) and not snap.ready and bool(snap.next_question)
-        except Exception:
-            return False
+        return bool(self.load(session_id).get("triage_waiting"))
 
     @staticmethod
     def _confused(st: dict, clarify: dict | None, voice: Voice | None = None) -> dict | None:

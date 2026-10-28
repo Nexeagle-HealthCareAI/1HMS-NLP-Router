@@ -277,6 +277,11 @@ class BookingFlow:
         days = {d["date"]: d for d in b.get("days", [])}
         iso = self._date_for(when, list(days))
         name = b["doctor"]["name"]
+        if iso and iso not in days:          # the day list holds only the first few days: ask 1HMS about that one
+            extra = self._day_if_in(b, iso)
+            if extra:
+                b["days"] = sorted([*b.get("days", []), extra], key=lambda d: d["date"])
+                days[iso] = extra
         if iso not in days:
             label = _mid_sentence(_day_label(v, iso)) if iso else v("that day", "us din", "उस दिन")
             out = self._ask_day(b, v)
@@ -300,6 +305,14 @@ class BookingFlow:
         if out.get("clarify"):
             out["clarify"]["question"] = out["message"]
         return out
+
+    def _day_if_in(self, b, iso: str) -> dict | None:
+        try:
+            sched = self.directory.availability(b["doctor"]["doctorId"], from_date=iso, days=1)
+        except DoctorLookupError:
+            return None
+        day = next((d for d in (sched or {}).get("days") or [] if d.get("date") == iso and d.get("isAvailable")), None)
+        return {"date": iso, "shifts": [s for s in day.get("shifts") or [] if s.get("start")]} if day else None
 
     def _continue(self, st, b, v, ctx):
         """Day and time set: on to who it is for, or straight back to the summary when everything else is known."""

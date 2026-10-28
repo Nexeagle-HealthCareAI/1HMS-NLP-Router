@@ -101,6 +101,35 @@ SYMPTOMS = {  # canonical English -> (Hinglish, Hindi)
     "stroke": ("lakwa ke lakshan", "लकवे के लक्षण"), "facial droop": ("chehra tedha hona", "चेहरा टेढ़ा होना"),
     "numbness": ("sunnapan", "सुन्नपन"), "palpitations": ("dhadkan tez hona", "धड़कन तेज़ होना"),
     "hair fall": ("baal jhadna", "बाल झड़ना"), "acne": ("muhase", "मुँहासे"), "weight loss": ("vajan ghatna", "वज़न घटना"),
+    "blocked nose": ("naak band", "नाक बंद"), "upset stomach": ("pet kharab", "पेट ख़राब"), "gas": ("gas", "गैस"),
+    "bloating": ("pet phoolna", "पेट फूलना"), "delayed periods": ("periods late", "माहवारी में देरी"),
+    "period pain": ("periods mein dard", "माहवारी में दर्द"), "white discharge": ("safed pani", "सफ़ेद पानी"),
+    "high blood pressure": ("BP high", "बीपी ज़्यादा"), "low blood pressure": ("BP low", "बीपी कम"),
+    "high blood sugar": ("sugar badhna", "शुगर बढ़ना"), "diabetes": ("sugar", "शुगर"),
+    "kidney stone": ("pathri", "पथरी"), "frequent urination": ("baar baar peshab", "बार-बार पेशाब"),
+    "ringworm": ("daad", "दाद"), "low mood": ("udaasi", "उदासी"), "watery eyes": ("aankh se paani", "आँख से पानी"),
+    "blurred vision": ("dhundhla dikhna", "धुँधला दिखना"), "ear discharge": ("kaan behna", "कान बहना"),
+    "mouth ulcers": ("munh mein chhale", "मुँह में छाले"), "weight gain": ("vajan badhna", "वज़न बढ़ना"),
+    "loss of appetite": ("bhookh na lagna", "भूख न लगना"), "neck pain": ("gardan dard", "गर्दन दर्द"),
+    # the red flags' own names (an emergency's signs), so a Hinglish or Hindi reply never shows them in English
+    "suicidal thoughts / self-harm": ("khud ko nuksaan pahunchane ke vichaar", "खुद को नुकसान पहुँचाने के विचार"),
+    "facial drooping / stroke": ("chehra tedha hona", "चेहरा टेढ़ा होना"),
+    "one-sided weakness / stroke": ("ek taraf kamzori", "एक तरफ़ कमज़ोरी"),
+    "slurred speech / stroke": ("bolne mein ladkhadahat", "बोलने में लड़खड़ाहट"),
+    "limb numbness": ("haath pair sunn hona", "हाथ-पैर सुन्न होना"), "lost consciousness": ("behoshi", "बेहोशी"),
+    "labour pains": ("prasav dard", "प्रसव दर्द"), "waters broken in pregnancy": ("pregnancy mein paani girna", "गर्भ में पानी गिरना"),
+    "bleeding in pregnancy": ("pregnancy mein khoon aana", "गर्भावस्था में खून आना"),
+    "seizure / convulsions": ("daura / jhatke", "दौरा / झटके"), "seizure or heart attack ('daura')": ("daura", "दौरा"),
+    "head injury with vomiting": ("sar par chot ke baad ulti", "सिर पर चोट के बाद उल्टी"),
+    "head injury with fainting": ("sar par chot ke baad behoshi", "सिर पर चोट के बाद बेहोशी"),
+    "head injury": ("sar par chot", "सिर पर चोट"), "burn injury": ("jalna", "जलना"), "acid / chemical burn": ("tezaab se jalna", "तेज़ाब से जलना"),
+    "poisoning": ("zeher", "ज़हर"), "poisoning (pesticide)": ("keetnashak zeher", "कीटनाशक ज़हर"),
+    "poisoning / overdose": ("zeher / zyada dawai", "ज़हर / ज़्यादा दवाई"), "snake bite": ("saanp ka kaatna", "साँप का काटना"),
+    "road accident / trauma": ("accident / gehri chot", "दुर्घटना / गहरी चोट"), "heart attack": ("heart attack", "हार्ट अटैक"),
+    "blood in vomit": ("khoon ki ulti", "खून की उल्टी"), "bleeding that won't stop": ("khoon nahi ruk raha", "खून नहीं रुक रहा"),
+    "sudden severe headache": ("achanak tez sar dard", "अचानक तेज़ सिर दर्द"),
+    "vision loss / blackout": ("achanak dikhna band", "अचानक दिखना बंद"),
+    "throat closing (severe allergic reaction)": ("gala band hona (allergy)", "गला बंद होना (एलर्जी)"),
 }
 
 
@@ -218,6 +247,9 @@ def recommendation(v: Voice, *, symptoms: list[str], duration: str | None, speci
     return " ".join(x for x in (heard, advice, found) if x) + "\n\n" + watch + " " + note
 
 
+TELE_MANAS = "14416"      # India's national mental-health line (Tele-MANAS), also on the Doctor Dekho banner
+
+
 def emergency(v: Voice, signs: list[str]) -> str:
     """Number first, in the patient's language; non-English replies keep one English line as a backup."""
     head = v(f"This sounds like an emergency. Call {EMERGENCY_NUMBER} (ambulance) now, or {GENERAL_EMERGENCY_NUMBER}. "
@@ -230,6 +262,10 @@ def emergency(v: Voice, signs: list[str]) -> str:
     lines = [head]
     if seen:
         lines.append(v(f"Signs: {seen}.", f"Lakshan: {seen}.", f"लक्षण: {seen}।"))
+    if any("suicid" in x.lower() or "self-harm" in x.lower() for x in signs):     # a person to talk to, 24x7
+        lines.append(v(f"You are not alone. Talk to Tele-MANAS on {TELE_MANAS} (free, 24x7), or someone you trust, right now.",
+                       f"Aap akele nahi hain. Abhi Tele-MANAS {TELE_MANAS} par baat karein (free, 24x7), ya kisi apne se.",
+                       f"आप अकेले नहीं हैं। अभी टेली-मानस {TELE_MANAS} पर बात करें (मुफ़्त, 24x7), या किसी अपने से।"))
     if v.code != "en":
         lines.append(f"Call {EMERGENCY_NUMBER} (ambulance) or {GENERAL_EMERGENCY_NUMBER} now.")
     return "\n".join(lines)
@@ -240,6 +276,18 @@ def nothing_new(v: Voice) -> str:
     return v("Would you like one of the doctors above, or is there something else bothering you?",
              "Kya aap upar diye doctors mein se kisi ko dikhana chahenge, ya koi aur takleef hai?",
              "क्या आप ऊपर दिए डॉक्टरों में से किसी को दिखाना चाहेंगे, या कोई और तकलीफ़ है?")
+
+
+def carry_note(v: Voice, carry: dict) -> str:
+    """'sabse sasta doctor' without a kind of doctor: say the filter is kept, then ask which kind."""
+    if carry.get("sort") == "fee":
+        return v("Okay, I'll show the lowest fees first.", "Theek hai, kam fees wale pehle dikhaungi.",
+                 "ठीक है, कम फ़ीस वाले पहले दिखाऊँगी।")
+    if carry.get("sort") == "experience":
+        return v("Okay, I'll show the most experienced first.", "Theek hai, zyada experience wale pehle dikhaungi.",
+                 "ठीक है, ज़्यादा अनुभव वाले पहले दिखाऊँगी।")
+    return v("Okay, I'll show doctors available today.", "Theek hai, aaj baithne wale doctor dikhaungi.",
+             "ठीक है, आज बैठने वाले डॉक्टर दिखाऊँगी।")
 
 
 def after_emergency_reminder(v: Voice, signs: str) -> str:

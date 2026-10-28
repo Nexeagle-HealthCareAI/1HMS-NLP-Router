@@ -1,0 +1,33 @@
+word,specialty_key,patients_mean,status,reviewed_by,note
+bachon,paediatrics,children (spelling of bachchon),proposed,,
+bacho,paediatrics,children,proposed,,
+bachhe,paediatrics,child,proposed,,
+bachho,paediatrics,children,proposed,,
+ladies,gynaecology,"""ladies doctor"" in everyday use means a gynaecologist, not any woman doctor",proposed,,"""lady doctor"" / ""mahila doctor"" still mean a woman doctor of any specialty"
+delivery,gynaecology,pregnancy and childbirth,proposed,,
+pregnancy,gynaecology,pregnancy,proposed,,
+garbh,gynaecology,pregnancy,proposed,,
+periods,gynaecology,menstrual problems,proposed,,
+mahwari,gynaecology,menstrual problems,proposed,,
+bachedani,gynaecology,uterus,proposed,,
+bp,general-medicine,high or low blood pressure: a general physician first,proposed,,cardiology is the alternative
+pathri,urology,kidney / urinary stone,proposed,,
+stone,urology,kidney / urinary stone,proposed,,
+peshab,urology,urinary problems,proposed,,
+pishab,urology,urinary problems,proposed,,
+bawaseer,general-surgery,piles,proposed,,a proctologist where one is listed
+piles,general-surgery,piles,proposed,,
+bhagandar,general-surgery,fistula,proposed,,
+hernia,general-surgery,hernia,proposed,,
+baal,dermatology,hair loss and scalp,proposed,,
+hair,dermatology,hair loss and scalp,proposed,,
+chashma,ophthalmology,glasses / eyesight,proposed,,
+nazar,ophthalmology,eyesight,proposed,,
+dama,pulmonology,asthma,proposed,,
+asthma,pulmonology,asthma,proposed,,
+tb,pulmonology,tuberculosis,proposed,,
+lakwa,neurology,stroke / paralysis (after the emergency),proposed,,
+mirgi,neurology,epilepsy (after the emergency),proposed,,
+nasha,psychiatry,addiction,proposed,,de-addiction
+mansik,psychiatry,mental health,proposed,,
+sex,,sexual problems,needs decision,,"urology / andrology for men, gynaecology for women? Not used until decided"
