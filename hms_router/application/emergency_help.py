@@ -70,7 +70,12 @@ class EmergencyHelp:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.client and self.client.identified)         # alerting hospitals needs an identified caller
+        return bool(self.client and self.client.enabled)
+
+    @property
+    def alerts(self) -> bool:
+        """Alerting hospitals needs an identified caller (a key); without one Vita still lists the nearest places."""
+        return bool(self.client and getattr(self.client, "identified", True))
 
     # ------------------------------------------------------------------ the emergency reply
     def attach(self, out: dict, st: dict, ctx: dict, signs: list[str], text: str, v: Voice) -> None:
@@ -83,9 +88,14 @@ class EmergencyHelp:
         st["emergency"] = em
         if ctx.get("lat") is None or ctx.get("lng") is None:
             out["emergency"] = {"places": [], "needsLocation": True, "canShareNumber": False}
-            out["message"] += "\n" + v("Share your location and I'll show the nearest emergency hospitals and tell them you may be coming.",
-                                       "Apni location share karein, main sabse nazdeeki emergency hospital dikhaungi aur unhe bata dungi.",
-                                       "अपनी लोकेशन शेयर करें, मैं सबसे नज़दीकी इमरजेंसी अस्पताल दिखाऊँगी और उन्हें बता दूँगी।")
+            if self.alerts:
+                out["message"] += "\n" + v("Share your location and I'll show the nearest emergency hospitals and tell them you may be coming.",
+                                           "Apni location share karein, main sabse nazdeeki emergency hospital dikhaungi aur unhe bata dungi.",
+                                           "अपनी लोकेशन शेयर करें, मैं सबसे नज़दीकी इमरजेंसी अस्पताल दिखाऊँगी और उन्हें बता दूँगी।")
+            else:
+                out["message"] += "\n" + v("Share your location and I'll show the nearest emergency hospitals.",
+                                           "Apni location share karein, main sabse nazdeeki emergency hospital dikhaungi.",
+                                           "अपनी लोकेशन शेयर करें, मैं सबसे नज़दीकी इमरजेंसी अस्पताल दिखाऊँगी।")
             return
         self._alert(out, em, ctx, v, session_ref=out.get("session_id"))
 
@@ -100,9 +110,13 @@ class EmergencyHelp:
 
     def _alert(self, out: dict, em: dict, ctx: dict, v: Voice, session_ref: str | None) -> None:
         try:
-            res = self.client.emergency_alert(lat=ctx["lat"], lng=ctx["lng"], reason=em["reason"], capability=em.get("capability"),
-                                              channel=ctx.get("channel") or "web", session_ref=session_ref,
-                                              client_ip=ctx.get("client_ip"))
+            if self.alerts:
+                res = self.client.emergency_alert(lat=ctx["lat"], lng=ctx["lng"], reason=em["reason"], capability=em.get("capability"),
+                                                  channel=ctx.get("channel") or "web", session_ref=session_ref,
+                                                  client_ip=ctx.get("client_ip"))
+            else:                                                   # no key: list the nearest places, alert nobody
+                res = self.client.emergency_places(lat=ctx["lat"], lng=ctx["lng"], capability=em.get("capability"),
+                                                   client_ip=ctx.get("client_ip"))
         except BookingError as exc:
             log.warning("emergency places unavailable: %s", exc)
             out["degraded"] = list(out.get("degraded") or []) + ["emergency_places"]

@@ -117,6 +117,13 @@ class HmsPublicClient:
             "latitude": lat, "longitude": lng, "reason": reason, "capability": capability, "channel": channel,
             "sessionRef": session_ref})
 
+    def emergency_places(self, *, lat: float, lng: float, capability: str | None, client_ip: str | None) -> dict:
+        """GET /public/emergency-places: the nearest emergency-ready places, open now, nearest first, WITHOUT alerting them
+        (no key needed). Returns {places}."""
+        from urllib.parse import urlencode
+        q = {"lat": lat, "lng": lng, **({"capability": capability} if capability else {})}
+        return self._call("GET", f"/public/emergency-places?{urlencode(q)}", client_ip=client_ip)
+
     def share_emergency_number(self, event_id: str, mobile: str, *, client_ip: str | None = None) -> None:
         """The patient agreed to share their number with the places alerted in this emergency."""
         self._call("POST", f"/public/emergency-alerts/{event_id}/share-number", client_ip=client_ip,
