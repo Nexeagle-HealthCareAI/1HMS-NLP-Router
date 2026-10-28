@@ -43,6 +43,9 @@ class EmergencyApi(FakePublicApi):
             repeated = sum(1 for c in self.calls if c[1].endswith("/emergency-alerts")) > 1
             return httpx.Response(200, json={"success": True, "eventId": EVENT if self.places else None, "places": self.places,
                                              "alerted": 0 if repeated else len(self.places), "repeated": repeated})
+        if path.endswith("/public/emergency-places"):
+            self.calls.append((request.method, path, dict(request.url.params), dict(request.headers)))
+            return httpx.Response(200, json={"success": True, "places": self.places})
         if path.endswith("/share-number"):
             import json
             self.calls.append((request.method, path, json.loads(request.content), dict(request.headers)))
@@ -169,3 +172,19 @@ def test_hindi_emergency_speaks_hindi():
     (["unconscious"], "road accident", "trauma"), (["unconscious"], "behosh", None)])
 def test_capability_from_what_was_said(signs, text, cap):
     assert capability_for(signs, text) == cap
+
+
+def test_without_a_key_the_nearest_places_are_listed_but_nobody_is_alerted(client, hms):
+    fake = EmergencyApi()
+    client.app.state.booking = HmsPublicClient("http://hms", None, transport=httpx.MockTransport(fake))
+    try:
+        out = chat(client, CHEST, lat=22.57, lng=88.41)
+        assert out["kind"] == "emergency" and "1. Salt Lake Care (1.2 km) - 03340001111" in out["message"]
+        assert "bata diya" not in out["message"] and not fake.alerts()
+        (_, path, params, headers), = [c for c in fake.calls if c[1].endswith("/public/emergency-places")]
+        assert params["lat"] == "22.57" and params["capability"] == "cardiac" and "x-api-key" not in headers
+        assert not out["emergency"]["canShareNumber"]
+        asked = chat(client, CHEST)
+        assert "bata dungi" not in asked["message"] and "emergency hospital dikhaungi" in asked["message"]
+    finally:
+        client.app.state.booking = None
