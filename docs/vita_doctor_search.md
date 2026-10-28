@@ -63,8 +63,11 @@ specialty ask. Triage asks **at most two** follow-up questions before showing so
 
 ## Booking (vision Phase 2)
 
-Choosing a doctor starts booking when `HMS_PUBLIC_API_URL` / `HMS_PUBLIC_API_KEY` are set (otherwise
-`doctor_selected` says "Tap 'Book a slot'" as before). One question at a time, `clarify.kind` says which:
+Choosing a doctor starts booking whenever 1HMS's public API is known: `HMS_PUBLIC_API_URL`, or by default the
+`HMS_DOCTORS_MCP_URL` host without `/mcp` (with neither, `doctor_selected` says "Tap 'Book a slot'" as before). No key is
+needed: 1HMS takes anonymous public callers. `HMS_PUBLIC_API_KEY` is needed only to alert hospitals in an emergency, and
+`HMS_PROXY_FORWARDING_SECRET` gives each patient their own 1HMS rate limit (without it every patient shares the router's:
+8 WhatsApp codes and 20 bookings a minute in all). One question at a time, `clarify.kind` says which:
 
 | Step | clarify.kind | Asked |
 |---|---|---|
@@ -93,7 +96,7 @@ Choosing a doctor starts booking when `HMS_PUBLIC_API_URL` / `HMS_PUBLIC_API_KEY
 
 ## Emergency takeover (vision Phase 3)
 
-With booking's 1HMS public API set up (`HMS_PUBLIC_API_KEY`), an emergency reply also carries the nearest emergency-ready
+With an identified 1HMS public API client (`HMS_PUBLIC_API_KEY`), an emergency reply also carries the nearest emergency-ready
 places and 1HMS alerts them (`POST /public/emergency-alerts`; 1HMSAPI `docs/emergency_takeover.md`). The message still starts
 with 108 / 112 in the patient's language; the places follow, nearest first, with their numbers:
 

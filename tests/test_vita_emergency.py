@@ -152,7 +152,7 @@ def test_hindi_emergency_speaks_hindi():
     from hms_router.voice import Voice
 
     class Client:
-        enabled = True
+        enabled = identified = True
 
         def emergency_alert(self, **kw):
             return {"eventId": EVENT, "places": PLACES, "alerted": 2}

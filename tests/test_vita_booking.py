@@ -329,3 +329,39 @@ def test_whatsapp_booking_round_trip(client, hms, api):
     assert s["clarify"]["kind"] == "book_confirm" and "patient_session" not in s
     done = post(session_id=s["session_id"], reply_id=s["whatsapp"][0]["interactive"]["action"]["buttons"][0]["reply"]["id"])
     assert done["kind"] == "booked" and [m["type"] for m in done["whatsapp"]] == ["text"]
+
+
+# ============================================================================ deployment without a key
+def test_booking_works_without_an_api_key(client, hms):
+    """1HMS's public API takes anonymous callers; the deploy workflow passes no key, so booking must not need one."""
+    fake = FakeAnonymousApi()
+    client.app.state.booking = HmsPublicClient("http://hms", None, transport=httpx.MockTransport(fake))
+    try:
+        sel = choose_anita(client)
+        assert sel["clarify"]["kind"] == "book_day"
+        out = say(client, sel, labels(sel)[0])
+        for t in ("Mere liye", "Rina Kumari", "32", "Mahila", "9876543210", "123456", "Haan, book karo"):
+            out = say(client, out, t)
+        assert out["kind"] == "booked"
+        assert fake.sent_key and not any(fake.sent_key)
+    finally:
+        client.app.state.booking = None
+
+
+def test_no_key_means_no_hospital_alerts():
+    c = HmsPublicClient("http://hms", None)
+    assert c.enabled and not c.identified
+    from hms_router.application.emergency_help import EmergencyHelp
+    assert not EmergencyHelp(c).enabled
+
+
+class FakeAnonymousApi(FakePublicApi):
+    def __init__(self):
+        super().__init__()
+        self.sent_key = []
+
+    def __call__(self, request):
+        self.sent_key.append("x-api-key" in {k.lower() for k in request.headers})
+        keyed = httpx.Request(request.method, request.url, headers={**request.headers, "X-Api-Key": "pub-key"},
+                              content=request.content)                    # same answers as the keyed fake
+        return super().__call__(keyed)
