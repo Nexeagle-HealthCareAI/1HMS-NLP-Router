@@ -11,7 +11,8 @@ forwarded IP, which is safe but shares one budget.
     profile(token) / family(token)  -> dict / [dict]             (only with a patient token)
     book(...)                       -> appointment_id            (never retried: a retry could book twice)
 
-Settings: HMS_PUBLIC_API_URL (default: the MCP URL without /mcp), HMS_PUBLIC_API_KEY,
+Settings: HMS_PUBLIC_API_URL (default: the MCP URL without /mcp), HMS_PUBLIC_API_KEY (optional; needed only to alert
+hospitals in an emergency),
 HMS_PROXY_FORWARDING_SECRET (1HMSAPI Internal:ProxyForwardingSecret), HMS_BOOKING_TIMEOUT (default 8 s).
 The patient token is a credential: it is never logged, never put in telemetry and never echoed back.
 """
@@ -44,10 +45,20 @@ class HmsPublicClient:
 
     @property
     def enabled(self) -> bool:
+        """Booking, OTP, profile and the visit page: 1HMS's public API takes anonymous callers (PublicApiKeyFilter: the
+        X-Api-Key header is optional), so the URL is enough. Booking was off on every deployment until 28 Oct 2026
+        because the deploy workflow never passed a key."""
+        return bool(self.base_url)
+
+    @property
+    def identified(self) -> bool:
+        """A key was set: needed only to alert hospitals in an emergency (EmergencyTakeoverController)."""
         return bool(self.base_url and self.api_key)
 
     def _headers(self, client_ip: str | None, token: str | None) -> dict[str, str]:
-        h = {"X-Api-Key": self.api_key or "", "Accept": "application/json"}
+        h = {"Accept": "application/json"}
+        if self.api_key:                                    # an empty X-Api-Key would be refused as an invalid key
+            h["X-Api-Key"] = self.api_key
         if self.proxy_secret and client_ip:
             h["X-Internal-Proxy-Secret"] = self.proxy_secret
             h["X-Forwarded-Client-Ip"] = client_ip
@@ -144,6 +155,8 @@ def build_public_client(base_url: str | None, api_key: str | None, *, mcp_url: s
     """The public API lives on the same host as the MCP endpoint unless HMS_PUBLIC_API_URL says otherwise."""
     if not base_url and mcp_url and mcp_url.rstrip("/").endswith("/mcp"):
         base_url = mcp_url.rstrip("/")[: -len("/mcp")]
-    if not (base_url and api_key):
-        log.info("Vita booking OFF (HMS_PUBLIC_API_URL / HMS_PUBLIC_API_KEY not set)")
+    if not base_url:
+        log.warning("Vita booking OFF: no HMS_PUBLIC_API_URL and no HMS_DOCTORS_MCP_URL to derive it from")
+    elif not api_key:
+        log.info("Vita booking ON as an anonymous caller (no HMS_PUBLIC_API_KEY): emergency alerts to hospitals stay off")
     return HmsPublicClient(base_url, api_key, proxy_secret=proxy_secret, timeout=timeout)

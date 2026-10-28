@@ -70,7 +70,7 @@ class EmergencyHelp:
 
     @property
     def enabled(self) -> bool:
-        return bool(self.client and self.client.enabled)
+        return bool(self.client and self.client.identified)         # alerting hospitals needs an identified caller
 
     # ------------------------------------------------------------------ the emergency reply
     def attach(self, out: dict, st: dict, ctx: dict, signs: list[str], text: str, v: Voice) -> None:
