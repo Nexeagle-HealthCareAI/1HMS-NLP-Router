@@ -352,7 +352,7 @@ def test_no_key_means_no_hospital_alerts():
     c = HmsPublicClient("http://hms", None)
     assert c.enabled and not c.identified
     from hms_router.application.emergency_help import EmergencyHelp
-    assert not EmergencyHelp(c).enabled
+    assert EmergencyHelp(c).enabled and not EmergencyHelp(c).alerts
 
 
 class FakeAnonymousApi(FakePublicApi):
