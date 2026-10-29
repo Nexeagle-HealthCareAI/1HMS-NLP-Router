@@ -139,6 +139,23 @@ class HmsPublicClient:
         return self._call("POST", "/public/tokens", client_ip=client_ip,
                           json={"appointmentId": appointment_id, "latitude": lat, "longitude": lng})
 
+    def save_journey(self, appointment_id: str, *, travel_mode: str | None = None, leave_at: str | None = None,
+                     share: bool | None = None, client_ip: str | None = None) -> dict:
+        """PUT /public/appointments/{id}/journey: how the patient is coming, when they leave (1HMS sends a WhatsApp "time to leave"
+        then) and whether the hospital may see their arrival time. Never their location."""
+        body = {k: val for k, val in (("travelMode", travel_mode), ("leaveAt", leave_at), ("shareWithHospital", share)) if val is not None}
+        return self._call("PUT", f"/public/appointments/{appointment_id}/journey", client_ip=client_ip, json=body).get("journey") or {}
+
+    def journey_progress(self, appointment_id: str, *, status: str, eta_minutes: int | None = None, distance_km: float | None = None,
+                         late_by_minutes: int | None = None, client_ip: str | None = None) -> dict:
+        """POST /public/appointments/{id}/journey/progress: on_the_way (+ ETA, distance left) | late (+ how late) | arrived."""
+        body = {"status": status}
+        for k, val in (("etaMinutes", eta_minutes), ("distanceKm", distance_km), ("lateByMinutes", late_by_minutes)):
+            if val is not None:
+                body[k] = val
+        return self._call("POST", f"/public/appointments/{appointment_id}/journey/progress", client_ip=client_ip,
+                          json=body).get("journey") or {}
+
     def my_appointments(self, token: str, *, client_ip: str | None = None) -> list[dict]:
         """GET /public/appointments/mine for a signed-in patient."""
         return list(self._call("GET", "/public/appointments/mine", client_ip=client_ip, token=token).get("appointments") or [])
