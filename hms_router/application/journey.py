@@ -340,7 +340,7 @@ class JourneyHelp:
         if g.get("landmark"):
             lines.append(v(f"Landmark: {g['landmark']}.", f"Pehchaan: {g['landmark']}.", f"पहचान: {g['landmark']}।"))
         lines.append(v("Running late? Just tell me. When you reach, say \"I've reached\".",
-                       "Der ho rahi ho to bata dein. Pahunch kar \"pahunch gaya\" likhein.",
+                       "Der ho rahi ho to bata dein. Pahunch kar \"pahunch gaye\" likhein.",
                        "देर हो रही हो तो बता दें। पहुँचकर \"पहुँच गया\" लिखें।"))
         st.setdefault("journey", {}).update({"appointmentId": appt, "onTheWay": True, "mode": mode})
         return {"kind": "visit", "visit_step": "navigate", "visit": visit, "message": "\n".join(lines), "clarify": None,
