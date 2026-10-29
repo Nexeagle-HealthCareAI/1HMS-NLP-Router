@@ -25,6 +25,7 @@ from __future__ import annotations
 import functools
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -32,6 +33,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from .. import voice as V
+from ..booking_client import BookingError
 from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's own wording, mapped to voice keys
 from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
 from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
@@ -42,6 +44,7 @@ from ..voice import Voice
 from .booking import BookingFlow, token_mobile
 from . import everyday
 from .emergency_help import EmergencyHelp
+from .journey import _NO as _JOURNEY_NO, _YES as _JOURNEY_YES, JourneyHelp, wants as journey_wants
 from .visit_help import VisitHelp, wants as visit_wants
 
 AFTER_EMERGENCY_S = 2 * 3600      # how long "ambulance aa gayi", "ab theek hoon" are read as about that emergency
@@ -135,6 +138,7 @@ class DoctorChat:
         self.booking = BookingFlow(directory, booking_client)
         self.emergency = EmergencyHelp(booking_client)
         self.visit = VisitHelp(booking_client)
+        self.journey = JourneyHelp(booking_client, ola_token=os.environ.get("OLA_XAPP_TOKEN") or None)
 
     # ================================================================== session state
     @staticmethod
@@ -226,6 +230,11 @@ class DoctorChat:
                 return out
         if st.get("after_emergency"):                                                     # "ambulance aa gayi", "ab theek hoon"
             out = self._after_emergency(text, session_id, st, ctx)
+            if out is not None:
+                return out
+            st = self.load(session_id)
+        if self.journey.enabled and not st.get("booking") and ctx.get("channel") != "whatsapp":   # home to the clinic (app only for now)
+            out = self._journey_turn(text, session_id, st, ctx)
             if out is not None:
                 return out
             st = self.load(session_id)
@@ -752,6 +761,9 @@ class DoctorChat:
             res = self.visit.location_followup(st, ctx, v)
         else:
             res = self.visit.turn(what, st, ctx, v)
+            if what == "arrival" and ctx.get("channel") != "whatsapp" and (st.get("journey") or {}).get("appointmentId") and (st.get("visit") or {}).get("appointmentId"):
+                self.journey.arrived(st["visit"]["appointmentId"], ctx)       # the hospital's "on the way" becomes "arrived"
+                st["journey"] = {"appointmentId": st["visit"]["appointmentId"], "arrived": True}
         if res is None:
             return None
         st["language"], st["turn"] = lang, ing.turn
@@ -762,6 +774,72 @@ class DoctorChat:
             out["visit"] = res["visit"]
             out["visit_step"] = res.get("visit_step")
         return out
+
+    def _journey_turn(self, text, session_id, st, ctx) -> dict | None:
+        """Home to the clinic: the plan right after booking (how, when, may the hospital see the ETA), then "nikal raha hoon",
+        "kitni der", "late ho jaunga". None: not about the journey. The emergency check runs first."""
+        j = st.get("journey") or {}
+        planning = bool(j.get("step"))
+        consent = None
+        if j.get("awaiting") == "late_consent":
+            n = intent_text(text or "")
+            if text == "late:yes" or _JOURNEY_YES.match(n):
+                consent = True
+            elif text == "late:no" or _JOURNEY_NO.match(n):
+                consent = False
+            else:
+                j.pop("awaiting", None)
+        what = None if planning or consent is not None else journey_wants(text)
+        if not (planning or consent is not None or what):
+            return None
+        if self._emergency(text):
+            if planning:
+                j["step"] = None
+                self._save(session_id, st)
+            return None
+        appt = None
+        if not planning:
+            appt = j.get("appointmentId") or self.visit.appointment_id(st, ctx)
+            if not appt:
+                return None
+        ing = self._ingest_only(text, session_id)
+        lang = st.get("language") or ing.language.language
+        v = Voice(lang)
+        if planning:
+            res = self.journey.plan_turn(text, st, ctx, v)
+            if res is None:                                                    # a new ask: planning is over
+                j["step"] = None
+                self._save(session_id, st)
+                return None
+        else:
+            try:
+                visit = self.booking_client_visit(appt, ctx)
+            except BookingError as exc:
+                log.warning("journey visit lookup failed: %s", exc)
+                return None
+            status = (visit.get("journey") or {}).get("status")
+            if what == "eta" and not (j.get("onTheWay") or status in ("on_the_way", "late")):
+                return None                                                    # "kitna time" at the hospital: the queue
+            if visit.get("cancelled") or visit.get("completed"):
+                return None
+            if consent is not None or what == "late":
+                res = self.journey.late(appt, visit, st, ctx, v, text, consent=consent)
+            elif what == "leaving":
+                res = self.journey.leaving(appt, visit, st, ctx, v)
+            else:
+                res = self.journey.eta(appt, visit, st, ctx, v)
+        st["language"], st["turn"] = lang, ing.turn
+        self._save(ing.session_id, st)
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": lang}
+        clarify = res.get("clarify")
+        out = self._reply(base, res["kind"], res["message"], question=(clarify or {}).get("question"), clarify=clarify)
+        for k in ("visit", "visit_step", "journey"):
+            if res.get(k) is not None:
+                out[k] = res[k]
+        return out
+
+    def booking_client_visit(self, appt: str, ctx: dict) -> dict:
+        return self.journey.client.visit(appt, client_ip=ctx.get("client_ip"))
 
     def _emergency_followup(self, text, session_id, st, ctx) -> dict | None:
         """Right after an emergency: a shared location gets the nearest places; "share my number" sends it to them.
@@ -1010,6 +1088,10 @@ class DoctorChat:
             st.pop("booking", None)
             self._save(session_id, st)
             return None
+        if (res["kind"] == "booked" and self.journey.enabled and ctx.get("channel") != "whatsapp"
+                and (res.get("booking") or {}).get("appointmentId")):
+            plan = self.journey.start(st, res["booking"], v)                  # "how will you get there?"
+            res = {**res, "message": f"{res['message']}\n\n{plan['message']}", "clarify": plan["clarify"]}
         self._save(session_id, st)
         base = {"session_id": ing.session_id, "turn": ing.turn, "language": lang}
         clarify = res.get("clarify")

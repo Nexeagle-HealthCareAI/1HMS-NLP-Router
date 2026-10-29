@@ -139,6 +139,32 @@ Directions and status need a known visit; "I've reached" without one points to "
 runs first. Bookings now carry the patient's language (`en` / `hi` / `hinglish`) to 1HMS for the WhatsApp confirmation and
 reminders.
 
+## Home to the clinic (journey)
+
+On the web app (not WhatsApp yet), right after "Booked" Vita asks how the patient is coming and plans the trip
+(`hms_router/application/journey.py`):
+
+1. **How**: `clarify.kind = journey_mode` with Car / bike, Auto / cab, Bus / train, Paidal (typed answers work too: "ola se", "metro").
+2. **When**: `journey_leave`. Vita suggests a leave time: appointment start minus travel time minus 15 min to register. Travel time is
+   straight-line km x 1.4 at a city speed per mode, plus the wait for a cab or bus. Without a location it uses 45 min. The two chips are the
+   suggestion and 15 min earlier. Typed times work: "8 baje", "8:30", "saade 8", "paune 9", "shaam 5", "abhi", "20 minute mein".
+3. **Share**: `journey_share`. May the hospital see when they are on the way and their arrival time (never the location)?
+4. `PUT /public/appointments/{id}/journey` `{travelMode, leaveAt, shareWithHospital}`. 1HMS sends the `visit_leave_now_*` WhatsApp
+   at the leave time. "baad mein" skips the plan. A new ask or an emergency ends it.
+
+On the day:
+
+| Patient says | Reply | 1HMS |
+|---|---|---|
+| "nikal raha hoon", "on my way" | `kind: visit`, `visit_step: navigate`, `journey: {mode, etaMinutes, links, share}` | progress `on_the_way` (+ ETA, km left) |
+| "kitni der lagegi", "how far" (once on the way) | `visit_step: eta` | — |
+| "late ho jaunga", "20 min late" | asks first (`journey_late`) unless already shared | progress `late` (+ minutes) |
+| "pahunch gayi" | the usual arrival steps | progress `arrived` |
+
+`journey.links`: `navigate` (always; Doctor Dekho opens its in-app navigation), `uber` and `ola` for auto / cab (drop-off filled in;
+`OLA_XAPP_TOKEN`, if set, is passed as Ola's `utm_source`), `transit` (Google Maps transit) for bus / train.
+Only the mode, leave time, ETA, km left and minutes late are sent to 1HMS, never the patient's location.
+
 ## Channels
 
 `channel: "whatsapp"` adds `whatsapp`: the reply as ready-to-send WhatsApp messages; taps come back as

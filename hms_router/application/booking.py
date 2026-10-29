@@ -732,6 +732,7 @@ class BookingFlow:
                 "shift": b.get("shift"), "when": when, "fee": d.get("fee"),
                 "patientName": p.get("name"), "patientAge": p.get("age"), "patientAgeUnit": p.get("ageUnit"),
                 "patientSex": p.get("sex"), "forWhom": b.get("for"), "mobile": _mask(b["mobile"]) if b.get("mobile") else None,
+                "lat": lat, "lng": lng,
                 "mapUrl": f"https://www.google.com/maps/dir/?api=1&destination={lat},{lng}" if lat is not None and lng is not None else None}
 
 
