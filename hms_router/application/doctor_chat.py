@@ -36,8 +36,9 @@ from .. import voice as V
 from ..booking_client import BookingError
 from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's own wording, mapped to voice keys
 from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
-from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
+from ..doctors import (FALLBACK_SPECIALIST, SPECIALIST_TITLES, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
                        specialty_key)
+from ..safety.self_harm import mentions_self_harm
 from ..severity import EMERGENCY, emergency_check
 from ..textnorm import intent_text, preprocess, tidy
 from ..voice import Voice
@@ -74,18 +75,7 @@ SOURCE = "1hms-mcp"
 STATE_TTL_S = 1800
 MAX_SHOWN = 60
 
-SPECIALTY_NAMES = {
-    "cardiology": "Cardiologist", "dermatology": "Dermatologist", "orthopaedics": "Orthopaedic",
-    "gynaecology": "Gynaecologist", "dentistry": "Dentist", "ent": "ENT Specialist",
-    "ophthalmology": "Eye Specialist", "neurology": "Neurologist", "neurosurgery": "Neurosurgeon",
-    "psychiatry": "Psychiatrist", "urology": "Urologist", "gastroenterology": "Gastroenterologist",
-    "endocrinology": "Endocrinologist", "pulmonology": "Pulmonologist", "nephrology": "Nephrologist",
-    "oncology": "Oncologist", "rheumatology": "Rheumatologist", "physiotherapy": "Physiotherapist",
-    "paediatrics": "Paediatrician", "geriatrics": "Geriatrician", "general-medicine": "General Physician",
-    "general-surgery": "General Surgeon", "plastic-surgery": "Plastic Surgeon", "vascular-surgery": "Vascular Surgeon",
-    "cardiothoracic-surgery": "Cardiothoracic Surgeon", "emergency-medicine": "Emergency Medicine",
-    "sports-medicine": "Sports Medicine",
-}
+SPECIALTY_NAMES = SPECIALIST_TITLES          # specialty key -> the title patients see (now in doctors.py)
 # Plain words for specialties, chips and every phrase live in hms_router/voice.py, in three languages.
 PLAIN = {k: v[:2] for k, v in V.PLAIN.items()}     # (English, Hinglish), kept for older callers
 _EN = Voice("english")
@@ -218,6 +208,12 @@ class DoctorChat:
             self._save(sid, est)
 
     def _handle(self, text, session_id, ctx, *, select_doctor_id, page, new_search) -> dict:
+        if mentions_self_harm(text):                       # every turn, whatever Vita was in the middle of (booking,
+            st = self.load(session_id)                     # visit, journey, an earlier emergency): a person comes first
+            dropped = [k for k in ("booking", "pending", "which", "which_hospital", "warn", "last_advice") if st.pop(k, None)]
+            if session_id and dropped:
+                self._save(session_id, st)
+            return self._agent_turn(text, session_id, parse(text), ctx, emergency_checked=True)
         if select_doctor_id:
             return self._select(text, session_id, select_doctor_id, ctx)
 
@@ -287,8 +283,14 @@ class DoctorChat:
             if out is not None:
                 return out
             st = self.load(session_id)
-        kind = everyday.warn_kind(norm)                                                    # "sar pe chot lagi", "haath jal gaya"
-        if kind and not ask.specialty_key and not ask.name_query and not self._emergency(text):
+        kind = everyday.warn_kind(norm)                                    # "sar pe chot lagi", "haath jal gaya", pregnant + sujan
+        if kind and (kind == "pregnancy" or (not ask.specialty_key and not ask.name_query)) \
+                and everyday.serious(kind, norm):
+            return self._warn_emergency(text, session_id, kind)    # "current lag ke jal gaya": no question, 108 now
+        if kind and (kind == "pregnancy" or (not ask.specialty_key and not ask.name_query)) \
+                and not self._red_flag(text):
+            # the warning-sign question first; only a red-flag RULE (or self-harm) skips it. The emergency model alone
+            # flagged "haath jal gaya garam tel se" (0.90) and sent a minor burn straight to 108.
             return self._warn_ask(text, session_id, kind)
 
         move = everyday.detect(norm, text)                                                 # "fees kitni hai", "tum kaun ho"
@@ -348,6 +350,20 @@ class DoctorChat:
         return self._agent_turn(text, session_id, ask, ctx)                                 # step 7
 
     # ================================================================== safety
+    def _red_flag(self, text: str) -> bool:
+        """Self-harm, or a red-flag RULE (not the emergency model alone). Fails safe: True when it cannot tell."""
+        if mentions_self_harm(text):
+            return True
+        try:
+            shared = self.agent._shared_emergency(text, [preprocess(text)])
+            if shared is not None:
+                return bool(shared.flag and "rules" in (shared.source or ""))
+            hits = emergency_check({}, [preprocess(text)], self.agent.classifier.rules)
+            return any(h["flag"] == EMERGENCY for h in hits)
+        except Exception:
+            log.exception("red-flag check failed")
+            return True
+
     def _emergency(self, text: str) -> bool:
         texts = [preprocess(text)]
         try:
@@ -1010,6 +1026,17 @@ class DoctorChat:
         return self._reply(base, FOLLOW_UP, q, question=q, clarify={"kind": "warning_signs", "question": q,
                                                                    "options": everyday.warn_options(v)})
 
+    def _warn_emergency(self, text, session_id, kind: str) -> dict:
+        ing, st, base, v = self._ingest(text, session_id)
+        st.pop("warn", None)
+        sign = everyday.WARN_SIGN[kind]
+        self._save(ing.session_id, st)
+        out = self._reply(base, "emergency", V.emergency(v, [sign]))
+        out["card"] = {"kind": "emergency", "emergency_reasons": [sign.capitalize()],
+                       "emergency_signs": [V.symptom_words(v, [sign])]}
+        self._emergency_done(ing.session_id, [sign])
+        return out
+
     def _warn_answer(self, text, session_id, st, ctx, norm) -> dict | None:
         warn = st.pop("warn", None) or {}
         self._save(session_id, st)
@@ -1018,17 +1045,10 @@ class DoctorChat:
             return None                                              # something else: the usual flow
         kind = warn.get("kind") or "head"
         if yes:                                                      # a warning sign: emergency, as for a red flag
-            ing, st, base, v = self._ingest(text, session_id)
-            sign = everyday.WARN_SIGN[kind]
-            self._save(ing.session_id, st)
-            out = self._reply(base, "emergency", V.emergency(v, [sign]))
-            out["card"] = {"kind": "emergency", "emergency_reasons": [sign.capitalize()],
-                           "emergency_signs": [V.symptom_words(v, [sign])]}
-            self._emergency_done(ing.session_id, [sign])
-            return out
+            return self._warn_emergency(text, session_id, kind)
         v = Voice(st.get("language") or "english")
         ctx["lead"] = everyday.warn_no(kind, v)                       # no warning sign: see a doctor, here are some
-        filters = {"specialtyKey": "general-medicine", "modes": ["specialty"]}
+        filters = {"specialtyKey": everyday.WARN_SPECIALTY.get(kind, "general-medicine"), "modes": ["specialty"]}
         return self._search_turn(text, session_id, filters, ctx, self.load(session_id))
 
     def _side_question(self, text, session_id, st, ctx) -> dict | None:

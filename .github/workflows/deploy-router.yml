@@ -138,13 +138,18 @@ jobs:
           HMS_DOCTORS_MCP_KEY: ${{ secrets.DEV_HMS_DOCTORS_MCP_KEY }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           HMS_PORT: ${{ env.HMS_PORT }}
+          # Vita's LangGraph agent: ON on Dev (Groq). Needs the GROQ_API_KEY repository secret; without it Vita
+          # answers with its rules engine. Turn off with the repository variable DEV_VITA_LLM_PROVIDER=off.
+          VITA_LLM_PROVIDER: ${{ vars.DEV_VITA_LLM_PROVIDER || 'groq' }}
+          VITA_LLM_MODEL: ${{ vars.DEV_VITA_LLM_MODEL || 'openai/gpt-oss-120b' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         with:
           host: ${{ secrets.DEV_SSH_HOST }}
           username: ${{ secrets.DEV_SSH_USER }}
           password: ${{ secrets.DEV_SSH_PASSWORD }}
           port: 22
           command_timeout: 15m
-          envs: IMAGE,GHCR_TOKEN,ACTOR,HMS_ENV,HMS_API_KEYS,HMS_CMS_API_URL,HMS_CMS_SERVICE_KEY,HMS_TELEMETRY_HASH_KEY,REDIS_URL,HMS_PORT,HMS_DOCTORS_MCP_URL,HMS_DOCTORS_MCP_KEY
+          envs: IMAGE,GHCR_TOKEN,ACTOR,HMS_ENV,HMS_API_KEYS,HMS_CMS_API_URL,HMS_CMS_SERVICE_KEY,HMS_TELEMETRY_HASH_KEY,REDIS_URL,HMS_PORT,HMS_DOCTORS_MCP_URL,HMS_DOCTORS_MCP_KEY,VITA_LLM_PROVIDER,VITA_LLM_MODEL,GROQ_API_KEY
           script: |
             set -e
             NAME=nlp-router-dev
@@ -161,6 +166,11 @@ jobs:
                 printf 'HMS_DOCTORS_MCP_URL=%s\n'    "${HMS_DOCTORS_MCP_URL:-}"
                 printf 'HMS_DOCTORS_MCP_KEY=%s\n'    "${HMS_DOCTORS_MCP_KEY:-}"
                 printf 'REDIS_URL=%s\n'              "${REDIS_URL:-}"
+                if [ -n "${GROQ_API_KEY:-}" ] && [ "${VITA_LLM_PROVIDER:-off}" != "off" ]; then
+                  printf 'VITA_LLM_PROVIDER=%s\n'    "$VITA_LLM_PROVIDER"
+                  printf 'VITA_LLM_MODEL=%s\n'       "${VITA_LLM_MODEL:-}"
+                  printf 'GROQ_API_KEY=%s\n'         "$GROQ_API_KEY"
+                fi
               } > "$ENVFILE" )
 
             IMAGE_LC=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')
@@ -224,6 +234,11 @@ jobs:
           HMS_DOCTORS_MCP_URL: ${{ vars.PROD_DOCTORS_MCP_URL || 'https://1hms-api.nexeagle.com/mcp' }}
           HMS_DOCTORS_MCP_KEY: ${{ secrets.PROD_HMS_DOCTORS_MCP_KEY }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
+          # Vita's LangGraph agent stays OFF on Prod until Vita TestAgent has scored it on Dev; set the repository
+          # variable PROD_VITA_LLM_PROVIDER=groq to turn it on.
+          VITA_LLM_PROVIDER: ${{ vars.PROD_VITA_LLM_PROVIDER || 'off' }}
+          VITA_LLM_MODEL: ${{ vars.PROD_VITA_LLM_MODEL || 'openai/gpt-oss-120b' }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           # The app refuses to start in production without these; stop before touching the running container.
           : "${HMS_API_KEYS:?HMS_API_KEYS is empty}"
@@ -239,6 +254,11 @@ jobs:
             printf 'HMS_DOCTORS_MCP_URL=%s\n'    "${HMS_DOCTORS_MCP_URL:-}"
             printf 'HMS_DOCTORS_MCP_KEY=%s\n'    "${HMS_DOCTORS_MCP_KEY:-}"
             printf 'REDIS_URL=%s\n'              "$REDIS_URL"
+            if [ -n "${GROQ_API_KEY:-}" ] && [ "${VITA_LLM_PROVIDER:-off}" != "off" ]; then
+              printf 'VITA_LLM_PROVIDER=%s\n'    "$VITA_LLM_PROVIDER"
+              printf 'VITA_LLM_MODEL=%s\n'       "${VITA_LLM_MODEL:-}"
+              printf 'GROQ_API_KEY=%s\n'         "$GROQ_API_KEY"
+            fi
           } > /tmp/nlp-router-prod.env
 
       - name: Copy prod.env to Prod VM
