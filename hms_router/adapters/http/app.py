@@ -50,6 +50,26 @@ class _LazyLimiter:
             limiter.check(client, scope, ip)
 
 
+
+def _build_vita_runtime(settings: ServiceSettings, app):
+    """Vita's LangGraph agent (hms_router/vita_graph). No VITA_LLM_PROVIDER, or langgraph missing -> None and Vita
+    answers with its rules engine as before."""
+    if not settings.vita_llm_provider:
+        log.info("Vita LLM agent OFF (VITA_LLM_PROVIDER not set): Vita runs on its rules engine")
+        return None
+    try:
+        from ...vita_graph import build_vita_graph, build_vita_llm
+        from ...vita_graph.engine import VitaRuntime
+        llm = build_vita_llm(settings.vita_llm_provider, settings.vita_llm_model, settings.vita_llm_timeout)
+        if llm is None:
+            return None
+        rt = VitaRuntime(llm, build_vita_graph(), route_service=lambda: getattr(app.state, "route", None))
+        log.info("Vita LLM agent ON (%s %s)", settings.vita_llm_provider, settings.vita_llm_model or "default model")
+        return rt
+    except Exception:
+        log.exception("Vita LLM agent could not start; Vita runs on its rules engine")
+        return None
+
 def create_app(settings: ServiceSettings | None = None) -> FastAPI:
     settings = settings or ServiceSettings.from_env()
     settings.validate()
@@ -83,6 +103,7 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
                                                 proxy_secret=settings.proxy_forwarding_secret,
                                                 timeout=settings.booking_timeout)
         llm_complete = build_llm_completion(settings)
+        app.state.vita_runtime = _build_vita_runtime(settings, app)
 
         def promote(bundle: ModelBundle) -> None:
             bundle.save(settings.route_model_path or MODEL_PATH)
