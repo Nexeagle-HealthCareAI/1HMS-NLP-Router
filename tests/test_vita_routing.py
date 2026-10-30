@@ -31,7 +31,7 @@ def _until_advice(client, first):
     ("daant mein bahut dard hai", "Dentist"),                       # was Dermatologist
     ("I have a toothache", "Dentist"),
     ("mere 2 saal ke bete ko tez bukhar hai", "Paediatrician"),
-    ("main 6 mahine pregnant hoon, pair mein sujan hai", "Gynaecologist"),   # was Orthopedist
+    # pregnant + swelling (was Orthopedist) now gets the warning-sign question first: test_vita_warning_signs.py
     ("aankh laal hai aur paani aa raha hai", "Eye Specialist"),
     ("periods 2 mahine se nahi aaye", "Gynaecologist"),
     ("bahut ghabrahat hoti hai raat ko neend nahi aati", "Psychiatrist"),

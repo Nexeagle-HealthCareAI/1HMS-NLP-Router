@@ -283,18 +283,41 @@ def again(v: Voice) -> str:
 # A head injury or a burn on its own is not always an emergency, but some are. Vita asks for the warning signs in one
 # question; a yes is an emergency, a no gets "see a doctor today" and a general physician. (For doctor review.)
 WARN = {
+    # pregnancy + swelling: usually harmless swelling of the feet, but with these signs possibly pre-eclampsia
+    "pregnancy": re.compile(r"(?=.*\b(pregnan\w*|pregn[ae]nt\w*|pregnency|garbh\w*|pet se (hoon|hu|hun)|delivery (hone|aane) wali|mahine ki pregnancy)\b)"
+                            r"(?=.*\b(sujan|soojan|sujaan|sooj\w*|suj (gaye|gayi|gaya|gye|gyi|rahe|raha|rahi)|swell\w*|swollen|"
+                            r"phool (gaye|gayi|gaya|rahe)|edema|oedema)\b)"),
     "head": re.compile(r"\b(sar|sir|head|maatha|matha|mathe)\b.{0,12}\b(chot|chhot|injury|lag gayi|lagi|takra\w*|phat\w*|fat gaya)"
                        r"|\b(gir gaya|gir gayi|gira|giri|gir gya)\b.{0,20}\b(sar|sir|head)\b|\bhead injury\b"),
     "burn": re.compile(r"\b(jal gaya|jal gayi|jal gya|jal gyi|jala|jali|jal gaye|burn|burns|burnt|burned)\b"
                        r"|\bgaram (paani|pani|tel|chai|doodh|dal)\b.{0,12}\bgir\w*|\bchhale pad\w*"),
 }
-WARN_SIGN = {"head": "head injury", "burn": "burn injury"}
+WARN_SIGN = {"head": "head injury", "burn": "burn injury", "pregnancy": "pregnancy warning signs"}
+# Already a warning sign in the first message: no question, the emergency reply as before. (For doctor review.)
+SERIOUS = {
+    "burn": re.compile(r"\b(chehr\w*|face|muh|munh|aankh\w*|eyes?|gala|gale|neck|bijli|current|electric\w*|tezaab|acid|chemical|"
+                       r"saans|breath\w*|behosh\w*|unconscious|gupt|private|poora|pura|whole|sharir|body|aag mein|bahut jal|"
+                       r"zyada jal|kaafi jal|bada hissa|large)\b"),
+    "head": re.compile(r"\b(behosh\w*|unconscious|faint\w*|ulti|vomit\w*|khoon|blood|bleed\w*|daura|fit|seizure|"
+                       r"hosh|confus\w*|kaan se|naak se|bahut neend|drowsy)\b"),
+    "pregnancy": re.compile(r"\b(dhundhla|blur\w*|spots|sar (mein |me |main )?(tez |bahut )?dard|severe headache|daura|fit|"
+                            r"seizure|khoon|blood|bleed\w*|chehr\w*|face|haath|hands?|upar pet|upper (stomach|abdomen)|"
+                            r"pasli|ribs|kam hil|hil nahi|movement kam|not moving|saans|breath\w*|behosh\w*)\b"),
+}
+# where "no warning signs" goes
+WARN_SPECIALTY = {"head": "general-medicine", "burn": "general-medicine", "pregnancy": "gynaecology"}
 _YES = re.compile(r"^(haan|haa|ha|han|yes|ji|ji haan|haanji|hua|hui|hai|hain|ho raha|ho rahi|ho gaya|ho gayi)\b")
 _NO = re.compile(r"^(nahi|nahin|na|no|nope|kuch nahi|aisa kuch nahi|nahi hua|nahi hui)\b")
 
 
 def warn_kind(norm: str) -> str | None:
     return next((k for k, rx in WARN.items() if rx.search(norm or "")), None)
+
+
+def serious(kind: str, norm: str) -> bool:
+    """The first message already names a warning sign for this kind."""
+    rx = SERIOUS.get(kind)
+    return bool(rx and rx.search(norm or ""))
 
 
 def warn_answer(norm: str) -> bool | None:
@@ -308,6 +331,13 @@ def warn_answer(norm: str) -> bool | None:
 
 
 def warn_question(kind: str, v: Voice) -> str:
+    if kind == "pregnancy":
+        return v("Along with the swelling, is there any of these: a bad headache, blurred vision or seeing spots, "
+                 "sudden swelling of the face or hands, pain in the upper stomach, a fit, bleeding, or the baby moving less?",
+                 "Sujan ke saath kya inmein se kuch hai: tez sar dard, dhundhla dikhna ya aankhon ke aage dhabbe, chehre ya "
+                 "haathon mein achanak sujan, upar pet mein dard, daura, khoon aana, ya baby ka kam hilna?",
+                 "सूजन के साथ क्या इनमें से कुछ है: तेज़ सिर दर्द, धुंधला दिखना या आँखों के आगे धब्बे, चेहरे या हाथों में "
+                 "अचानक सूजन, ऊपर पेट में दर्द, दौरा, खून आना, या बच्चे का कम हिलना?")
     if kind == "head":
         return v("After the head injury, did any of these happen: fainting, vomiting, a lot of sleepiness, a severe or "
                  "worsening headache, a fit, or bleeding from the nose or ear?",
@@ -328,6 +358,14 @@ def warn_options(v: Voice) -> list[dict]:
 
 
 def warn_no(kind: str, v: Voice) -> str:
+    if kind == "pregnancy":
+        return v("Okay. Please see your gynaecologist within a day to check your blood pressure. If a bad headache, "
+                 "blurred vision, swelling of the face or hands, upper stomach pain or bleeding starts, call "
+                 f"{EMERGENCY_NUMBER} straight away.",
+                 "Theek hai. Ek din ke andar apni gynaecologist ko dikhakar BP check karwayein. Agar tez sar dard, dhundhla "
+                 f"dikhna, chehre ya haathon mein sujan, upar pet mein dard ya khoon aaye to turant {EMERGENCY_NUMBER} par call karein.",
+                 "ठीक है। एक दिन के अंदर अपनी गायनेकोलॉजिस्ट को दिखाकर BP चेक करवाएँ। अगर तेज़ सिर दर्द, धुंधला दिखना, "
+                 f"चेहरे या हाथों में सूजन, ऊपर पेट में दर्द या खून आए तो तुरंत {EMERGENCY_NUMBER} पर कॉल करें।")
     if kind == "head":
         return v("Okay. Still, see a doctor today. If vomiting, fainting, a bad headache or a fit starts later, call "
                  f"{EMERGENCY_NUMBER} straight away.",

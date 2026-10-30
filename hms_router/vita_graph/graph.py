@@ -17,8 +17,10 @@ import time
 from typing import Any, TypedDict
 
 from ..application.journey import wants as journey_wants
+from ..application.everyday import warn_kind
 from ..application.visit_help import wants as visit_wants
 from ..safety.self_harm import mentions_self_harm
+from ..textnorm import intent_text
 from . import checker
 from .prompts import CONTEXT, SYSTEM
 from .tools import TOOL_NAMES
@@ -69,6 +71,8 @@ def sticky_reason(turn) -> str | None:
         return "visit"
     if flow.journey.enabled and kw.get("channel") != "whatsapp" and journey_wants(text):
         return "journey"
+    if warn_kind(intent_text(text)):               # burn, head injury, pregnancy + swelling: the warning-sign question
+        return "warning_signs"
     if flow._emergency(text):                      # the shared detector (rules + model); fails safe to True
         return "emergency"
     return None

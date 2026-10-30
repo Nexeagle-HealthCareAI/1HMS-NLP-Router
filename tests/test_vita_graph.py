@@ -197,3 +197,10 @@ def test_whatsapp_contract(client, llm):
     out = vita(client, "hi", channel="whatsapp")
     msg = out["whatsapp"][0]
     assert msg["type"] == "interactive" and msg["interactive"]["type"] == "button"
+
+
+@pytest.mark.parametrize("text", ["haath jal gaya garam tel se", "main 6 mahine pregnant hoon, pair mein sujan hai"])
+def test_warning_sign_questions_stay_with_the_rules(client, llm, text):
+    model = llm()
+    out = vita(client, text)
+    assert out["engine"] == "rules" and out["clarify"]["kind"] == "warning_signs" and model.seen == []
