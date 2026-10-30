@@ -65,6 +65,26 @@ Combinations work in one turn ("MD cardiologist near Salt Lake"). Refinements re
 "inme se koi paas wala?", "kam fees wala", "sabse experienced". A bare "doctor chahiye" gets
 `clarify.kind = "ask_kind"` with the five options.
 
+### Typing mistakes (2026-10-30)
+
+Every kind of search survives the way patients type (`hms_router/search_spelling.py`, `doctor_intent.fix_search_words`):
+
+| What | Typed | Read as |
+|---|---|---|
+| specialty words | "cardiolgist", "gynacologist", "pediatrision", "opthalmologist", "dnb dermatolgy" | the specialty |
+| doctor word, short words next to it | "doktor", "doctr", "specilist", "skn doctor", "hart ka doctor", "nak kan gala doctor" | doctor / skin / heart / ENT |
+| degree | "mbs", "mbbbs", "M.B.B.S" | MBBS |
+| names (spelling and sound) | "neha sarma", "kunal ghose", "chaterji", "S. Roy" | the listed spelling, sent to 1HMS and shown in the reply |
+| cities, old names, anywhere in the ask | "skin doctor kolkata", "cardiologist kolkatta", "calcutta", "siligudi", "purnea" | the city as 1HMS spells it (1HMS city match is exact) |
+| symptoms | "chest pian", "hedache", "stomuch pain", "tooth ache", "eye redness", "coughing blood" | the symptom; red-flag phrases accept one swapped pair of letters |
+
+How close is close enough: no typo under 4 letters, 1 up to 6, 2 up to 12, 3 above; two letters swapped count as one;
+sound-alike names need the same first letter and a consonant skeleton of 3+ letters. Two equally close words with
+different meanings are not guessed. Listed doctors' names and cities are never "corrected" (a Dr Hart stays Hart), and
+real specialties Vita has no word for (radiologist, psychologist ...) are left as typed. Short words ("bone", "skn")
+are repaired only when the message asks for a doctor, so symptom typos stay with the symptom spell-checker. The name and
+city lists come from `list_doctor_names` (cached 15 min, `DoctorDirectory.index()`).
+
 Body words alone ("pet mein dard", "kaan mein dard") are symptoms and go to triage; "pet ka doctor" is a
 specialty ask. Triage asks **at most two** follow-up questions before showing something (`/chat` keeps 3).
 

@@ -35,7 +35,7 @@ from typing import Any
 from .. import voice as V
 from ..booking_client import BookingError
 from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's own wording, mapped to voice keys
-from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
+from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse, search_text
 from ..doctors import (FALLBACK_SPECIALIST, SPECIALIST_TITLES, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
                        specialty_key)
 from ..safety.self_harm import mentions_self_harm
@@ -257,9 +257,12 @@ class DoctorChat:
             st = self.load(session_id)                                                    # booking ended: a new ask
             if mid.more and st.get("last") and not (mid.specialty_key or mid.name_query or mid.degree):
                 reshow = True                      # "koi aur doctor dikhao" while booking: the list they chose from, again
-        norm = intent_text(text)
-        names = self.directory.names(None) if _wants_names(norm) else None      # every city: a name is a name
-        ask = parse(text, names=names, medical_terms=self.terms)
+        # every listed doctor's name and city (cached 15 min): typing mistakes in search words are repaired, a
+        # listed name or city is never "repaired", and a city typed anywhere ("skin doctor kolkatta") is the place
+        known, cities = self.directory.index() if self.directory.enabled else ([], None)
+        norm = search_text(text, known_names=known, cities=cities, medical_terms=self.terms)
+        names = known if _wants_names(norm) else None                          # every city: a name is a name
+        ask = parse(text, names=names, medical_terms=self.terms, known_names=known, cities=cities)
         if (st.get("selected") and not ask.when and not ask.name_query and not ask.specialty_key
                 and not ask.symptomish and not ask.degree):
             follow = availability_when(norm)                     # "kal milenge kya?" about the doctor just chosen
@@ -515,6 +518,8 @@ class DoctorChat:
         except DoctorLookupError:
             return self._lookup_failed(sid, st, base, hi, filters)
 
+        if filters.get("query"):                     # "kunal ghose" -> "kunal ghosh", shown and searched as listed
+            filters = dict(filters, query=self.directory.fix_name(filters["query"]))
         used_city = bool(filters.get("near") and not ctx["located"] and not place_city)
         per = self.directory.limit
         fee_sort = filters.get("sort") == "fee"
@@ -1409,7 +1414,8 @@ def _wants_names(norm: str) -> bool:
     ("anita sen se milna hai"), or a short message that could be just a name ("neha sharma", "anita sen ji")."""
     from ..doctor_intent import _NAME_CUE
     words = norm.split()
-    return bool(_NAME_CUE.search(norm)) or (1 <= len(words) <= 4 and not any(w in DOCTOR_WORDS for w in words))
+    # "ghosh doctor", "sharma dr": a surname with the doctor word is a name too
+    return bool(_NAME_CUE.search(norm)) or (1 <= len(words) <= 4 and not all(w in DOCTOR_WORDS for w in words))
 
 
 def _bare_doctor(norm: str, ask: DoctorAsk) -> bool:

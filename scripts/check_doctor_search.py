@@ -136,6 +136,33 @@ def main() -> int:
     for text, want in SYMPTOMS:
         cases.append(("symptoms", text, {"city": all_cities[0] if all_cities else None}, {"specialist": want}))
 
+    # typing mistakes: a letter dropped from the surname or the city, specialty words as patients misspell them
+    def typo(word: str) -> str:
+        w = re.sub(r"(.)\1", r"\1", word, count=1)              # "chatterjee" -> "chaterjee"
+        if w != word or len(word) < 5:
+            return w
+        i = len(word) // 2
+        return word[:i] + word[i + 1:]                           # "sharma" -> "shama"... one letter left out
+    for d in doctors[: max(3, a.max // 3)]:
+        full = re.sub(r"^(dr\.?\s*)", "", d["fullName"], flags=re.I).strip().split()
+        if len(full) >= 2 and len(full[-1]) >= 5:
+            cases.append(("typo", f"dr {' '.join(full[:-1])} {typo(full[-1].lower())}", {"city": d.get("city")},
+                          {"doctorId": d["doctorId"]}))
+    have = {specialty_key(category_of(d) or "") for d in doctors}
+    for wrong, key in (("cardiolgist", "cardiology"), ("dermatologst", "dermatology"), ("orthopadic doctor", "orthopaedics"),
+                       ("gynacologist", "gynaecology"), ("pediatrision", "paediatrics"), ("neurolgist", "neurology"),
+                       ("gastroentrologist", "gastroenterology"), ("opthalmologist", "ophthalmology"),
+                       ("haddi ka doktor", "orthopaedics"), ("skn doctor", "dermatology"), ("dentest", "dentistry")):
+        if key in have:
+            city = next((d.get("city") for d in doctors if specialty_key(category_of(d) or "") == key), None)
+            cases.append(("typo", wrong, {"city": city}, {"key": key}))
+    for c in all_cities[:3]:
+        key = next((specialty_key(category_of(d) or "") for d in doctors if d.get("city") == c
+                    and specialty_key(category_of(d) or "") in SPECIALIST_TITLES), None)
+        if key and len(c) >= 5:
+            cases.append(("typo", f"{SPECIALIST_TITLES[key]} doctor in {typo(c.lower())}", {"city": other_city(c)},
+                          {"key": key}))
+
     results = []
     print(f"\nSending {len(cases)} searches to {a.router} ...\n")
     for kind, text, extra, expect in cases:
@@ -170,7 +197,7 @@ def main() -> int:
 
     summary = collections.Counter((r["type"], r["status"]) for r in results)
     print("\nSummary:")
-    for t in ("name", "degree", "specialty", "nearby", "symptoms"):
+    for t in ("name", "degree", "specialty", "nearby", "symptoms", "typo"):
         print(f"  {t:9} pass {summary[(t, 'PASS')]}  fail {summary[(t, 'FAIL')]}  check {summary[(t, 'CHECK')]}")
     Path("doctor_search_report.json").write_text(json.dumps({"problems": problems, "results": results}, indent=1,
                                                             ensure_ascii=False))

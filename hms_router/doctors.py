@@ -19,6 +19,8 @@ import threading
 import time
 from typing import Any
 
+from .search_spelling import CityIndex, city_index, name_index
+
 log = logging.getLogger("hms_router.doctors")
 
 PROTOCOL_VERSION = "2025-06-18"
@@ -264,6 +266,12 @@ class DoctorDirectory:
                     return None
                 category = categories[0]
                 args["specialtyIds"] = categories
+            if query or city:
+                names, cities = self.index()
+                if query and names:                  # "neha sarma" -> "neha sharma": 1HMS's name match sees a clean spelling
+                    query = name_index(tuple(names)).fix(query) or query
+                if city and cities:                  # 1HMS matches cities exactly: "kolkatta" / "calcutta" -> "Kolkata"
+                    city = cities.resolve(city) or city
             if query:
                 args["query"] = query
             if degree:
@@ -316,7 +324,7 @@ class DoctorDirectory:
         if query:
             args["query"] = query
         if city:
-            args["city"] = city
+            args["city"] = self.index()[1].resolve(city) or city
         if lat is not None and lng is not None:
             args.update(lat=lat, lng=lng)
         cache_key = "h:" + json.dumps(args, sort_keys=True)
@@ -365,6 +373,20 @@ class DoctorDirectory:
         except Exception as exc:
             self._failed("names", exc)
             return []
+
+    def fix_name(self, query: str | None) -> str | None:
+        """A doctor-name query with each word spelled as in the listed names ("neha sarma" -> "neha sharma")."""
+        if not query or not self.enabled:
+            return query
+        names = self.index()[0]
+        return (name_index(tuple(names)).fix(query) or query) if names else query
+
+    def index(self) -> tuple[list[str], CityIndex]:
+        """Every listed doctor's name and the cities they work in, for spelling-tolerant search (cached with names())."""
+        names = self.names(None)
+        hit = self._names.get("")
+        docs = hit[1] if hit else []
+        return names, city_index(tuple(sorted({(d.get("city") or "").strip() for d in docs if d.get("city")})))
 
     def get_doctor(self, doctor_id: str) -> dict | None:
         """The current public profile, or None when not listed any more. Raises DoctorLookupError."""

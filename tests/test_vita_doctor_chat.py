@@ -603,8 +603,8 @@ def test_available_today(client, hms):                              # vision: "a
 
 def test_place_without_location_is_the_city(client, hms):           # "MD gynaecologist near Purnia"
     body = chat(client, "skin doctor kolkata mein")
-    assert body["kind"] == "doctor_list" and searches(hms)[-1]["city"] == "kolkata"
-    assert body["doctors"]["filters"]["city"] == "kolkata" and "Kolkata" in body["message"]
+    assert body["kind"] == "doctor_list" and searches(hms)[-1]["city"] == "Kolkata"      # as 1HMS spells it
+    assert body["doctors"]["filters"]["city"].lower() == "kolkata" and "Kolkata" in body["message"]
 
 
 def test_show_more_uses_1hms_offset(client, hms):

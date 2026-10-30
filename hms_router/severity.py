@@ -88,11 +88,16 @@ _MAX_GAP = 2   # words allowed between consecutive phrase words
 
 
 def _close(a: str, b: str) -> bool:
-    """Equal, or one edit apart (both >=4 letters). Recall matters more than precision for emergencies."""
+    """Equal, or one edit apart (both >=4 letters); two letters swapped count as one edit ("pian" / "pain",
+    "cehst" / "chest"). Recall matters more than precision for emergencies."""
     if a == b:
         return True
     if len(a) < 4 or len(b) < 4 or abs(len(a) - len(b)) > 1:
         return False
+    if len(a) == len(b):
+        diff = [i for i in range(len(a)) if a[i] != b[i]]
+        if len(diff) == 2 and diff[1] == diff[0] + 1 and a[diff[0]] == b[diff[1]] and a[diff[1]] == b[diff[0]]:
+            return True
     prev = list(range(len(b) + 1))
     for i, ca in enumerate(a, 1):
         cur = [i]
