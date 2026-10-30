@@ -66,6 +66,34 @@ class AgentChatRequest(BaseModel):
                                                          "\"I've reached\", check-in and token status")
     new_search: bool = Field(False, description="Search with exactly the asks in `text`, not merged into the last "
                                                 "search (the screen removed a filter chip)")
+    remember: bool = Field(False, description="The identified patient agreed that Vita may remember who they book for, "
+                                              "past specialties and doctors (language and city are kept without it)")
+
+
+class FeedbackIn(BaseModel):
+    session_id: str = Field(..., max_length=64)
+    rating: Literal["up", "down"]
+    comment: str | None = Field(None, max_length=500)
+
+
+class ForgetIn(BaseModel):
+    patient_token: str | None = Field(None, max_length=4096)
+    verified_mobile: str | None = Field(None, max_length=16, pattern=r"^\+?\d{10,13}$")
+
+
+class ExampleIn(BaseModel):
+    session_id: str | None = Field(None, max_length=64, description="Approve a turn of this conversation...")
+    turn: int | None = Field(None, ge=0, description="...this turn (0-based, from the conversation's traces)")
+    patient: str | None = Field(None, max_length=500, description="Or write the patient message yourself")
+    reply: str | None = Field(None, max_length=700, description="The reply Vita should give (a correction), or empty "
+                                                               "to keep Vita's own reply")
+    specialist: str | None = Field(None, max_length=60, description="The right doctor (a correction)")
+    note: str | None = Field(None, max_length=300)
+
+
+class ControlIn(BaseModel):
+    mode: Literal["agent", "rules"] = "agent"
+    channels: dict[str, Literal["agent", "rules"]] = Field(default_factory=dict)
 
 
 def _flow(request: Request) -> VitaEngine:
@@ -79,7 +107,7 @@ def _flow(request: Request) -> VitaEngine:
     return VitaEngine(flow, getattr(request.app.state, "vita_runtime", None))
 
 
-def build_router(guard) -> APIRouter:
+def build_router(guard, admin_guard=None) -> APIRouter:
     router = APIRouter(prefix="/v2/agent", tags=["Vita agent"])
 
     @router.post("/chat", summary="Talk to Vita: find a doctor, choose one",
@@ -104,7 +132,8 @@ def build_router(guard) -> APIRouter:
                               client_ip=req.client_ip, patient_token=req.patient_token, verified_mobile=verified,
                               hospital_id=req.hospital_id, select_doctor_id=select, page=req.page,
                               new_search=req.new_search, ui_language=ui_language(req.ui_language),
-                              channel=req.channel, visit_appointment_id=req.visit_appointment_id)
+                              channel=req.channel, visit_appointment_id=req.visit_appointment_id,
+                              remember=req.remember)
         except ValueError as exc:              # includes SelectionError
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         except Exception as exc:
@@ -146,5 +175,90 @@ def build_router(guard) -> APIRouter:
         flow.agent.accumulator.clear(session_id)
         flow.clear(session_id)
         return {"deleted": session_id}
+
+    # ------------------------------------------------------------------ learning: patients and channels
+    def runtime(request: Request):
+        rt = getattr(request.app.state, "vita_runtime", None)
+        if rt is None:
+            raise HTTPException(status_code=503, detail="Vita learning store not available")
+        return rt
+
+    @router.post("/feedback", summary="Thumbs up / down on a conversation (feeds Vita's learning)")
+    def feedback(body: FeedbackIn, request: Request, _client=Depends(guard)) -> dict:
+        if not runtime(request).traces.feedback(body.session_id, body.rating, body.comment):
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        return {"ok": True}
+
+    @router.delete("/patient-memory", summary="Forget everything Vita remembers about this patient")
+    def forget(body: ForgetIn, request: Request, _client=Depends(guard)) -> dict:
+        from ...application.booking import token_mobile
+        trusted = "verified_mobile" in getattr(_client, "scopes", ())
+        mobile = (body.verified_mobile if trusted and body.verified_mobile else None) or \
+            (token_mobile(body.patient_token) if body.patient_token else None)
+        if not mobile:
+            raise HTTPException(status_code=422, detail="patient_token, or verified_mobile with that scope, required")
+        return {"forgotten": runtime(request).memory.forget(mobile)}
+
+    # ------------------------------------------------------------------ admin: control, review, examples, gate
+    if admin_guard is not None:
+        @router.get("/admin/control", summary="Vita's mode: agent (LangGraph + LLM) or rules, per channel")
+        def get_control(request: Request, _client=Depends(admin_guard)) -> dict:
+            rt = runtime(request)
+            return {**rt.control(), "llm": rt.has_llm, "breakerOpen": rt.breaker.open}
+
+        @router.put("/admin/control", summary="Switch Vita between agent and rules (kill switch), per channel")
+        def put_control(body: ControlIn, request: Request, _client=Depends(admin_guard)) -> dict:
+            return runtime(request).set_control(body.model_dump())
+
+        @router.get("/admin/conversations", summary="Recent conversations, by outcome (booked, emergency, up, down)")
+        def conversations(request: Request, outcome: str | None = None, limit: int = 50,
+                          _client=Depends(admin_guard)) -> dict:
+            return {"conversations": runtime(request).traces.conversations(outcome, min(limit, 200))}
+
+        @router.get("/admin/conversations/{session_id}", summary="One conversation: every turn's understanding, "
+                                                                 "decision, tools, checks and reply")
+        def conversation(request: Request, session_id: str = Path(...), _client=Depends(admin_guard)) -> dict:
+            rt = runtime(request)
+            turns = rt.traces.turns(session_id)
+            if not turns:
+                raise HTTPException(status_code=404, detail="Conversation not found")
+            return {"sessionId": session_id, "turns": turns, "state": _flow(request).state(session_id)}
+
+        @router.get("/admin/examples", summary="Draft and active examples, and the promotion log")
+        def examples(request: Request, _client=Depends(admin_guard)) -> dict:
+            ex = runtime(request).examples
+            return {"version": ex.version(), "draft": ex.drafts(), "active": ex.active()}
+
+        @router.post("/admin/examples", summary="Approve a turn as an example, or correct its reply / specialist "
+                                                "(goes to drafts; live only after the promotion gate)")
+        def add_example(body: ExampleIn, request: Request, _client=Depends(admin_guard)) -> dict:
+            rt = runtime(request)
+            patient, reply, language = body.patient, body.reply, None
+            if body.session_id is not None and body.turn is not None:
+                turns = rt.traces.turns(body.session_id)
+                if not 0 <= body.turn < len(turns):
+                    raise HTTPException(status_code=404, detail="No such turn")
+                t = turns[body.turn]
+                patient, language = patient or t.get("patient"), t.get("language")
+                reply = reply if reply is not None else t.get("reply")
+            if not patient:
+                raise HTTPException(status_code=422, detail="session_id + turn, or patient, required")
+            corrected = bool(body.reply or body.specialist)
+            return rt.examples.add_draft(patient=patient, reply=reply, specialist=body.specialist,
+                                         language=language, note=body.note,
+                                         source="corrected" if corrected else "approved",
+                                         session_id=body.session_id, turn=body.turn,
+                                         by=getattr(_client, "name", None))
+
+        @router.delete("/admin/examples/{example_id}", summary="Remove a draft or active example")
+        def delete_example(request: Request, example_id: str = Path(..., max_length=32),
+                           _client=Depends(admin_guard)) -> dict:
+            return {"deleted": runtime(request).examples.remove(example_id)}
+
+        @router.post("/admin/examples/promote", summary="Run the scenario suite with and without the drafts; "
+                                                        "make them live only if the score is not worse")
+        def promote(request: Request, _client=Depends(admin_guard)) -> dict:
+            from ...vita_graph.evals import promotion_gate
+            return promotion_gate(request.app, runtime(request))
 
     return router

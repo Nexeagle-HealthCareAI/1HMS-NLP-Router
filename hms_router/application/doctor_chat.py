@@ -165,9 +165,11 @@ class DoctorChat:
                lng: float | None = None, hospital_id: str | None = None,
                select_doctor_id: str | None = None, page: int = 1, new_search: bool = False,
                ui_language: str | None = None, client_ip: str | None = None, patient_token: str | None = None,
-               verified_mobile: str | None = None, channel: str = "web", visit_appointment_id: str | None = None) -> dict:
+               verified_mobile: str | None = None, channel: str = "web", visit_appointment_id: str | None = None,
+               remember: bool = False) -> dict:
         """new_search: the screen removed a filter chip and re-sent the remaining filters as text; search
-        with exactly those, never merged into the last search."""
+        with exactly those, never merged into the last search. remember: used by the LangGraph engine's patient
+        memory only (ignored here)."""
         ctx = {"city": city, "lat": lat, "lng": lng, "hospital_id": hospital_id,
                "located": lat is not None and lng is not None,
                # booking only: the visitor's IP for 1HMS's per-visitor limits, the channel's signed-in patient

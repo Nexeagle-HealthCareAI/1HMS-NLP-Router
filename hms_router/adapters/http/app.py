@@ -52,23 +52,22 @@ class _LazyLimiter:
 
 
 def _build_vita_runtime(settings: ServiceSettings, app):
-    """Vita's LangGraph agent (hms_router/vita_graph). No VITA_LLM_PROVIDER, or langgraph missing -> None and Vita
-    answers with its rules engine as before."""
-    if not settings.vita_llm_provider:
-        log.info("Vita LLM agent OFF (VITA_LLM_PROVIDER not set): Vita runs on its rules engine")
-        return None
+    """Vita's LangGraph runtime (hms_router/vita_graph). Always built for its learning stores and control switch;
+    the graph runs only with an LLM (VITA_LLM_PROVIDER). Without one, or if anything here fails, Vita answers with its
+    rules engine as before."""
     try:
-        from ...vita_graph import build_vita_graph, build_vita_llm
+        from ...vita_graph import build_vita_llm
         from ...vita_graph.engine import VitaRuntime
-        llm = build_vita_llm(settings.vita_llm_provider, settings.vita_llm_model, settings.vita_llm_timeout)
-        if llm is None:
-            return None
-        rt = VitaRuntime(llm, build_vita_graph(), route_service=lambda: getattr(app.state, "route", None))
-        log.info("Vita LLM agent ON (%s %s)", settings.vita_llm_provider, settings.vita_llm_model or "default model")
+        llm = build_vita_llm(settings.vita_llm_provider, settings.vita_llm_model, settings.vita_llm_timeout) \
+            if settings.vita_llm_provider else None
+        rt = VitaRuntime(llm, app.state.redis, route_service=lambda: getattr(app.state, "route", None))
+        log.info("Vita LangGraph agent %s", f"ON ({settings.vita_llm_provider})" if rt.has_llm
+                 else "OFF (no VITA_LLM_PROVIDER): rules engine, turns still traced")
         return rt
     except Exception:
-        log.exception("Vita LLM agent could not start; Vita runs on its rules engine")
+        log.exception("Vita runtime could not start; Vita runs on its rules engine")
         return None
+
 
 def create_app(settings: ServiceSettings | None = None) -> FastAPI:
     settings = settings or ServiceSettings.from_env()
@@ -148,7 +147,7 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
     limiter = _LazyLimiter(app)
     app.include_router(health_routes.build_router())
     app.include_router(chat_routes.build_router(Guard(auth, limiter, "chat")))
-    app.include_router(agent_routes.build_router(Guard(auth, limiter, "chat")))
+    app.include_router(agent_routes.build_router(Guard(auth, limiter, "chat"), Guard(auth, limiter, "admin")))
     app.include_router(route_routes.build_router(Guard(auth, limiter, "route")))
     app.include_router(admin_routes.build_router(Guard(auth, limiter, "admin")))
     app.state.settings = settings

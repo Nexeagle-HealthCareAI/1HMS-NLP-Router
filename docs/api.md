@@ -31,6 +31,11 @@ Interactive docs: `/docs` on any instance.
 |---|---|---|
 | `POST /v2/agent/chat` | chat | Vita, the patient agent: find a doctor, book, emergencies, visit help. See [vita_doctor_search.md](vita_doctor_search.md) and [vita_whatsapp.md](vita_whatsapp.md) |
 | `GET /v2/agent/session/{id}`, `DELETE /v2/agent/session/{id}` | chat | What Vita remembers / forget it |
+| `POST /v2/agent/feedback` | chat | 👍/👎 on a conversation (Vita's learning) |
+| `DELETE /v2/agent/patient-memory` | chat | Forget a returning patient (token, or verified mobile with that scope) |
+| `GET/PUT /v2/agent/admin/control` | admin | Vita's mode, `agent` or `rules`, per channel (kill switch) |
+| `GET /v2/agent/admin/conversations`, `GET /v2/agent/admin/conversations/{id}` | admin | Review conversations by outcome; one conversation turn by turn |
+| `GET/POST /v2/agent/admin/examples`, `DELETE /v2/agent/admin/examples/{id}`, `POST /v2/agent/admin/examples/promote` | admin | Approve or correct turns as examples; make them live through the scenario-suite gate. See [vita_graph.md](vita_graph.md) |
 | `POST /v1/route-symptom` (alias `POST /route-symptom`) | route | Symptom text → ranked specialties + emergency flag. See [route_symptom.md](route_symptom.md) |
 | `POST /legacy/route-symptom` | route | Same engine, the old `{specialtyIds, noMatch, method, confidence, modelVersion, raw}` shape |
 | `GET /v1/taxonomy` | route | The 30 specialty ids and names |
@@ -85,7 +90,7 @@ Returns `{session_id, turn, kind, message, question, card, state, severity, keyw
 
 Optional: `lat`/`lng`, `hospital_id`, `select_doctor_id`, `page`, `ui_language`, `channel` (`web` | `whatsapp`),
 `reply_id` (a tapped WhatsApp row), `client_ip`, `patient_token`, `verified_mobile`, `visit_appointment_id`,
-`new_search`. The reply has `kind` (`follow_up`, `emergency`, `recommendation`, `doctor_list`, `doctor_selected`,
+`new_search`, `remember` (the patient agreed that Vita may remember who they book for and past doctors). The reply has `kind` (`follow_up`, `emergency`, `recommendation`, `doctor_list`, `doctor_selected`,
 `info`, `handoff`, booking and visit kinds), `message`, `clarify` (tap options), `doctors`, `card`,
 `language`, `engine` (`agent`, `agent+template`, `rules`, `rules-fallback`) and, for WhatsApp, `whatsapp`
 (ready-to-send messages).

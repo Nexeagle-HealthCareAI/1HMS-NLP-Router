@@ -17,35 +17,12 @@ vision ("How Vita talks"). Vita is its own endpoint; **`/chat` is unchanged** (i
 
 Unset = Vita still talks and triages, but every doctor search answers with `degraded: ["doctor_lookup"]`.
 
-## Engine: LangGraph + an LLM agent (2026-10-30)
+## Engine
 
-`POST /v2/agent/chat` runs `hms_router/vita_graph` (same request and reply contract; replies carry `engine`).
-
-```
-START -> guard_in --(danger / a step in progress / a tap)--> rules (DoctorChat) --------> finish -> END
-                  \-> agent (Groq, tools bound) <-> tools -> finish (checker) -> END
-```
-
-- **guard_in is code, not a model.** Self-harm (`safety/self_harm.py`) and the shared emergency detector run on
-  every message first. Booking (OTP), an emergency and its follow-ups, "where are you?", "which doctor?", the
-  warning-sign question, rules triage waiting for an answer, directions / check-in / token, Bangla, doctor taps
-  and paging stay with the reviewed rules engine.
-- **Tools** (`vita_graph/tools.py`), each running Vita's existing code: `assess_symptoms` (the LLM's plain-English
-  reading -> shared emergency detector -> route-symptom -> doctors), `find_doctors` (specialty, name, degree,
-  hospital, place, near me, lady/male, today, fee/experience, more), `vita_flow` (booking, availability, visit,
-  handoff: answered by the rules engine), `raise_emergency`, `reply` (message + up to 3 tap options).
-  The LLM can only add urgency.
-- **Checker** (`vita_graph/checker.py`) on every LLM-written message: medicine names or doses, a diagnosis,
-  phone numbers, links, "booked" claims, doctors not returned by a tool, over 700 characters. A blocked reply never
-  reaches the patient: the tool's own wording is used, or the rules engine answers.
-- **Fallbacks:** no `VITA_LLM_PROVIDER`, an error, or 3 failures in a row (60 s breaker) -> the rules engine.
-- **Memory:** the last 12 lines of the conversation (both engines) in Redis `vita:llm:{session}` for 30 min;
-  booking turns stored as "[booking details]". Patient text is redacted (phones, emails, "my name is") before
-  it is sent to the model.
-- **Settings:** `VITA_LLM_PROVIDER=groq` + `GROQ_API_KEY`, `VITA_LLM_MODEL` (default `openai/gpt-oss-120b`),
-  `VITA_LLM_TIMEOUT` (default 6 s per call; at most 4 model calls per message). Dev deploy turns it on when the
-  `GROQ_API_KEY` repository secret exists; Prod stays off until `PROD_VITA_LLM_PROVIDER=groq`.
-- **Tests:** `tests/test_vita_graph.py` (scripted model, no key needed).
+Since 2026-10-30 the whole conversation runs on LangGraph with an LLM understanding and replying, saved state per
+session, learning and a control switch: see [vita_graph.md](vita_graph.md). Without `VITA_LLM_PROVIDER` (or with the
+control switch on `rules`) Vita answers with the rules engine described below; the rules engine also always handles
+emergencies, warning signs, booking/OTP and the other steps listed there.
 
 ## Request
 

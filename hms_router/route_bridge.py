@@ -73,12 +73,21 @@ def conversation_text(history: list[dict]) -> str:
     return " . ".join(k for k in kept if k.strip())
 
 
+def _as_paediatrics(c):
+    from dataclasses import replace
+    return replace(c, specialtyId="pediatrics", name="Paediatrics")
+
+
 def to_routing(decision, symptoms: list[str], query: str, age_group: str | None = None) -> RoutingResult:
     """A RouteDecision in the shape OutputGenerator.build expects (always three outputs)."""
     kind = getattr(decision.decision, "value", decision.decision)
     # Paediatrics only for a child the patient mentioned: the model leans to it for common complaints ("pet dard, ulti")
     cands = [c for c in decision.candidates if c.specialtyId not in NOT_BOOKABLE and c.confidence > 0
              and (c.specialtyId != "pediatrics" or age_group == "child")]
+    if age_group == "child":                       # a child's first doctor is a Paediatrician, not a General Physician
+        cands = [_as_paediatrics(c) if c.specialtyId == "general" else c for c in cands]
+        seen: set[str] = set()
+        cands = [c for c in cands if not (c.specialtyId in seen or seen.add(c.specialtyId))]
     low = (kind == "abstain" or not cands or (kind == "clarify" and cands[0].confidence < CLARIFY_MIN))
     recs: list[Recommendation] = []
     if not low:

@@ -1,10 +1,13 @@
 """VitaEngine: what POST /v2/agent/chat calls. Same signature and reply contract as DoctorChat.handle, so the
 Doctor Dekho app, the website and WhatsApp need no change.
 
-  * LLM configured (VITA_LLM_PROVIDER) and healthy -> the LangGraph graph (graph.py).
-  * No LLM, the circuit open after repeated failures, or any error before a tool answered -> DoctorChat (the rules
-    engine), exactly as before.
-Every turn (either engine) is added to a short conversation memory the LLM reads next time (Redis, 30 min).
+  * An LLM configured (VITA_LLM_PROVIDER), the control switch on "agent" and the breaker closed -> the LangGraph
+    graph (graph.py): the whole conversation, state saved per session by the Redis checkpointer.
+  * Otherwise, or any error before an answer exists -> DoctorChat (the rules engine), as before.
+Every turn, by either engine, is traced for learning (learning.py).
+
+Control (`vita:control` in Redis, admin API): mode "agent" (default) or "rules", per channel if wanted:
+{"mode": "agent", "channels": {"whatsapp": "rules"}}.
 """
 from __future__ import annotations
 
@@ -15,12 +18,16 @@ import time
 
 from ..application.booking import token_mobile
 from ..application.doctor_chat import DoctorChat
-from .tools import TOOLS, Turn
+from .learning import ExampleStore, TraceStore, redact
+from .memory import PatientMemory
+from .prompts import REPLY_TOOL, UNDERSTAND_TOOL
+from .tools import Turn
 
 log = logging.getLogger("hms_router.vita_engine")
 
-HISTORY_MAX = 12
-HISTORY_TTL_S = 1800
+# what one turn starts from: per-turn channels cleared; messages / patient / triage / stage carry over (checkpoint)
+TURN_RESET = {"route": None, "why": "", "understanding": {}, "decision": None, "facts": {}, "memory": {},
+              "examples": [], "out": None}
 
 
 class Breaker:
@@ -51,16 +58,57 @@ class Breaker:
 
 
 class VitaRuntime:
-    """Built once at start-up: the compiled graph, the model with Vita's tools bound, the breaker."""
+    """Built once at start-up: the graph with its checkpointer, the model bound to each step's tool, the learning
+    stores, patient memory and the breaker. Without an LLM it still traces turns (rules engine)."""
 
-    def __init__(self, llm, graph, route_service=None, breaker: Breaker | None = None):
-        self.llm = llm.bind_tools(TOOLS) if llm is not None else None
-        self.graph, self.route_service = graph, route_service
+    def __init__(self, llm, redis_client, route_service=None, graph=None, breaker: Breaker | None = None):
+        self.r = redis_client
+        self.route_service = route_service
         self.breaker = breaker or Breaker()
+        self.memory, self.traces, self.examples = PatientMemory(redis_client), TraceStore(redis_client), \
+            ExampleStore(redis_client)
+        self.llm_understand = self.llm_respond = None
+        self.graph = None
+        if llm is not None:
+            self.llm_understand = _bind(llm, UNDERSTAND_TOOL)
+            self.llm_respond = _bind(llm, REPLY_TOOL)
+            if graph is None:
+                from .checkpoint import RedisCheckpointSaver
+                from .graph import build_vita_graph
+                graph = build_vita_graph(RedisCheckpointSaver(redis_client))
+            self.graph = graph
 
     @property
-    def active(self) -> bool:
-        return self.llm is not None and self.graph is not None
+    def has_llm(self) -> bool:
+        return self.graph is not None and self.llm_understand is not None
+
+    # ---------------------------------------------------------------- control
+    def control(self) -> dict:
+        try:
+            return json.loads(self.r.get("vita:control") or "{}")
+        except Exception:
+            return {}
+
+    def set_control(self, value: dict) -> dict:
+        mode = value.get("mode", "agent")
+        channels = {k: v for k, v in (value.get("channels") or {}).items() if v in ("agent", "rules")}
+        if mode not in ("agent", "rules"):
+            raise ValueError("mode must be agent or rules")
+        ctl = {"mode": mode, "channels": channels, "at": int(time.time())}
+        self.r.set("vita:control", json.dumps(ctl))
+        return ctl
+
+    def mode(self, channel: str | None) -> str:
+        ctl = self.control()
+        return (ctl.get("channels") or {}).get(channel or "web") or ctl.get("mode") or "agent"
+
+
+def _bind(llm, tool: dict):
+    name = tool["function"]["name"]
+    try:
+        return llm.bind_tools([tool], tool_choice=name)
+    except Exception:                                    # a provider without forced tool choice
+        return llm.bind_tools([tool])
 
 
 class VitaEngine:
@@ -73,29 +121,42 @@ class VitaEngine:
 
     def clear(self, sid):
         self.flow.clear(sid)
-        try:
-            self.flow.r.delete(_hkey(sid))
-        except Exception:
-            pass
+        rt = self.runtime
+        if rt is not None and rt.graph is not None:
+            try:
+                rt.graph.checkpointer.delete_thread(sid)
+            except Exception:
+                log.exception("conversation state not cleared")
 
     def session_view(self, sid):
         return self.flow.session_view(sid)
 
-    # --------------------------------------------------------------------------------------------- entry
+    def state(self, sid) -> dict | None:
+        """The conversation's saved graph state (admin: what Vita knows, turn by turn)."""
+        rt = self.runtime
+        if rt is None or rt.graph is None:
+            return None
+        snap = rt.graph.get_state({"configurable": {"thread_id": sid}})
+        return {k: v for k, v in (snap.values or {}).items() if k in ("messages", "patient", "triage", "stage")} \
+            if snap else None
+
+    # ---------------------------------------------------------------- entry
     def handle(self, text: str, session_id: str | None, **kw) -> dict:
         rt = self.runtime
-        if rt is None or not rt.active or rt.breaker.open:
-            out = self.flow.handle(text, session_id, **kw)
+        sid, _ = self.flow.agent.pipeline.sessions.open(session_id)       # the graph's thread id
+        if rt is None or not rt.has_llm or rt.breaker.open or rt.mode(kw.get("channel")) != "agent":
+            out = self.flow.handle(text, sid, **kw)
             out.setdefault("engine", "rules")
-            self._remember(text, out)
+            if rt is not None:
+                rt.traces.record(out.get("session_id") or sid, {
+                    "patient": redact(text), "kind": out.get("kind"), "engine": out["engine"],
+                    "language": out.get("language"), "reply": (out.get("message") or "")[:700]})
             return out
-        turn = Turn(self.flow, text, session_id, kw, _ctx(kw), rt.route_service, rt.llm)
-        turn.history = self._history(session_id)
+        turn = Turn(self.flow, text, sid, kw, _ctx(kw), rt)
         try:
-            res = rt.graph.invoke({}, {"configurable": {"turn": turn}, "recursion_limit": 25})
+            res = rt.graph.invoke(dict(TURN_RESET), {"configurable": {"thread_id": sid, "turn": turn},
+                                                     "recursion_limit": 30})
             out = res["out"]
-            if out.get("engine", "").startswith("agent"):
-                rt.breaker.ok()
         except Exception:
             log.exception("Vita graph failed; answering with the rules engine")
             rt.breaker.fail()
@@ -103,39 +164,10 @@ class VitaEngine:
             if out is None:
                 fresh = DoctorChat(self.flow.agent, self.flow.directory, self.flow.r,
                                    booking_client=getattr(self.flow.booking, "client", None))
-                out = fresh.handle(text, turn.sid, **kw)
-                out["engine"] = "rules-fallback"
-        if turn.tools_used or turn.checks:
-            log.info("vita turn engine=%s tools=%s checks=%s", out.get("engine"), turn.tools_used, turn.checks)
-        self._remember(text, out)
+                out = fresh.handle(text, sid, **kw)
+            out["engine"] = "rules-fallback"
+        log.info("vita turn engine=%s tools=%s checks=%s", out.get("engine"), turn.tools_used, turn.checks)
         return out
-
-    # --------------------------------------------------------------------------------------------- memory
-    def _history(self, sid) -> list[dict]:
-        if not sid:
-            return []
-        try:
-            return [json.loads(x) for x in self.flow.r.lrange(_hkey(sid), -HISTORY_MAX, -1)]
-        except Exception:
-            return []
-
-    def _remember(self, text: str, out: dict) -> None:
-        sid = out.get("session_id")
-        if not sid:
-            return
-        try:
-            key = _hkey(sid)
-            said = "[booking details]" if str((out.get("clarify") or {}).get("kind") or "").startswith("book_") else text
-            self.flow.r.rpush(key, json.dumps({"r": "user", "t": said[:500]}),
-                              json.dumps({"r": "vita", "t": (out.get("message") or "")[:500]}))
-            self.flow.r.ltrim(key, -HISTORY_MAX, -1)
-            self.flow.r.expire(key, HISTORY_TTL_S)
-        except Exception:
-            log.exception("Vita conversation memory not saved")
-
-
-def _hkey(sid: str) -> str:
-    return f"vita:llm:{sid}"
 
 
 def _ctx(kw: dict) -> dict:
