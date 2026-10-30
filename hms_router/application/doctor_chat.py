@@ -258,7 +258,7 @@ class DoctorChat:
             if mid.more and st.get("last") and not (mid.specialty_key or mid.name_query or mid.degree):
                 reshow = True                      # "koi aur doctor dikhao" while booking: the list they chose from, again
         norm = intent_text(text)
-        names = self.directory.names(ctx["city"]) if _wants_names(norm) else None
+        names = self.directory.names(None) if _wants_names(norm) else None      # every city: a name is a name
         ask = parse(text, names=names, medical_terms=self.terms)
         if (st.get("selected") and not ask.when and not ask.name_query and not ask.specialty_key
                 and not ask.symptomish and not ask.degree):
@@ -330,9 +330,10 @@ class DoctorChat:
         if last and ask.refine and not self._said_symptom(text):                          # "kam fees wale pehle"
             return self._search_turn(text, session_id, _merge(last, ask), ctx, st)
 
-        if not last and ask.refine and (ask.sort or ask.available_today) and not ask.direct \
-                and not self._said_symptom(text):                                                    # "sabse sasta doctor": keep it,
-            carry = {k: val for k, val in (("sort", ask.sort), ("availableToday", ask.available_today)) if val}
+        if not last and ask.refine and (ask.sort or ask.available_today or ask.place) and not ask.direct \
+                and not self._said_symptom(text):                     # "sabse sasta doctor", "kishanganj ke doctor": keep it,
+            carry = {k: val for k, val in (("sort", ask.sort), ("availableToday", ask.available_today),
+                                           ("place", ask.place)) if val}
             out = self._ask_kind(text, session_id, st)                                     # ask which kind of doctor
             est = self.load(out["session_id"])
             est["carry"] = carry
@@ -519,7 +520,9 @@ class DoctorChat:
         fee_sort = filters.get("sort") == "fee"
         own_hospital = filters.get("hospitalId") or ctx["hospital_id"]
         args = dict(specialty_key=filters.get("specialtyKey"), query=filters.get("query"),
-                    degree=filters.get("degree"), city=None if filters.get("hospitalId") else city,
+                    degree=filters.get("degree"),
+                    # a doctor's name is searched in every city unless the patient named a place with it
+                    city=None if filters.get("hospitalId") or (filters.get("query") and not place_city) else city,
                     hospital_id=own_hospital, only_at_hospital=bool(filters.get("hospitalId")),
                     gender=filters.get("gender"), available_today=bool(filters.get("availableToday")),
                     # fees are sorted here, over the first 10; everything else pages with 1HMS's offset
@@ -534,9 +537,15 @@ class DoctorChat:
         if filters.get("sort") == "experience":
             args["sort"] = "experience"
 
-        fallback_used = False
+        fallback_used = widened = False
         try:
             found = self.directory.search(**args)
+            if (found is None or (not found["doctors"] and not found["total"])) and args.get("city") \
+                    and not ctx["located"] and page == 1:
+                wide = self.directory.search(**dict(args, city=None))     # nobody in that city: look in other towns
+                if wide and wide["doctors"]:
+                    found, widened = wide, True
+                    ctx["lead"] = V.widened_note(hi, args["city"], _spec_name(filters.get("specialtyKey")))
             if (found is None or (not found["doctors"] and not found["total"])) and filters.get("specialtyKey") \
                     and not filters.get("query") and not filters.get("hospitalId") and page == 1:
                 if filters["specialtyKey"] != "general-medicine":                   # nobody of that specialty
@@ -569,7 +578,7 @@ class DoctorChat:
                      "इस लिस्ट में और डॉक्टर नहीं हैं। Doctor Dekho पर सभी डॉक्टर देख सकते हैं, या फ़िल्टर बदलें।")
             return self._reply(base, DOCTOR_LIST, msg, clarify={"kind": "no_more", "question": msg, "options": []})
         items = items[:per]
-        filters = dict(filters, city=city) if place_city else filters
+        filters = dict(filters, city=city) if place_city and not widened else filters
         modes = list(filters.get("modes") or [])
         block = self._block(items, total, modes, filters, ctx, specialty_id=found["specialtyId"] if found else None,
                             specialist=_spec_name(filters.get("specialtyKey")) if not fallback_used else FALLBACK_SPECIALIST,
@@ -587,7 +596,7 @@ class DoctorChat:
             clarify = self._confused(st, clarify, hi)
         else:
             st["confused"] = 0
-            msg = self._list_message(items, total, filters, hi, used_city=used_city and bool(ctx["city"]),
+            msg = self._list_message(items, total, filters, hi, used_city=used_city and bool(ctx["city"]) and not widened,
                                      fallback_used=fallback_used, page=page)
             which = self._which_options(items, filters)
             if which:                                   # several doctors share the name: tell them apart
@@ -1396,9 +1405,11 @@ class DoctorChat:
 
 # ---------------------------------------------------------------------------------------------- pure helpers
 def _wants_names(norm: str) -> bool:
-    """Fetch the name index only when the message might name a doctor without 'dr'."""
+    """Fetch the name index (cached 15 min) only when the message might name a doctor without 'dr': a meeting cue
+    ("anita sen se milna hai"), or a short message that could be just a name ("neha sharma", "anita sen ji")."""
     from ..doctor_intent import _NAME_CUE
-    return bool(_NAME_CUE.search(norm))
+    words = norm.split()
+    return bool(_NAME_CUE.search(norm)) or (1 <= len(words) <= 4 and not any(w in DOCTOR_WORDS for w in words))
 
 
 def _bare_doctor(norm: str, ask: DoctorAsk) -> bool:

@@ -44,7 +44,11 @@ _SPECIALIST_NOUN = re.compile(
     r"endocrinologists?|diabetologists?|pulmonologists?|chest specialists?|nephrologists?|oncologists?|"
     r"rheumatologists?|physiotherapists?|physio|p(?:a)?ediatricians?|child specialists?|geriatricians?|"
     r"general physicians?|physicians?|general surgeons?|surgeons?|plastic surgeons?|vascular surgeons?|"
-    r"cardiothoracic surgeons?|eye specialists?|skin specialists?)\b")
+    r"cardiothoracic surgeons?|eye specialists?|skin specialists?|"
+    # the specialty itself, as people also write it: "cardiology doctor", "DM cardiology", "dermatology"
+    r"cardiology|dermatology|neurology|gastroenterology|orthopa?edics|gyn(?:a)?ecology|obstetrics|ophthalmology|"
+    r"urology|nephrology|oncology|pulmonology|psychiatry|endocrinology|diabetology|rheumatology|p(?:a)?ediatrics|"
+    r"physiotherapy|dentistry|general medicine|general surgery)\b")
 
 # Words that name a specialty only next to a doctor word: "dil ka doctor", "skin doctor", "pet ka doctor".
 # Alone they are symptoms ("pet dard", "skin pe daane") and go to triage.
@@ -90,7 +94,12 @@ def _load_everyday_specialties(path: Path = EVERYDAY_SPECIALTY_WORDS) -> dict[st
 for _w, _k in _load_everyday_specialties().items():
     _ALIASES.setdefault(_w, _k)
 
-_DEGREE = re.compile(r"\b(m\.?b\.?b\.?s|m\.?d|m\.?s|d\.?m|m\.?ch|d\.?n\.?b|b\.?d\.?s|m\.?d\.?s|d\.?g\.?o|d\.?c\.?h)\b")
+# "md", "m.d", and "m d" (what "M.D." becomes once punctuation is removed); letters only, so "m s" is a degree only
+# as a whole spaced token run
+_DEGREE = re.compile(r"\b(m[. ]?b[. ]?b[. ]?s|m[. ]?d[. ]?s|m[. ]?ch|d[. ]?n[. ]?b|b[. ]?d[. ]?s|d[. ]?g[. ]?o|d[. ]?c[. ]?h|"
+                     r"m[. ]?d|m[. ]?s|d[. ]?m)\b")
+# a patient naming several degrees means the most specific one ("MBBS, MD" -> MD; "MD DM" -> DM)
+_DEGREE_RANK = {"DM": 4, "MCh": 4, "MD": 3, "MS": 3, "MDS": 3, "DNB": 3, "DGO": 2, "DCH": 2, "MBBS": 1, "BDS": 1}
 _DEGREE_CANON = {"mbbs": "MBBS", "md": "MD", "ms": "MS", "dm": "DM", "mch": "MCh", "dnb": "DNB", "bds": "BDS",
                  "mds": "MDS", "dgo": "DGO", "dch": "DCH"}
 
@@ -268,11 +277,15 @@ def _find_specialty(text: str) -> tuple[str | None, str | None, set[str]]:
 
 
 def _find_degree(text: str) -> tuple[str | None, set[str]]:
-    m = _DEGREE.search(text)
-    if not m:
+    found = []
+    for m in _DEGREE.finditer(text):
+        canon = _DEGREE_CANON.get(re.sub(r"[. ]", "", m.group(1)))
+        if canon:
+            found.append((canon, m.group(1)))
+    if not found:
         return None, set()
-    raw = m.group(1).replace(".", "")
-    return _DEGREE_CANON.get(raw), {m.group(1)}
+    best = max(found, key=lambda f: _DEGREE_RANK.get(f[0], 0))
+    return best[0], {w for _, raw in found for w in raw.replace(".", " ").split()}
 
 
 def _squeeze(w: str) -> str:
@@ -290,13 +303,26 @@ def _find_name(text: str, names: Iterable[str] | None, exclude: set[str] = froze
     for i, w in enumerate(words):
         if w in ("dr", "doctor", "daktar", "docter"):
             span = []
-            for nxt in words[i + 1:i + 3]:
+            for nxt in words[i + 1:i + 5]:
+                if len(nxt) == 1 and not span:
+                    continue                                # an initial: "dr s roy", "dr. a. k. sen"
                 if _is_stop(nxt) or nxt in _ALIASES or len(nxt) < 3 or _SPECIALIST_NOUN.fullmatch(nxt):
                     break
                 span.append(nxt)
+                if len(span) == 2:
+                    break
             if span:
                 return " ".join(span), set(span)
-    # 2) a listed doctor's name with a meeting cue: "anita sen se milna hai"
+    # 2) a listed doctor's name with a meeting cue ("anita sen se milna hai"), or the name alone ("neha sharma",
+    #    "anita sen ji"): every word left is a name word of one listed doctor
+    if names and not _NAME_CUE.search(text):
+        rest = [w for w in words if not _is_stop(w) and w not in ("ji", "please", "plz", "sir", "madam")]
+        if 1 <= len(rest) <= 3 and not any(w in _ALIASES for w in rest):
+            for n in names:
+                toks = [t for t in preprocess(n).split() if len(t) >= 2 and t not in DOCTOR_WORDS]
+                if toks and all(difflib.get_close_matches(w, toks, n=1, cutoff=0.84) for w in rest) and \
+                        (len(rest) >= 2 or len(rest[0]) >= 4):
+                    return " ".join(rest), set(rest)
     if names and _NAME_CUE.search(text):
         name_tokens = {t for n in names for t in preprocess(n).split() if len(t) >= 3 and t not in DOCTOR_WORDS}
         hits = [w for w in words if len(w) >= 3 and not _is_stop(w) and w not in _ALIASES
@@ -404,6 +430,14 @@ def _find_place(norm: str, medical_terms) -> str | None:
     lead = _leading_place(words, norm, medical_terms)      # Hindi order: "kolkata mein skin doctor"
     if lead:
         return lead
+    m = _PLACE_DOCTORS.match(norm)                         # "kishanganj ke doctor", "purnia wale doctors"
+    if m:
+        cand = m.group(1).split()
+        if not (any(len(w) < 4 for w in cand) or set(cand) & (_NOT_PLACE | DOCTOR_WORDS | _NAME_STOP | set(_ALIASES) |
+                                                                _TIME_WORDS)
+                or _SPECIALIST_NOUN.search(m.group(1)) or _GENDER_WORD.search(m.group(1))
+                or (medical_terms and [t for t in medical_terms(m.group(1)) if t not in _FILLER])):
+            return m.group(1)
     only = _PLACE_ONLY.match(norm)                         # "patna mein dikhao", "nahi, kolkata me": the same search elsewhere
     if only:
         cand = only.group(1).split()
@@ -438,6 +472,8 @@ _TIME_WORDS = {"subah", "sawere", "savere", "sham", "shaam", "dopahar", "raat", 
                "this", "today", "tomorrow", "parso", "parson", "ghante", "ghanta", "minute", "monday", "tuesday",
                "wednesday", "thursday", "friday", "saturday", "sunday", "somvar", "mangalvar", "budhvar", "guruvar",
                "shukravar", "shanivar", "ravivar", "itvaar", "time", "samay", "waqt", "date", "tarikh"}
+_PLACE_DOCTORS = re.compile(r"^(?:(?:mujhe|hume|koi|achha|acha|accha)\s+)*([a-z]+(?: [a-z]+)?) (?:ke|ka|ki|wale|wala|waale|"
+                            r"vale) (?:doctor|doctors|daktar|dr)(?: (?:chahiye|chaiye|dikhao|batao|bataiye|hain|hai))*$")
 _PLACE_ONLY = re.compile(r"^(?:(?:nahi|nahin|aur|ab|to|toh|phir|actually|ok|acha|accha)\s+)*([a-z]+(?: [a-z]+)?) (?:mein|me|main)"
                          r"(?: (?:bhi|dikhao|batao|dekho|chahiye|dikhaiye|bataiye|please))*$")
 

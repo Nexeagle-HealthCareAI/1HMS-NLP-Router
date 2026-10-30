@@ -108,8 +108,12 @@ class Turn:
         if out.get("kind") != DOCTOR_LIST or not items or (out.get("clarify") or {}).get("kind") == "which_doctor":
             self.final = out                       # a location question, nothing found, or "which one?": as written
             return json.dumps({"answered": True, "message": out.get("message")})
+        lead = self.ctx.pop("lead", None)                 # "none in Purnia, these are in other towns"
+        if lead:
+            out["message"] = f"{lead} {out.get('message') or ''}".strip()
         self.ui = out
         return json.dumps({"doctors": [_brief(d) for d in items], "total": out["doctors"].get("total"),
+                           "note_for_patient": lead,
                            "has_more": out["doctors"].get("hasMore"),
                            "note": "The list is on screen with a Choose button. Say one short line about it."})
 
