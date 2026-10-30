@@ -2,7 +2,7 @@
 from pathlib import Path
 
 import pytest
-from hms_router.specialist_rag import _default_corpus
+from hms_router.symptom_clusters import _default_corpus
 
 _ROOT = Path(__file__).resolve().parent.parent
 _REQUIRED = [
@@ -36,3 +36,25 @@ def _fresh_corpus_cache():
 
 # /route-symptom fixtures (bundle, service) and fakes live in tests/conftest_route.py
 from tests.conftest_route import bundle, service  # noqa: E402,F401
+
+
+_ROUTE_SERVICE = None
+
+
+def route_service():
+    """One route-symptom service per test session (the model takes a second or two to load). Tests that build
+    HMSRouterAgent directly pass `route_service=route_service`, as the app does."""
+    global _ROUTE_SERVICE
+    if _ROUTE_SERVICE is None:
+        from hms_router.application.container import build_route_symptom_service
+        _ROUTE_SERVICE = build_route_symptom_service()
+    return _ROUTE_SERVICE
+
+
+def make_agent(redis=None, **kw):
+    """HMSRouterAgent wired like the app: route-symptom chooses the specialist, its detector judges emergencies."""
+    import fakeredis
+    from hms_router.agent import HMSRouterAgent
+    kw.setdefault("route_service", route_service)
+    kw.setdefault("emergency_detector", lambda: route_service().detector)
+    return HMSRouterAgent(redis or fakeredis.FakeRedis(decode_responses=True), **kw)

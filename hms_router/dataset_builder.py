@@ -439,14 +439,14 @@ def write_lexicon(existing: list[dict], additions: list[dict], out: Path = OUT_L
 
 # ------------------------------------------------------------------ loader (runtime use)
 def load_corpus_from_dataset(dataset_path: Path | str | None = None) -> list:
-    """Load a specialist_rag.Cluster list directly from combined_symptom_dataset.csv.
+    """Load a symptom_clusters.Cluster list directly from combined_symptom_dataset.csv.
 
     This is an alternative to reading specialist_mapping.csv.  Useful when the
     dataset has been updated but the mapping CSV has not been regenerated yet.
 
-    Returns the same Cluster objects that specialist_rag.load_corpus() returns.
+    Returns the same Cluster objects that symptom_clusters.load_corpus() returns.
     """
-    from .specialist_rag import Cluster  # local import to avoid circular at module level
+    from .symptom_clusters import Cluster  # local import to avoid circular at module level
 
     path = Path(dataset_path) if dataset_path else DATASET_PATH
     mapping_rows = build_specialist_mapping(path)

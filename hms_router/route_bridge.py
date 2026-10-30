@@ -1,5 +1,5 @@
-"""Vita's specialist choice comes from the /v1/route-symptom engine (RouteSymptomService), not the older
-SpecialistRetriever. Probe 2026-10-30: the retriever sent fever to a Gastroenterologist, toothache to a
+"""Every conversational specialist choice (Vita and /chat) comes from the /v1/route-symptom engine
+(RouteSymptomService). The older cluster retriever (specialist_rag.SpecialistRetriever) was removed 2026-10-30. Probe 2026-10-30: the retriever sent fever to a Gastroenterologist, toothache to a
 Dermatologist, pregnancy with swollen feet to an Orthopedist, and a red eye, missed periods, anxiety and high sugar
 to a General Physician with "can't tell"; route-symptom chose General Physician, Dentistry, Gynaecology,
 Ophthalmology, Gynaecology, Psychiatry and Endocrinology.
@@ -11,9 +11,11 @@ Vita keeps its own conversation (follow-up questions, wording, doctor lists); on
   * CLARIFY (a close call) -> the same when the top specialty has at least CLARIFY_MIN confidence, otherwise
     low confidence (Vita says it can't tell and suggests a General Physician first, as before);
   * ABSTAIN -> low confidence;
-  * an emergency, or the engine not being ready or failing -> the caller keeps the older retriever's result.
+  * an emergency -> the emergency card (the severity result decides; no routing needed);
+  * the engine not ready or failing -> fallback_routing: low confidence, General Physician first.
 Emergency Medicine, Pathology, Radiology and Anaesthesiology are never offered as a booking specialty here; Oncology
-and the surgical subspecialties are never the second option, and Paediatrics only for a child.
+and the surgical subspecialties are never the second option; Paediatrics only for a child; what the patient denied
+("chest pain nahi hai") is taken out before routing.
 Known gap: route-symptom sends Hindi-script fever (बुखार) to Cardiology; the LLM understanding step addresses it.
 """
 from __future__ import annotations
@@ -21,7 +23,7 @@ from __future__ import annotations
 import re
 
 from .doctors import SPECIALIST_TITLES, specialty_key
-from .specialist_rag import FALLBACKS, Recommendation, RoutingResult
+from .routing_types import FALLBACKS, Recommendation, RoutingResult
 from .textnorm import preprocess
 
 SOURCE = "route-symptom"
@@ -58,14 +60,25 @@ def title(name: str) -> str:
 
 
 def conversation_text(history: list[dict]) -> str:
+    """The patient's last messages, with what they denied taken out: "chest pain nahi hai bas khansi hai" is routed
+    as "bas khansi hai" (route-symptom handles denials for emergencies, not for choosing the specialty)."""
+    from .safety.denial import strip_denials
     texts = [(m.get("raw") or m.get("normalized") or "").strip() for m in history][-HISTORY_TURNS:]
-    return " . ".join(t for t in texts if t)
+    kept = []
+    for t in texts:
+        if not t:
+            continue
+        cleaned, denied = strip_denials(preprocess(t))
+        kept.append(cleaned if denied else t)          # untouched text keeps its script (Hindi stays Hindi)
+    return " . ".join(k for k in kept if k.strip())
 
 
 def to_routing(decision, symptoms: list[str], query: str, age_group: str | None = None) -> RoutingResult:
     """A RouteDecision in the shape OutputGenerator.build expects (always three outputs)."""
     kind = getattr(decision.decision, "value", decision.decision)
-    cands = [c for c in decision.candidates if c.specialtyId not in NOT_BOOKABLE and c.confidence > 0]
+    # Paediatrics only for a child the patient mentioned: the model leans to it for common complaints ("pet dard, ulti")
+    cands = [c for c in decision.candidates if c.specialtyId not in NOT_BOOKABLE and c.confidence > 0
+             and (c.specialtyId != "pediatrics" or age_group == "child")]
     low = (kind == "abstain" or not cands or (kind == "clarify" and cands[0].confidence < CLARIFY_MIN))
     recs: list[Recommendation] = []
     if not low:
@@ -84,3 +97,21 @@ def to_routing(decision, symptoms: list[str], query: str, age_group: str | None 
         if all(r.specialist != name for r in recs):
             recs.append(Recommendation(name, 0.0, [], "Fallback when no better match", None, "fallback"))
     return RoutingResult(recs[:3], False, low, query)
+
+
+def fallback_routing(symptoms: list[str], query: str, emergency: bool = False) -> RoutingResult:
+    """No route-symptom decision (an emergency, or the engine not ready / failing): the card's three outputs
+    are the generic ones - General Physician first - and the reply says Vita cannot tell."""
+    recs = [Recommendation(name, 0.0, [], "Fallback when no specialty decision is available", None, "fallback")
+            for name in FALLBACKS]
+    return RoutingResult(recs, emergency, not emergency, query)
+
+
+def emergency_routing(decision, symptoms: list[str], query: str) -> RoutingResult:
+    """An emergency: who to see after the ER, from the shared detector's recommended specialties ("Chest pain" ->
+    Cardiologist). The card itself is the emergency card; these only fill its "after stabilisation" line."""
+    ids = [i for i in (decision.emergency.recommendedSpecialtyIds or []) if i not in NOT_BOOKABLE]
+    from .domain.taxonomy import SPECIALTY_NAMES
+    recs = [Recommendation(title(SPECIALTY_NAMES.get(i, i)), 1.0, list(symptoms), "after the emergency", i, "emergency")
+            for i in ids]
+    return RoutingResult(recs, True, False, query)

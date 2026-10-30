@@ -20,7 +20,7 @@ import math
 from dataclasses import asdict, dataclass
 
 from .severity import EMERGENCY_CANONICAL
-from .specialist_rag import Cluster
+from .symptom_clusters import Cluster
 from .spelling import CorrectionResult
 
 HIGH_MAX_CLUSTER_SHARE = 0.35        # symptom in <= 35% of clusters counts as discriminative

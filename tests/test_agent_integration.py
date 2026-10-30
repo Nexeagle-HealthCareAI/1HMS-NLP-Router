@@ -1,5 +1,7 @@
 """End-to-end: all layers through HMSRouterAgent. These pin the bugs found when the separately-built steps were joined."""
 import fakeredis
+
+from tests.conftest import make_agent
 import pytest
 
 from hms_router import HMSRouterAgent
@@ -7,7 +9,7 @@ from hms_router import HMSRouterAgent
 
 @pytest.fixture
 def agent():
-    return HMSRouterAgent(fakeredis.FakeRedis(decode_responses=True))
+    return make_agent()
 
 
 def say(agent, *msgs):
@@ -31,8 +33,9 @@ def test_doc_three_turn_flow_end_state(agent):
     assert r.kind == "recommendation"
     assert set(r.state.symptoms) == {"stomach pain", "vomiting", "fever"} and r.state.duration == "since morning"
     roles = [(o.role, o.specialist) for o in r.card.outputs]
-    assert roles[0] == ("PRIMARY", "Gastroenterologist") and len(roles) == 3
-    assert roles[2][0] == "ALTERNATIVE" and roles[2][1] in ("General Physician", "Telemedicine consult")
+    # the route-symptom engine (since 2026-10-30): stomach pain + vomiting + fever -> a General Physician first
+    assert roles[0] in (("PRIMARY", "General Physician"), ("PRIMARY", "Gastroenterologist")) and len(roles) == 3
+    assert roles[2][0] == "ALTERNATIVE" and roles[2][1] in ("General Physician", "Telemedicine consult", "OPD triage desk")
     assert len({s for _, s in roles}) == 3                                   # three DISTINCT outputs
 
 
@@ -47,7 +50,7 @@ def test_doc_emergency_table_every_phrase(agent):
     for phrase in ["seene mein dard", "saans nahi aa raha", "behosh ho gaya", "zyada khoon aa raha",
                    "laqwa", "muh tedha", "aankhon ke aage andhera", "haath pair sune ho gaye",
                    "sar mein achanak tez dard", "ulti mein khoon"]:
-        assert say(HMSRouterAgent(fakeredis.FakeRedis(decode_responses=True)), phrase).kind == "emergency", phrase
+        assert say(make_agent(), phrase).kind == "emergency", phrase
 
 
 def test_doc_appendicitis_row_is_severe_not_emergency(agent):
@@ -64,20 +67,20 @@ def test_doc_appendicitis_row_is_severe_not_emergency(agent):
     "vomiting blood", "chhaati mein dard",
 ])
 def test_emergency_variants_are_caught(text):
-    r = say(HMSRouterAgent(fakeredis.FakeRedis(decode_responses=True)), text)
+    r = say(make_agent(), text)
     assert r.kind == "emergency" and r.severity.emergency, text
 
 
 @pytest.mark.parametrize("text", ["halka sir dard hai", "bukhar nahi hai, khansi hai", "seene mein dard nahi hai",
                                   "no chest pain, only mild cough"])
 def test_benign_or_denied_is_not_emergency(text):
-    r = say(HMSRouterAgent(fakeredis.FakeRedis(decode_responses=True)), text)
+    r = say(make_agent(), text)
     assert r.kind != "emergency", text
 
 
 def test_emergency_never_triggers_follow_up_question(agent):
     for text in ["sar mein achanak tez dard", "bahut zyada khoon beh raha hai", "ulti mein khoon"]:
-        r = say(HMSRouterAgent(fakeredis.FakeRedis(decode_responses=True)), text)
+        r = say(make_agent(), text)
         assert r.kind == "emergency" and r.question is None and r.state.ready, text
 
 
@@ -110,14 +113,14 @@ def test_nlp_crash_keeps_symptoms_spelling_already_found(agent):
 def test_sudden_severe_headache_gets_its_canonical_symptom(agent):
     r = say(agent, "kal raat se bahut tez sir dard ho raha hai")           # the doc's Step 3 example: NOT sudden
     assert r.state.symptoms == ["headache"] and r.state.duration == "since last night" and r.state.intensity == "severe"
-    r = say(HMSRouterAgent(fakeredis.FakeRedis(decode_responses=True)), "sar mein achanak tez dard")
+    r = say(make_agent(), "sar mein achanak tez dard")
     assert r.state.symptoms == ["sudden severe headache"] and r.kind == "emergency"
 
 
 # ----------------------------------------------------------------- misc wiring
 def test_reply_language_follows_user(agent):
     assert "Symptom summary" in say(agent, "I have fever and cough for 3 days", "no other").message
-    r = say(HMSRouterAgent(fakeredis.FakeRedis(decode_responses=True)), "seene mein dard")
+    r = say(make_agent(), "seene mein dard")
     assert "Turant 108" in r.message
 
 

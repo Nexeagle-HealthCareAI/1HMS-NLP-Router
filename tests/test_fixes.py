@@ -1,4 +1,4 @@
-"""Unit tests for fixes made while joining the steps (script, spelling, safety net, retriever, output, keywords)."""
+"""Unit tests for fixes made while joining the steps (script, spelling, safety net, output, keywords)."""
 import fakeredis
 import pytest
 
@@ -9,7 +9,7 @@ from hms_router.lexicon import Lexicon
 from hms_router.output import OutputGenerator
 from hms_router.script import normalize_script
 from hms_router.severity import EMERGENCY, SeverityClassifier, emergency_check, load_extra_rules, EMERGENCY_RULES
-from hms_router.specialist_rag import SpecialistRetriever, load_corpus
+from hms_router.symptom_clusters import Cluster
 from hms_router.spelling import SpellingCorrector
 
 
@@ -80,28 +80,24 @@ def test_accumulator_obeys_safety_net_flag_and_callable():
     assert seen == [["cough"]] and not s.ready and s.next_question                  # callable got the merged state
 
 
-# ---------------------------------------------------------------- retriever (Step 8 hooks)
-def test_boost_is_bounded_and_cannot_create_a_match():
-    r = SpecialistRetriever(boost=lambda cid: 0.5)
-    out = r.route({"symptoms": ["stomach pain", "vomiting", "fever"]})
-    assert out.recommendations[0].specialist == "Gastroenterologist" and out.recommendations[0].confidence <= 1.0
-    out = r.route({"symptoms": ["unobtainium"]})                                    # nothing matches -> boost can't help
-    assert out.low_confidence and all(x.source == "fallback" for x in out.recommendations)
-
-
-def test_reindex_after_corpus_grows():
-    r = SpecialistRetriever()
-    from hms_router.specialist_rag import Cluster
-    r.reindex(r.corpus + [Cluster("RHE1", "Rheumatologist", ("joint pain", "swelling"), "Joint pain with swelling")])
-    out = r.route({"symptoms": ["joint pain", "swelling"]})
-    assert out.recommendations[0].specialist == "Rheumatologist"
-
-
 # ---------------------------------------------------------------- Step 7
+_SERVICE = None
+
+
 def _card(state, **kw):
-    clf, rag = SeverityClassifier(), SpecialistRetriever()
+    """The card /chat builds: severity first, then the route-symptom engine (route_bridge), as agent._route does."""
+    global _SERVICE
+    if _SERVICE is None:
+        from hms_router.application.container import build_route_symptom_service
+        _SERVICE = build_route_symptom_service()
+    from hms_router.route_bridge import emergency_routing, to_routing
+    clf = SeverityClassifier()
     sev = clf.classify(state).to_dict()
-    return OutputGenerator().build(state, sev, rag.route(state, sev))
+    syms = list(state.get("symptoms") or [])
+    decision = _SERVICE.route(" ; ".join(syms) or "-", top_k=5)
+    routing = (emergency_routing(decision, syms, "") if sev["emergency"] or decision.emergency.flag
+               else to_routing(decision, syms, ""))
+    return OutputGenerator().build(state, sev, routing)
 
 
 def test_three_distinct_outputs_always():
@@ -130,7 +126,6 @@ def test_watch_for_has_no_duplicates_and_always_has_emergency_line():
 
 # ---------------------------------------------------------------- keywords
 def test_keyword_levels_follow_corpus_idf():
-    from hms_router.specialist_rag import Cluster
     corpus = [Cluster(f"C{i}", f"S{i}", ("fever",) + (("dizziness",) if i == 0 else ()), "d") for i in range(10)]
     tagger = KeywordTagger(corpus)
     assert tagger.idf("dizziness") > tagger.idf("fever")                            # rarer = more discriminative

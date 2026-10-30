@@ -5,8 +5,7 @@
     "body": {
      "card": {
       "after_stabilisation": [
-       "Cardiologist",
-       "General Physician"
+       "Cardiologist"
       ],
       "alert": "EMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.",
       "disclaimer": "Triage support only - not a diagnosis.",
@@ -67,7 +66,7 @@
      ],
      "kind": "emergency",
      "language": "hinglish",
-     "message": "[!] EMERGENCY\nEMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.\n\nChest pain\nAapke symptoms: chest pain\nAfter the ER: Cardiologist, General Physician\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "[!] EMERGENCY\nEMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.\n\nChest pain\nAapke symptoms: chest pain\nAfter the ER: Cardiologist\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": "EMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.",
@@ -148,8 +147,7 @@
     "body": {
      "card": {
       "after_stabilisation": [
-       "Pulmonologist",
-       "Cardiologist"
+       "Pulmonologist"
       ],
       "alert": "EMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.",
       "disclaimer": "Triage support only - not a diagnosis.",
@@ -210,7 +208,7 @@
      ],
      "kind": "emergency",
      "language": "hindi",
-     "message": "[!] EMERGENCY\nEMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.\n\nBreathlessness\nAapke symptoms: breathlessness\nAfter the ER: Pulmonologist, Cardiologist\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "[!] EMERGENCY\nEMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.\n\nBreathlessness\nAapke symptoms: breathlessness\nAfter the ER: Pulmonologist\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": "EMERGENCY: Turant 108 (ambulance) ya 112 par call karein, ya nearest ER jaayein. / Call 108 (ambulance) or 112, or go to the nearest ER now.",
@@ -414,25 +412,23 @@
       "low_confidence": false,
       "outputs": [
        {
-        "cluster_id": "NEU1",
-        "confidence": 0.657,
+        "cluster_id": "neurology",
+        "confidence": 0.617,
         "matched_symptoms": [
          "headache",
          "dizziness"
         ],
-        "reason": "Neurological symptoms including headache and dizziness",
+        "reason": "route-symptom answer (Suggested Neurology because 'headache', 'dizziness' match similar Neurology cases.)",
         "role": "PRIMARY",
         "specialist": "Neurologist"
        },
        {
-        "cluster_id": "CARD1",
-        "confidence": 0.296,
-        "matched_symptoms": [
-         "dizziness"
-        ],
-        "reason": "Cardiac symptoms including chest pain and breathlessness",
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "No closer match - start with a general assessment",
         "role": "SECONDARY",
-        "specialist": "Cardiologist"
+        "specialist": "General Physician"
        },
        {
         "cluster_id": null,
@@ -440,7 +436,7 @@
         "matched_symptoms": [],
         "reason": "Start with a general / tele-consult first",
         "role": "ALTERNATIVE",
-        "specialist": "General Physician"
+        "specialist": "Telemedicine consult"
        }
       ],
       "red_flags": [],
@@ -448,6 +444,7 @@
       "severity_score": 58,
       "summary": "headache + dizziness (for 2 weeks)",
       "watch_for": [
+       "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
        "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately"
       ]
      },
@@ -470,7 +467,7 @@
      ],
      "kind": "recommendation",
      "language": "english",
-     "message": "Symptom summary: headache + dizziness (for 2 weeks)\nSeverity: YELLOW MODERATE - GP / Family Physician\n\nRecommended specialists:\n  1. NEUROLOGIST            (Primary) -> Neurological symptoms including headache and dizziness\n  2. CARDIOLOGIST           (Secondary) -> Cardiac symptoms including chest pain and breathlessness\n  3. GENERAL PHYSICIAN      (Alternative) -> Start with a general / tele-consult first\n\nWatch for:\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nTriage support only - not a diagnosis.",
+     "message": "Symptom summary: headache + dizziness (for 2 weeks)\nSeverity: YELLOW MODERATE - GP / Family Physician\n\nRecommended specialists:\n  1. NEUROLOGIST            (Primary) -> route-symptom answer (Suggested Neurology because 'headache', 'dizziness' match similar Neurology cases.)\n  2. GENERAL PHYSICIAN      (Secondary) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Alternative) -> Start with a general / tele-consult first\n\nWatch for:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nTriage support only - not a diagnosis.",
      "question": null,
      "severity": {
       "alert": null,
@@ -572,24 +569,22 @@
       "low_confidence": false,
       "outputs": [
        {
-        "cluster_id": "GI1",
-        "confidence": 0.578,
+        "cluster_id": "general",
+        "confidence": 0.526,
         "matched_symptoms": [
          "fever"
         ],
-        "reason": "Gastrointestinal symptoms including abdominal pain, vomiting and fever",
+        "reason": "route-symptom clarify (Aapke shabd 'bukhar', 'tez' General Physician ke milte-julte cases se match karte hain.)",
         "role": "PRIMARY",
-        "specialist": "Gastroenterologist"
+        "specialist": "General Physician"
        },
        {
-        "cluster_id": "GP1",
-        "confidence": 0.528,
-        "matched_symptoms": [
-         "fever"
-        ],
-        "reason": "General symptoms for primary assessment",
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "No closer match - start with a general assessment",
         "role": "SECONDARY",
-        "specialist": "General Physician"
+        "specialist": "Telemedicine consult"
        },
        {
         "cluster_id": null,
@@ -597,7 +592,7 @@
         "matched_symptoms": [],
         "reason": "Start with a general / tele-consult first",
         "role": "ALTERNATIVE",
-        "specialist": "Telemedicine consult"
+        "specialist": "OPD triage desk"
        }
       ],
       "red_flags": [],
@@ -605,7 +600,6 @@
       "severity_score": 49,
       "summary": "fever (for 3 days)",
       "watch_for": [
-       "Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately",
        "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
        "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately"
       ]
@@ -664,7 +658,7 @@
      ],
      "kind": "recommendation",
      "language": "hinglish",
-     "message": "Aapke symptoms: fever (for 3 days)\nGambhirta: YELLOW MODERATE - GP / Family Physician\n\nKin doctors ko dikhayein:\n  1. GASTROENTEROLOGIST     (Pehla option) -> Gastrointestinal symptoms including abdominal pain, vomiting and fever\n  2. GENERAL PHYSICIAN      (Doosra option) -> General symptoms for primary assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "Aapke symptoms: fever (for 3 days)\nGambhirta: YELLOW MODERATE - GP / Family Physician\n\nKin doctors ko dikhayein:\n  1. GENERAL PHYSICIAN      (Pehla option) -> route-symptom clarify (Aapke shabd 'bukhar', 'tez' General Physician ke milte-julte cases se match karte hain.)\n  2. TELEMEDICINE CONSULT   (Doosra option) -> No closer match - start with a general assessment\n  3. OPD TRIAGE DESK        (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": null,
@@ -881,18 +875,15 @@
       "disposition": "GP / Family Physician",
       "emergency_reasons": [],
       "kind": "recommendation",
-      "low_confidence": false,
+      "low_confidence": true,
       "outputs": [
        {
-        "cluster_id": "GI1",
-        "confidence": 0.744,
-        "matched_symptoms": [
-         "stomach pain",
-         "vomiting"
-        ],
-        "reason": "Gastrointestinal symptoms including abdominal pain, vomiting and fever",
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "No closer match - start with a general assessment",
         "role": "PRIMARY",
-        "specialist": "Gastroenterologist"
+        "specialist": "General Physician"
        },
        {
         "cluster_id": null,
@@ -900,7 +891,7 @@
         "matched_symptoms": [],
         "reason": "No closer match - start with a general assessment",
         "role": "SECONDARY",
-        "specialist": "General Physician"
+        "specialist": "Telemedicine consult"
        },
        {
         "cluster_id": null,
@@ -908,7 +899,7 @@
         "matched_symptoms": [],
         "reason": "Start with a general / tele-consult first",
         "role": "ALTERNATIVE",
-        "specialist": "Telemedicine consult"
+        "specialist": "OPD triage desk"
        }
       ],
       "red_flags": [],
@@ -916,7 +907,6 @@
       "severity_score": 49,
       "summary": "stomach pain + vomiting (for 2 days)",
       "watch_for": [
-       "Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately",
        "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
        "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately"
       ]
@@ -947,7 +937,7 @@
      ],
      "kind": "recommendation",
      "language": "hinglish",
-     "message": "Aapke symptoms: stomach pain + vomiting (for 2 days)\nGambhirta: YELLOW MODERATE - GP / Family Physician\n\nKin doctors ko dikhayein:\n  1. GASTROENTEROLOGIST     (Pehla option) -> Gastrointestinal symptoms including abdominal pain, vomiting and fever\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "Aapke symptoms: stomach pain + vomiting (for 2 days)\nGambhirta: YELLOW MODERATE - GP / Family Physician\n\nKin doctors ko dikhayein:\n  1. GENERAL PHYSICIAN      (Pehla option) -> No closer match - start with a general assessment\n  2. TELEMEDICINE CONSULT   (Doosra option) -> No closer match - start with a general assessment\n  3. OPD TRIAGE DESK        (Vikalp) -> Start with a general / tele-consult first\n  (No close symptom match - please describe more, or start with a general assessment.)\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": null,
@@ -1002,18 +992,15 @@
       "disposition": "Specialist - Urgent",
       "emergency_reasons": [],
       "kind": "recommendation",
-      "low_confidence": false,
+      "low_confidence": true,
       "outputs": [
        {
-        "cluster_id": "GI1",
-        "confidence": 0.744,
-        "matched_symptoms": [
-         "stomach pain",
-         "vomiting"
-        ],
-        "reason": "Gastrointestinal symptoms including abdominal pain, vomiting and fever",
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "No closer match - start with a general assessment",
         "role": "PRIMARY",
-        "specialist": "Gastroenterologist"
+        "specialist": "General Physician"
        },
        {
         "cluster_id": null,
@@ -1021,7 +1008,7 @@
         "matched_symptoms": [],
         "reason": "No closer match - start with a general assessment",
         "role": "SECONDARY",
-        "specialist": "General Physician"
+        "specialist": "Telemedicine consult"
        },
        {
         "cluster_id": null,
@@ -1029,7 +1016,7 @@
         "matched_symptoms": [],
         "reason": "Start with a general / tele-consult first",
         "role": "ALTERNATIVE",
-        "specialist": "Telemedicine consult"
+        "specialist": "OPD triage desk"
        }
       ],
       "red_flags": [],
@@ -1037,7 +1024,6 @@
       "severity_score": 61,
       "summary": "stomach pain + vomiting (for 2 days)",
       "watch_for": [
-       "Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately",
        "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
        "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately"
       ]
@@ -1061,7 +1047,7 @@
      ],
      "kind": "recommendation",
      "language": "hinglish",
-     "message": "Aapke symptoms: stomach pain + vomiting (for 2 days)\nGambhirta: ORANGE SEVERE - Specialist - Urgent\n\nKin doctors ko dikhayein:\n  1. GASTROENTEROLOGIST     (Pehla option) -> Gastrointestinal symptoms including abdominal pain, vomiting and fever\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Blood in vomit or stool, or pain that keeps worsening -> go to ER immediately\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "Aapke symptoms: stomach pain + vomiting (for 2 days)\nGambhirta: ORANGE SEVERE - Specialist - Urgent\n\nKin doctors ko dikhayein:\n  1. GENERAL PHYSICIAN      (Pehla option) -> No closer match - start with a general assessment\n  2. TELEMEDICINE CONSULT   (Doosra option) -> No closer match - start with a general assessment\n  3. OPD TRIAGE DESK        (Vikalp) -> Start with a general / tele-consult first\n  (No close symptom match - please describe more, or start with a general assessment.)\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": null,
@@ -1321,24 +1307,22 @@
       "low_confidence": false,
       "outputs": [
        {
-        "cluster_id": "PULM1",
-        "confidence": 0.62,
+        "cluster_id": "general",
+        "confidence": 0.444,
         "matched_symptoms": [
          "cough"
         ],
-        "reason": "Respiratory symptoms including cough and breathlessness",
+        "reason": "route-symptom clarify (Aapke shabd 'halki' General Physician ke milte-julte cases se match karte hain.)",
         "role": "PRIMARY",
-        "specialist": "Pulmonologist"
+        "specialist": "General Physician"
        },
        {
-        "cluster_id": "ENT1",
-        "confidence": 0.537,
-        "matched_symptoms": [
-         "cough"
-        ],
-        "reason": "Ear, nose and throat symptoms",
+        "cluster_id": null,
+        "confidence": 0.0,
+        "matched_symptoms": [],
+        "reason": "No closer match - start with a general assessment",
         "role": "SECONDARY",
-        "specialist": "ENT Specialist"
+        "specialist": "Telemedicine consult"
        },
        {
         "cluster_id": null,
@@ -1346,7 +1330,7 @@
         "matched_symptoms": [],
         "reason": "Start with a general / tele-consult first",
         "role": "ALTERNATIVE",
-        "specialist": "General Physician"
+        "specialist": "OPD triage desk"
        }
       ],
       "red_flags": [],
@@ -1354,6 +1338,7 @@
       "severity_score": 21,
       "summary": "cough (for 3 days)",
       "watch_for": [
+       "Fever above 103 F or symptoms getting worse -> consult Emergency Medicine",
        "Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately"
       ]
      },
@@ -1369,7 +1354,7 @@
      ],
      "kind": "recommendation",
      "language": "hinglish",
-     "message": "Aapke symptoms: cough (for 3 days)\nGambhirta: GREEN MILD - Self-care / OPD\n\nKin doctors ko dikhayein:\n  1. PULMONOLOGIST          (Pehla option) -> Respiratory symptoms including cough and breathlessness\n  2. ENT SPECIALIST         (Doosra option) -> Ear, nose and throat symptoms\n  3. GENERAL PHYSICIAN      (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "Aapke symptoms: cough (for 3 days)\nGambhirta: GREEN MILD - Self-care / OPD\n\nKin doctors ko dikhayein:\n  1. GENERAL PHYSICIAN      (Pehla option) -> route-symptom clarify (Aapke shabd 'halki' General Physician ke milte-julte cases se match karte hain.)\n  2. TELEMEDICINE CONSULT   (Doosra option) -> No closer match - start with a general assessment\n  3. OPD TRIAGE DESK        (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": null,
@@ -1589,14 +1574,16 @@
       "low_confidence": false,
       "outputs": [
        {
-        "cluster_id": "DERM1",
-        "confidence": 0.299,
+        "cluster_id": "ophthalmology",
+        "confidence": 0.986,
         "matched_symptoms": [
-         "itching"
+         "red eye",
+         "itching",
+         "watery eyes"
         ],
-        "reason": "Skin symptoms including itching and rash",
+        "reason": "route-symptom answer (Aapke shabd 'aankh', 'laal', 'khujli' Ophthalmology ke milte-julte cases se match karte hain.)",
         "role": "PRIMARY",
-        "specialist": "Dermatologist"
+        "specialist": "Eye Specialist"
        },
        {
         "cluster_id": null,
@@ -1636,7 +1623,7 @@
      ],
      "kind": "recommendation",
      "language": "hinglish",
-     "message": "Aapke symptoms: red eye + itching + watery eyes\nGambhirta: GREEN MILD - Self-care / OPD\n\nKin doctors ko dikhayein:\n  1. DERMATOLOGIST          (Pehla option) -> Skin symptoms including itching and rash\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
+     "message": "Aapke symptoms: red eye + itching + watery eyes\nGambhirta: GREEN MILD - Self-care / OPD\n\nKin doctors ko dikhayein:\n  1. EYE SPECIALIST         (Pehla option) -> route-symptom answer (Aapke shabd 'aankh', 'laal', 'khujli' Ophthalmology ke milte-julte cases se match karte hain.)\n  2. GENERAL PHYSICIAN      (Doosra option) -> No closer match - start with a general assessment\n  3. TELEMEDICINE CONSULT   (Vikalp) -> Start with a general / tele-consult first\n\nDhyan rakhein:\n  - Fever above 103 F or symptoms getting worse -> consult Emergency Medicine\n  - Chest pain, trouble breathing, fainting, heavy bleeding, face drooping or sudden weakness -> call 108 / go to ER immediately\n\nYeh sirf margdarshan hai, diagnosis nahi.",
      "question": null,
      "severity": {
       "alert": null,

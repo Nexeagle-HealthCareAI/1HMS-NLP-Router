@@ -8,8 +8,7 @@ fastapi
 pydantic
 uvicorn
 
-# Optional persistent vector store and language-ID backend
-chromadb>=0.5.0
+# Optional language-ID backend
 fasttext-wheel>=0.9.2; python_version < "3.12"
 
 # dev / tests

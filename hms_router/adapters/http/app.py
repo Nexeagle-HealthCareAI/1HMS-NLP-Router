@@ -79,21 +79,22 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         app.state.redis = _build_redis(settings)
         app.state.limiter = RateLimiter(app.state.redis, {"route": settings.rate_limit_route,
                                                           "chat": settings.rate_limit_chat})
-        # /chat uses the same emergency detector as /v1/route-symptom (read on every message, so a model
-        # rebuild that replaces app.state.route is picked up); until the route service is ready, /chat
-        # falls back to its built-in safety net.
+        # /chat and Vita use the same emergency detector and the same specialty engine as /v1/route-symptom (read
+        # on every message, so a model rebuild that replaces app.state.route is picked up); until the route service
+        # is ready, they fall back to the built-in safety net and "see a General Physician first".
+        route_service = lambda: getattr(app.state, "route", None)            # noqa: E731 - read per message
         app.state.chat = ChatService(HMSRouterAgent(
             app.state.redis,
-            emergency_detector=lambda: getattr(getattr(app.state, "route", None), "detector", None)))
+            emergency_detector=lambda: getattr(getattr(app.state, "route", None), "detector", None),
+            route_service=route_service))                                  # one specialty engine for every endpoint
         log.info("HMSRouterAgent ready")
         # Vita (/v2/agent/chat): the same triage agent and models, but at most two follow-up questions
         # before showing something (vision: "never more than two questions before showing something useful")
         base = app.state.chat.agent
         app.state.vita_agent = HMSRouterAgent(
             app.state.redis, settings=dataclasses.replace(base.cfg, followup_max_turns=2), lexicon=base.pipeline.lex,
-            retriever=base.retriever, classifier=base.classifier, emergency_detector=base.emergency_detector,
-            # Vita's specialist comes from the /v1/route-symptom engine (route_bridge.py); /chat is unchanged
-            route_service=lambda: getattr(app.state, "route", None))
+            corpus=base.corpus, classifier=base.classifier, emergency_detector=base.emergency_detector,
+            route_service=route_service)
         app.state.telemetry = build_recorder(settings.cms_api_url, settings.cms_service_key, settings.telemetry_hash_key)
         app.state.telemetry.start()
         app.state.doctors = build_directory(settings.doctors_mcp_url, settings.doctors_mcp_key,

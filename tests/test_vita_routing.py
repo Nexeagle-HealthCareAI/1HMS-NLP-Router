@@ -61,7 +61,19 @@ def test_age_group(text, group):
     assert age_group_of(text) == group
 
 
-def test_chat_endpoint_unchanged(client):
-    """/chat keeps the older retriever (route_service is only given to Vita)."""
-    assert client.app.state.chat.agent.route_service is None
-    assert client.app.state.vita_agent.route_service is not None
+def test_one_specialty_engine_for_chat_and_vita(client):
+    """Since 2026-10-30 /chat and Vita both choose through route-symptom (the old cluster retriever is gone)."""
+    assert client.app.state.chat.agent.route_service() is client.app.state.route
+    assert client.app.state.vita_agent.route_service() is client.app.state.route
+
+
+@pytest.mark.parametrize("text", ["chest pain nahi hai bas khansi hai", "seene mein dard nahi hai, bas khansi hai"])
+def test_denied_symptoms_do_not_choose_the_specialist(client, text):
+    out = _until_advice(client, text)
+    assert out["kind"] == "recommendation"
+    assert out["card"]["outputs"][0]["specialist"] != "Cardiologist"
+
+
+def test_no_paediatrician_without_a_child(client):
+    out = _until_advice(client, "pet mein dard hai aur ulti")
+    assert all(o["specialist"] != "Paediatrician" for o in out["card"]["outputs"])

@@ -41,8 +41,11 @@ uvicorn api:app --port 5005                     # dev defaults: no auth, in-memo
 pytest -q
 ```
 
-`api_legacy/` is the old nlp_brain HTTP layer (needs the deleted `nlp_brain` package). It was renamed
-from `api/` because a folder named `api` shadows `api.py`, so `uvicorn api:app` could not start.
+One specialty engine: every specialist choice (`/v1/route-symptom`, Vita on `/v2/agent/chat`, and `/chat`) comes
+from the route-symptom model in `hms_router/rag/` (conversations go through `route_bridge.py`). The old cluster
+retriever, `retrieval.py` / `routing_engine.py` / `chroma_store.py`, the `api_legacy/` app and the first LangGraph
+prototype (`orchestration/`) were removed on 2026-10-30; Vita's LangGraph agent lives in `hms_router/vita_graph/`.
+Never add a folder named `api/`: it would shadow `api.py`.
 
 ## Repository layout
 
@@ -50,18 +53,19 @@ from `api/` because a folder named `api` shadows `api.py`, so `uvicorn api:app` 
 hms-nlp-router/
 ├── hms_router/              # the package
 │   ├── __init__.py
-│   ├── agent.py             # orchestration, in doc order
+│   ├── adapters/  application/  domain/  rag/  reasoning/  safety/  channels/   # route-symptom, Vita, HTTP
+│   ├── vita_graph/          # Vita on LangGraph (rules first, Groq agent + tools, reply checker)
+│   ├── route_bridge.py      # conversations -> the route-symptom engine (specialist choice)
+│   ├── agent.py             # the conversational triage agent (/chat, Vita's follow-up questions)
 │   ├── pipeline.py          # Steps 1-3 glue
-│   ├── retrieval.py         # Layer 2: session, vector, and long-term retrieval
-│   ├── routing_engine.py    # Layer 4: specialist routing and emergency gate
-│   ├── chroma_store.py      # optional persistent vector store
 │   ├── session.py  language.py  script.py          # L1 (Step 1)
 │   ├── lexicon.py  spelling.py                     # L2 (Step 2)
 │   ├── keywords.py                                 # L2 keyword tagging
 │   ├── ner.py                                      # L2 NER (Step 3)
 │   ├── accumulator.py                              # L3 (Step 4)
 │   ├── severity.py                                 # L4 (Step 5)
-│   ├── specialist_rag.py  dataset_builder.py       # L4 (Step 6)
+│   ├── symptom_clusters.py  dataset_builder.py     # keyword statistics data (74 clusters + dataset)
+│   ├── routing_types.py                            # the 3-output routing shape
 │   ├── output.py                                   # L5 (Step 7)
 │   ├── learning.py                                 # L5 (Step 8)
 │   ├── config.py
@@ -89,7 +93,7 @@ hms-nlp-router/
 | L2 NER -> symptom object (Step 3) | `ner.py` |
 | L3 Redis accumulation (Step 4) | `accumulator.py` |
 | L4 Severity + emergency safety net (Step 5) | `severity.py` |
-| L4 RAG retrieval (Step 6) | `specialist_rag.py`, `Datasets/combined_symptom_dataset.csv` (primary), `data/specialist_mapping.csv` (curated supplement) |
+| L4 Specialist choice (Step 6) | `route_bridge.py` → `application/route_symptom.py` + `rag/` (the route-symptom model, trained on `Datasets/`) |
 | L5 Three outputs / Emergency card (Step 7) | `output.py` |
 | L5 Feedback + continuous learning (Step 8) | `learning.py` |
 | Orchestration, in doc order | `agent.py` |

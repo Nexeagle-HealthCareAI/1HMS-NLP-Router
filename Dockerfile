@@ -4,8 +4,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 WORKDIR /app
 
 COPY requirements.txt .
-# chromadb and fasttext in requirements.txt are optional extras of /chat; skip them in the image.
-RUN grep -vE '^(chromadb|fasttext-wheel)' requirements.txt > /tmp/req.txt && pip install -r /tmp/req.txt
+# fasttext in requirements.txt is an optional extra of /chat; skip it in the image.
+RUN grep -vE '^(fasttext-wheel)' requirements.txt > /tmp/req.txt && pip install -r /tmp/req.txt
 
 COPY hms_router/ hms_router/
 COPY Datasets/ Datasets/

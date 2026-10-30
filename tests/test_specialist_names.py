@@ -1,7 +1,7 @@
 import pytest
 
 from hms_router.dataset_builder import canonical_specialist, load_corpus_from_dataset
-from hms_router.specialist_rag import _default_corpus, load_corpus
+from hms_router.symptom_clusters import _default_corpus, load_corpus
 
 
 @pytest.mark.parametrize("raw,expected", [

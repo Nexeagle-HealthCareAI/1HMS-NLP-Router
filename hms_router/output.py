@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 
 from .severity import EMERGENCY_NUMBER
-from .specialist_rag import EMERGENCY_SPECIALIST, FALLBACKS, RoutingResult
+from .routing_types import EMERGENCY_SPECIALIST, FALLBACKS, RoutingResult
 
 PRIMARY, SECONDARY, ALTERNATIVE = "PRIMARY", "SECONDARY", "ALTERNATIVE"
 ROLE_HINT = {PRIMARY: "Highest confidence match", SECONDARY: "Differential-diagnosis route",
@@ -89,7 +89,7 @@ class OutputGenerator:
                 watch_for=[], alert=severity.get("alert"), emergency_reasons=reasons,
                 after_stabilisation=others, **base)
 
-        pool = [r for r in routing.recommendations if r.source in ("retrieval", "route-symptom")]
+        pool = [r for r in routing.recommendations if r.source == "route-symptom"]
         chosen: list[SpecialistOutput] = []
         used: set[str] = set()
 

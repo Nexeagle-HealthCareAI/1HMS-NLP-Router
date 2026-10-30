@@ -183,9 +183,3 @@ def test_learning_cannot_weaken_the_safety_net(agent, tmp_path):
     assert agent.handle("seene mein dard ho raha hai").kind == "emergency"
 
 
-def test_feedback_boost_reaches_the_retriever(agent):
-    base = agent.retriever.route({"symptoms": ["cough", "fever"]}).recommendations[0]
-    for _ in range(20):
-        agent.feedback.submit(CORRECT, cluster_id=base.cluster_id)
-    boosted = agent.retriever.route({"symptoms": ["cough", "fever"]}).recommendations[0]
-    assert boosted.confidence >= base.confidence and boosted.specialist == base.specialist

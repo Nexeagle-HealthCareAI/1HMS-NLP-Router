@@ -1,4 +1,4 @@
-"""/chat must behave exactly as it did before the /route-symptom rebuild (see tests/chat_contract.py)."""
+"""/chat must keep behaving as recorded in tests/fixtures/chat_golden.json (re-recorded 2026-10-30, when /chat moved to the route-symptom engine). Re-record: PYTHONPATH=. python -m tests.chat_contract --record"""
 import json
 
 import pytest

@@ -16,7 +16,8 @@ hms_router/
   application/     RouteSymptomService (use case), ChatService (wraps HMSRouterAgent), container
   adapters/        http/ (FastAPI routers, auth, rate limits, problem+json), llm/ (LangChain providers,
                    timeout + circuit breaker, redaction), settings.py (env)
-  orchestration/   LangGraph triage graph + tools (optional; not served over HTTP yet)
+  vita_graph/      Vita on LangGraph (served on /v2/agent/chat when VITA_LLM_PROVIDER is set)
+  route_bridge.py  conversations (/chat, Vita) -> this engine
   textnorm.py      shared normalization (Devanagari -> Roman, "kam nahi" persistence fix, stopwords)
 ```
 

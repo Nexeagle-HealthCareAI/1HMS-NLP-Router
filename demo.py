@@ -18,7 +18,9 @@ else:
     r = fakeredis.FakeRedis(decode_responses=True)
 
 debug = "--debug" in sys.argv
-agent, sid, last = HMSRouterAgent(r), None, None
+from hms_router.application.container import build_route_symptom_service
+_route = build_route_symptom_service()
+agent, sid, last = HMSRouterAgent(r, route_service=lambda: _route, emergency_detector=lambda: _route.detector), None, None
 print("HMS router - describe your symptoms (Ctrl-C to quit)")
 while True:
     line = input("> ").strip()

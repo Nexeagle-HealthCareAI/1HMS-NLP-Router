@@ -87,7 +87,7 @@ class FeedbackCollector:
         pipe.execute()
 
     def boost(self, cluster_id: str) -> float:
-        """Pass to SpecialistRetriever(boost=...). Never negative, capped."""
+        """Feedback weight for a specialty id (kept for feedback statistics; routing no longer uses it). Never negative, capped."""
         votes = int(self.r.hget(self.VOTES, cluster_id) or 0)
         return min(self.cfg.feedback_max_boost, max(0, votes) * self.cfg.feedback_boost_step)
 
@@ -247,14 +247,14 @@ def apply_approved(csv_path: str | Path, lexicon: Lexicon, redis_client=None,
 
 # ---------------------------------------------------------------------------- facade
 class LearningLoop:
-    """Wires Step 8 into a running system: feedback boosts the retriever, approved tokens grow the lexicon."""
+    """Wires Step 8 into a running system: feedback is collected for review, approved tokens grow the lexicon.
+    (Specialty learning happens in the route-symptom model: CMS-approved examples + /admin/rebuild.)"""
 
-    def __init__(self, redis_client, pipeline, retriever, settings: Settings | None = None):
-        self.r, self.pipeline, self.retriever = redis_client, pipeline, retriever
+    def __init__(self, redis_client, pipeline, settings: Settings | None = None):
+        self.r, self.pipeline = redis_client, pipeline
         self.cfg = settings or pipeline.cfg
         self.feedback = FeedbackCollector(redis_client, self.cfg)
         self.reviewer = NovelTokenReviewer(redis_client, pipeline.lex, self.cfg)
-        retriever.boost = self.feedback.boost                  # "Reinforce: vector weight boost"
 
     def nightly(self, review_csv: str | Path) -> dict:
         self.reviewer.lex = self.pipeline.lex
@@ -267,5 +267,4 @@ class LearningLoop:
         if grown is not self.pipeline.lex:
             self.pipeline.reload_lexicon(grown)                # spelling indexes rebuilt
             self.reviewer.lex = grown
-            self.retriever.reindex(self.retriever.corpus)      # "re-embed into Vector DB"
         return rep
