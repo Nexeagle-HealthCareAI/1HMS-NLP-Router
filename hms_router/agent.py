@@ -30,7 +30,8 @@ from .output import OutputGenerator, ResponseCard
 from .pipeline import HMSRouterPipeline
 from .safety.self_harm import REASON as SELF_HARM_REASON, mentions_self_harm
 from .severity import ALERT, EMERGENCY, SeverityClassifier, SeverityResult, band, emergency_check
-from .specialist_rag import SpecialistRetriever
+from .route_bridge import age_group_of, conversation_text, to_routing
+from .specialist_rag import RoutingResult, SpecialistRetriever
 
 log = logging.getLogger("hms_router")
 
@@ -59,7 +60,8 @@ class HMSRouterAgent:
     def __init__(self, redis_client, settings: Settings | None = None, lexicon: Lexicon | None = None,
                  retriever: SpecialistRetriever | None = None, classifier: SeverityClassifier | None = None,
                  emergency_rules: list | None = None, dataset_path: str | None = None,
-                 emergency_detector: "Callable[[], object | None] | None" = None):
+                 emergency_detector: "Callable[[], object | None] | None" = None,
+                 route_service: "Callable[[], object | None] | None" = None):
         """Create the agent.
 
         Args:
@@ -73,6 +75,9 @@ class HMSRouterAgent:
                           is an emergency; the older severity.emergency_check is only the fallback.
         """
         self.emergency_detector = emergency_detector
+        # route_service: returns the /v1/route-symptom service, or None. When given (Vita), it chooses the specialist
+        # and the older retriever is only the fallback (route_bridge.py). Not given: /chat behaves as before.
+        self.route_service = route_service
         self.r = redis_client
         self.cfg = settings or Settings()
         self.pipeline = HMSRouterPipeline(redis_client, lexicon, self.cfg)
@@ -134,10 +139,28 @@ class HMSRouterAgent:
         if not state.ready and not sev.emergency:                                 # need more information
             return AgentReply(kind=FOLLOW_UP, message=state.next_question or "", question=state.next_question, **base)
 
-        routing = self.retriever.route(state.to_dict(), sev.to_dict())            # Layer 4: RAG
+        routing = self._route(ing.session_id, state, sev)                          # Layer 4: RAG
         card = self.output.build(state.to_dict(), sev.to_dict(), routing)         # Layer 5
         kind = EMERGENCY_KIND if card.kind == "emergency" else RECOMMENDATION
         return AgentReply(kind=kind, message=self.output.render(card, lang), card=card, **base)
+
+    def _route(self, session_id: str, state: AccumulatedState, sev: SeverityResult) -> RoutingResult:
+        older = self.retriever.route(state.to_dict(), sev.to_dict())
+        if self.route_service is None or sev.emergency or older.emergency:
+            return older
+        try:
+            service = self.route_service()
+            if service is None:
+                return older
+            text = conversation_text(self.pipeline.sessions.history(session_id))
+            age = age_group_of(text)
+            decision = service.route(text, top_k=5, age_group=age)
+            if decision.emergency.flag:                                           # let the safety path decide
+                return older
+            return to_routing(decision, list(state.symptoms or []), text, age)
+        except Exception:                                                         # never lose a recommendation
+            log.exception("route-symptom routing failed; using the older retriever")
+            return older
 
     # ------------------------------------------------------------------ shared emergency detector
     def _shared_emergency(self, raw_text: str, session_texts: list[str]):

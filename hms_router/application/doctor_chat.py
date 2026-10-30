@@ -36,7 +36,7 @@ from .. import voice as V
 from ..booking_client import BookingError
 from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's own wording, mapped to voice keys
 from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
-from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
+from ..doctors import (FALLBACK_SPECIALIST, SPECIALIST_TITLES, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
                        specialty_key)
 from ..safety.self_harm import mentions_self_harm
 from ..severity import EMERGENCY, emergency_check
@@ -75,18 +75,7 @@ SOURCE = "1hms-mcp"
 STATE_TTL_S = 1800
 MAX_SHOWN = 60
 
-SPECIALTY_NAMES = {
-    "cardiology": "Cardiologist", "dermatology": "Dermatologist", "orthopaedics": "Orthopaedic",
-    "gynaecology": "Gynaecologist", "dentistry": "Dentist", "ent": "ENT Specialist",
-    "ophthalmology": "Eye Specialist", "neurology": "Neurologist", "neurosurgery": "Neurosurgeon",
-    "psychiatry": "Psychiatrist", "urology": "Urologist", "gastroenterology": "Gastroenterologist",
-    "endocrinology": "Endocrinologist", "pulmonology": "Pulmonologist", "nephrology": "Nephrologist",
-    "oncology": "Oncologist", "rheumatology": "Rheumatologist", "physiotherapy": "Physiotherapist",
-    "paediatrics": "Paediatrician", "geriatrics": "Geriatrician", "general-medicine": "General Physician",
-    "general-surgery": "General Surgeon", "plastic-surgery": "Plastic Surgeon", "vascular-surgery": "Vascular Surgeon",
-    "cardiothoracic-surgery": "Cardiothoracic Surgeon", "emergency-medicine": "Emergency Medicine",
-    "sports-medicine": "Sports Medicine",
-}
+SPECIALTY_NAMES = SPECIALIST_TITLES          # specialty key -> the title patients see (now in doctors.py)
 # Plain words for specialties, chips and every phrase live in hms_router/voice.py, in three languages.
 PLAIN = {k: v[:2] for k, v in V.PLAIN.items()}     # (English, Hinglish), kept for older callers
 _EN = Voice("english")

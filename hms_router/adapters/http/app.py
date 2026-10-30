@@ -71,7 +71,9 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         base = app.state.chat.agent
         app.state.vita_agent = HMSRouterAgent(
             app.state.redis, settings=dataclasses.replace(base.cfg, followup_max_turns=2), lexicon=base.pipeline.lex,
-            retriever=base.retriever, classifier=base.classifier, emergency_detector=base.emergency_detector)
+            retriever=base.retriever, classifier=base.classifier, emergency_detector=base.emergency_detector,
+            # Vita's specialist comes from the /v1/route-symptom engine (route_bridge.py); /chat is unchanged
+            route_service=lambda: getattr(app.state, "route", None))
         app.state.telemetry = build_recorder(settings.cms_api_url, settings.cms_service_key, settings.telemetry_hash_key)
         app.state.telemetry.start()
         app.state.doctors = build_directory(settings.doctors_mcp_url, settings.doctors_mcp_key,
