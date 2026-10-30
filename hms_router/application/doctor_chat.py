@@ -38,6 +38,7 @@ from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's
 from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
 from ..doctors import (FALLBACK_SPECIALIST, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
                        specialty_key)
+from ..safety.self_harm import mentions_self_harm
 from ..severity import EMERGENCY, emergency_check
 from ..textnorm import intent_text, preprocess, tidy
 from ..voice import Voice
@@ -218,6 +219,12 @@ class DoctorChat:
             self._save(sid, est)
 
     def _handle(self, text, session_id, ctx, *, select_doctor_id, page, new_search) -> dict:
+        if mentions_self_harm(text):                       # every turn, whatever Vita was in the middle of (booking,
+            st = self.load(session_id)                     # visit, journey, an earlier emergency): a person comes first
+            dropped = [k for k in ("booking", "pending", "which", "which_hospital", "warn", "last_advice") if st.pop(k, None)]
+            if session_id and dropped:
+                self._save(session_id, st)
+            return self._agent_turn(text, session_id, parse(text), ctx, emergency_checked=True)
         if select_doctor_id:
             return self._select(text, session_id, select_doctor_id, ctx)
 

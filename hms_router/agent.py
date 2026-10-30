@@ -28,6 +28,7 @@ from .learning import LearningLoop
 from .lexicon import Lexicon
 from .output import OutputGenerator, ResponseCard
 from .pipeline import HMSRouterPipeline
+from .safety.self_harm import REASON as SELF_HARM_REASON, mentions_self_harm
 from .severity import ALERT, EMERGENCY, SeverityClassifier, SeverityResult, band, emergency_check
 from .specialist_rag import SpecialistRetriever
 
@@ -111,6 +112,10 @@ class HMSRouterAgent:
             texts.append(cor.corrected_text)                                      # spelling-repaired text catches typos
 
         shared = self._shared_emergency(ing.raw_text, texts)                      # None = shared detector unavailable
+        if shared is None and mentions_self_harm(ing.raw_text, *texts):             # never lose self-harm with it
+            from .domain.models import EmergencyAssessment
+            shared = EmergencyAssessment(flag=True, reasons=[SELF_HARM_REASON], source="rules", score=1.0,
+                                         recommendedSpecialtyIds=["emergencymedicine", "psychiatry"])
 
         def safety(state: AccumulatedState) -> bool:                              # Layer 4 - ahead of everything else
             if shared is not None:
