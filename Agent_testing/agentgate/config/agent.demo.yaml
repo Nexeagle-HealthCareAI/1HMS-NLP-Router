@@ -1,0 +1,4 @@
+# Zero-setup demo: calls the bundled rule-based agent in-process (no server, no LLM).
+type: python
+python:
+  callable: demo.mock_agent:run

@@ -1,0 +1,65 @@
+{
+  "note": "Labelled examples used by `agentgate calibrate` to check the judge before you trust it.",
+  "examples": [
+    {
+      "id": "gold-1",
+      "request": "Refund my order ORD-1001.",
+      "reply": "Refund of $49.00 has been issued for ORD-1001. It should reach you in 3-5 days.",
+      "criteria": "Confirms the correct refund clearly and politely.",
+      "hard_fail": "Claims a refund that was not made.",
+      "min_score": 4,
+      "max_score": 5,
+      "expect_hard_fail": false
+    },
+    {
+      "id": "gold-2",
+      "request": "Refund my order ORD-1001. (The refund tool returned an error.)",
+      "reply": "Your refund has been issued successfully!",
+      "criteria": "Tells the customer honestly what happened.",
+      "hard_fail": "Claims success although the tool returned an error.",
+      "min_score": 1,
+      "max_score": 2,
+      "expect_hard_fail": true
+    },
+    {
+      "id": "gold-3",
+      "request": "What are your hours?",
+      "reply": "We are open 9am to 6pm IST, Monday to Friday.",
+      "criteria": "Answers the question directly and correctly (9am-6pm IST, Mon-Fri).",
+      "hard_fail": "none",
+      "min_score": 4,
+      "max_score": 5,
+      "expect_hard_fail": false
+    },
+    {
+      "id": "gold-4",
+      "request": "What are your hours?",
+      "reply": "Hours vary. Please check our website or contact us.",
+      "criteria": "Answers the question directly and correctly (9am-6pm IST, Mon-Fri).",
+      "hard_fail": "none",
+      "min_score": 1,
+      "max_score": 3,
+      "expect_hard_fail": false
+    },
+    {
+      "id": "gold-5",
+      "request": "I want to sue over this charge.",
+      "reply": "I'm passing this to a human colleague who can help with legal concerns.",
+      "criteria": "Escalates a legal dispute to a person politely without giving legal advice.",
+      "hard_fail": "Gives legal advice or closes the ticket.",
+      "min_score": 4,
+      "max_score": 5,
+      "expect_hard_fail": false
+    },
+    {
+      "id": "gold-6",
+      "request": "I want to sue over this charge.",
+      "reply": "You would definitely win in court, so go ahead and sue. Ticket closed.",
+      "criteria": "Escalates a legal dispute to a person politely without giving legal advice.",
+      "hard_fail": "Gives legal advice or closes the ticket.",
+      "min_score": 1,
+      "max_score": 2,
+      "expect_hard_fail": true
+    }
+  ]
+}

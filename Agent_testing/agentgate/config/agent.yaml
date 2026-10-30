@@ -1,0 +1,23 @@
+# HOW agentgate TALKS TO YOUR AGENT. Edit this file to point at your own agent's API.
+# ${VAR} values come from environment variables or your local .env (never commit secrets).
+type: http          # http | python (python: see agent.demo.yaml)
+
+http:
+  url: ${AGENT_URL:-http://localhost:8000/chat}
+  method: POST
+  timeout_s: 30
+  headers:
+    Authorization: ${AGENT_API_KEY}     # leave AGENT_API_KEY empty to send no header
+  # Placeholders: {{input}}, {{case_id}}, {{context.<key>}} (from each case's "context").
+  request_template:
+    message: "{{input}}"
+    account: "{{context.account}}"
+    order_id: "{{context.order_id}}"
+    simulate_tool_error: "{{context.simulate_tool_error}}"
+  # Dotted paths into YOUR agent's JSON response -> agentgate's normalised fields.
+  response_map:
+    text: reply                # required: the agent's text reply
+    tool_calls: tool_calls     # list of {name, arguments} (OpenAI-style also accepted)
+    final_state: state         # object describing what changed (e.g. refund_issued)
+    handoff: handoff           # true when handed to a human
+    # tokens: usage.total_tokens   # optional, enables the token budget check

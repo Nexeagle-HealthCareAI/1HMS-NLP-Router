@@ -1,0 +1,19 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]"
+      - run: agentgate validate
+      - run: pytest -q
+      # Smoke tier on every PR: deterministic checks only, no LLM judge, no cost.
+      # To gate YOUR agent, change --agent to your config and pass secrets via
+      # GitHub Actions secrets (e.g. AGENT_URL, AGENT_API_KEY) as env variables.
+      - run: agentgate run --tier smoke --agent config/agent.demo.yaml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: smoke-report, path: reports/latest/ }
