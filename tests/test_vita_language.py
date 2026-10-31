@@ -16,7 +16,7 @@ from hms_router.textnorm import intent_text
 from tests.test_vita_doctor_chat import chat, client, hms  # noqa: F401 (pytest fixtures)
 
 DEV = re.compile(r"[ऀ-ॿ]")
-HINGLISH_TELLS = re.compile(r"\b(aap|hain|karein|dabayein|mile|kya|nahi|batayein|chahiye|gaya)\b", re.I)
+HINGLISH_TELLS = re.compile(r"\b(aap|aapka|hai|hain|karein|dabayein|mile|kya|nahi|batayein|chahiye|gaya|likhiye)\b", re.I)
 
 
 @pytest.fixture(scope="module")

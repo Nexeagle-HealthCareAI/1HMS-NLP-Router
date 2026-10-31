@@ -51,6 +51,78 @@ far, questions asked, routed), `stage`. Per-turn fields are reset at the start o
 `application/doctor_chat.py` (`step_*`, and the agent's code tools `read_ask`, `plain_search`, `choose`, `handoff`,
 `facts`, `emergency_reply`, `unavailable`).
 
+## The planner (mode "planner")
+
+The `agent` path above has the model label each message with a fixed intent; code then picks the next move. With the
+control switch on `"planner"` (all channels or one), the model plans instead (`vita_graph/planner.py`):
+
+| Tool | |
+|---|---|
+| `note_needs` | One picture of what the patient needs, updated from anything they say, in any order: who, age group, pregnant, the complaint so far, danger signs, language, place / near me, day, time of day, budget, doctor gender, a specialty / doctor / degree / hospital they want, in a hurry. Kept per conversation (`need` in the graph state); "koi bhi chalega" removes a preference |
+| `find_doctors` | Any mix of filters in one search; the needs fill what the model left out (a lady doctor, cheaper, the place, today) |
+| `assess_symptoms` | The route-symptom engine on the complaint (emergency check first); says when the engine is unsure and gives its question ("child or adult?") |
+| `doctor_days`, `choose_doctor`, `visit_help`, `talk_to_person` | When a doctor sits; a doctor on screen by name or position; the day of the visit; a handoff |
+| `reply` | Vita's message (always last) |
+
+Usually two model calls a message: [`note_needs` + a tool] then [`reply`]; at most 4. Code still decides what matters:
+the safety steps run first; danger signs in `note_needs` end the turn with the emergency reply at once; a tool that
+answers the patient itself (an emergency, a location question, a doctor chosen, a handoff) ends the turn in its own
+words; every reply passes `checker.py`; after 3 questions without an answer the complaint is assessed instead of asked
+about again; booking/OTP stay in the booking step. Replies carry `engine`: `planner`, `planner+step`,
+`planner+template`, `fallback`. Tests: `tests/test_vita_planner.py`.
+
+## Scenario suite against the real model
+
+`python -m hms_router.vita_graph.evals --mode both --out evals.json` (in the router container, with the service's
+settings) plays 37 scenarios through a private Vita with the real model, the real doctor directory and route-symptom:
+safety (self-harm in three scripts and mid-conversation, chest pain, stroke, child breathing, pregnancy bleeding,
+poisoning, minor burn, diagnosis / dose / phone-number bait), triage (fever, tooth, child, eye, periods, back, sugar,
+vague complaints never to an alarming specialist), and flexibility (many needs in one message, cheaper after a list,
+a change of mind, in a hurry, typos, degree, English, Hindi script). It prints agent vs planner side by side and every
+failing reply. Without a model only the safety scenarios can pass (they do: `test_every_safety_scenario_passes_without_a_model`).
+
+## Understanding test set
+
+The scenario suite checks replies; this checks the reading underneath them. `understanding_cases.py` holds 123
+conversations (149 turns) written the way patients write: code-mixed and misspelt, voice-typed, for a parent or a
+child, several needs in one message, "doosre wale", corrections ("mujhe nahi, mere bete ko"), vague, denials,
+urgency both ways, self-harm, worry, questions. Every turn states only what a careful receptionist would be sure of:
+who the patient is, age group, pregnancy, the complaint (words the English summary must contain or must not), urgent
+(emergency / warning-sign question / no), what they want, gender, place, specialty, budget, today, degree, a doctor's
+name, and what Vita should do (reply kind, specialist, which shown doctor was chosen).
+
+`python -m hms_router.vita_graph.understanding --mode both --out understanding.json` (in the router container, with
+Groq) runs the set through a private Vita in agent and planner mode and prints, per mode: understood % (the reading),
+acted % (what Vita did), missed emergencies, false alarms, a score per field and per category, and every wrong turn
+with what Vita read. The same reading is taken whichever engine answered (agent understanding, planner needs and
+tools, applied filters, code steps), so the two modes are compared fairly. `--category proxy` runs one category.
+
+A missed emergency makes the run unsafe. Without a model the code steps alone catch every emergency in the set
+(`test_code_steps_catch_the_emergencies_without_any_model`). Add a case for every misreading staff find.
+
+## General language
+
+What patients type that is neither a symptom nor a search: greetings in every form (namaste, salaam, adaab, jai shree
+ram, sat sri akal), chat shorthand (kkrh, hru, wyd, tc, sry), how-are-you, thanks (shukriya, dhanyavaad, dhonnobad),
+goodbyes (tata, alvida, khuda hafiz), "ok / done / sahi", "abhi nahi chahiye", "ruko ek minute", "sorry galat type
+hua", their name, "test", praise, frustration, flirting, off-topic. `application/everyday.py` reads them (anchored,
+whole-message patterns first) with a ready answer in the patient's language; with the model on, the model reads them
+in context, and without it the fallback answers them before any doctor search.
+
+- Everyday words are never "repaired" into symptoms: ~450 everyday words are in the lexicon (category `everyday`),
+  and every word inside a known symptom phrase is a known word. Before, "done"/"date" became "dane" (rash), "hold"
+  "cold", "chal" "chhale" (mouth ulcers), "baad" "daad" (ringworm), "type" "tap" (fever), and "chalne mein dikkat"
+  (difficulty walking) read as mouth ulcers.
+- A model-only emergency flag with no sign, on a message made only of everyday words, is not an emergency ("ruko ek
+  minute" 0.62, "abhi nahi chahiye" 0.72). Words that may be a cry for help keep the flag.
+- A cry for help with nothing else ("bachao", "please help", "jaldi aao") gets 108 first and "what happened?" from the
+  safety step, in every mode.
+- "hindi mein baat karo" / "english please" / "हिंदी में बात करो" (the `language` step): Vita answers in that language
+  for the rest of the conversation (`language_pref` in the session), whatever later messages are typed in; Roman
+  "hindi" means Roman Hindi back. "bangla bolo" says Bangla is not ready yet. A doctor who speaks a language ("english
+  bolne wale doctor") is a search, never a language switch, a place, or "bone".
+- `tests/test_vita_general_language.py` holds ~150 of these messages; the understanding set has a `general` category.
+
 ## How Vita grows
 
 | Signal | Where |
@@ -66,7 +138,7 @@ far, questions asked, routed), `stage`. Per-turn fields are reset at the start o
 
 ## Control
 
-`GET/PUT /v2/agent/admin/control` (scope `admin`): `{"mode": "agent" | "off", "channels": {"whatsapp": "off"}}`
+`GET/PUT /v2/agent/admin/control` (scope `admin`): `{"mode": "agent" | "planner" | "off", "channels": {"whatsapp": "planner"}}`
 — a kill switch, per channel (`"rules"` is still accepted and read as `"off"`). With the agent off, without
 `VITA_LLM_PROVIDER`, on any error, and for 60 s after 3 failures in a row, the code steps still run (safety, booking,
 taps, after an emergency, the visit) and everything else gets the fallback. `GET /health` shows
@@ -94,4 +166,6 @@ emails, OTP-like numbers, "my name is ...") before it is sent. Checkpoints: `vit
 covering the code steps before the agent, the fallback, every agent node, choosing a shown doctor, refinements, the
 checker, the breaker, the control switch, restarts, memory with and without consent, feedback → review → correction →
 recall, and the promotion gate. `tests/test_vita_routing.py` (the route tool on the patient's own words),
-`tests/test_search_intent.py` (the search bar), and the step tests (`test_vita_*.py`) run without a model.
+`tests/test_search_intent.py` (the search bar), and the step tests (`test_vita_*.py`) run without a model. `tests/test_vita_understanding.py` checks the
+understanding set is well formed and that the scorer marks right readings right, wrong ones wrong, and counts missed
+emergencies.

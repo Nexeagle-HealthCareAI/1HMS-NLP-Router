@@ -1,10 +1,11 @@
 """Vita as one LangGraph graph: the whole conversation, one run per patient message, state saved per session
 (thread_id = Vita session id) by the Redis checkpointer. There is no other conversation engine.
 
-    START -> self_harm -> tap -> bangla -> emergency_care -> visit -> booking -> picks -> safety -> privacy ─┐
+    START -> self_harm -> tap -> bangla -> language -> emergency_care -> visit -> booking -> picks -> safety -> privacy ─┐
               (each step answers what is its business, or passes the message on)               │   any answer
                                                                                                  │   -> remember
              gate ─(no LLM, switch off, breaker open)─> fallback ───────────────────────────────┤
+               ├─(switch "planner")─> recall -> planner (LLM + tools, around the patient's needs) ─┤
                └─> recall -> understand (LLM) -> plan ─┬─> emergency ───────────────────────────┤
                                                       ├─> handoff ─────────────────────────────┤
                                                       ├─> choose (a shown doctor, a day)  ──┬───┤
@@ -42,6 +43,7 @@ class VitaState(TypedDict, total=False):
     messages: Annotated[list, operator.add]       # [{"role": "patient"|"vita", "text", "kind"?}]
     patient: dict                                 # who, age_group, pregnant, language
     triage: dict                                  # symptoms_en, asked, routed
+    need: dict                                    # the planner's picture of what the patient needs (planner.py)
     stage: str
     route: str                                    # per turn from here on
     why: str
@@ -78,7 +80,8 @@ def build_vita_graph(checkpointer=None):
                 return {}
             out["engine"] = "step"
             if turn.ctx.get("restarted"):                       # "naya shuru karo": what Vita knew is forgotten too
-                return {"out": out, "route": "step", "why": name, "triage": {}, "patient": {}, "stage": "start"}
+                return {"out": out, "route": "step", "why": name, "triage": {}, "patient": {}, "need": {},
+                        "stage": "start"}
             return {"out": out, "route": "step", "why": name}
         node.__name__ = name
         return node
@@ -87,6 +90,7 @@ def build_vita_graph(checkpointer=None):
         ("self_harm", lambda t: t.steps.step_self_harm(t.text, t.session_id, t.ctx)),
         ("tap", lambda t: t.steps.step_tap(t.text, t.session_id, t.ctx, t.kw)),
         ("bangla", lambda t: t.steps.step_bangla(t.text, t.session_id)),
+        ("language", lambda t: t.steps.step_language(t.text, t.session_id)),
         ("emergency_care", lambda t: t.steps.step_emergency_care(t.text, t.session_id, t.ctx)),
         ("visit", lambda t: t.steps.step_visit(t.text, t.session_id, t.ctx)),
         ("booking", lambda t: t.steps.step_booking(t.text, t.session_id, t.ctx)),
@@ -97,8 +101,21 @@ def build_vita_graph(checkpointer=None):
 
     def gate(state: VitaState, config) -> dict:
         turn = _turn(config)
-        on = turn.rt.agent_on(turn.kw.get("channel"))
-        return {"route": "agent" if on else "fallback"}
+        channel = turn.kw.get("channel")
+        if not turn.rt.agent_on(channel):
+            return {"route": "fallback"}
+        return {"route": "planner" if turn.rt.mode(channel) == "planner" and turn.rt.llm_plan is not None else "agent"}
+
+    def planner(state: VitaState, config) -> dict:
+        from .planner import run_planner
+        turn = _turn(config)
+        upd = run_planner(turn, state)
+        need, patient = upd.get("need") or {}, dict(state.get("patient") or {})
+        for k in ("who", "age_group", "pregnant", "language"):
+            if need.get(k) not in (None, ""):
+                patient[k] = need[k]
+        upd["patient"] = patient
+        return upd
 
     def fallback(state: VitaState, config) -> dict:
         out = _turn(config).fallback()
@@ -134,6 +151,9 @@ def build_vita_graph(checkpointer=None):
             patient["pregnant"] = True
         if u.get("language"):
             patient["language"] = u["language"]
+        pref = turn.flow.pipeline.sessions.context(turn.sid).get("language_pref") if turn.sid else None
+        if pref:                                                     # "hindi mein baat karo" earlier: keep to it
+            patient["language"] = pref
         if (u.get("symptoms_en") or "").strip():
             if triage.get("routed") and u.get("intent") == "symptoms" and u["symptoms_en"] != triage.get("symptoms_en"):
                 triage = {}                                          # a new complaint after advice: start again
@@ -294,6 +314,7 @@ def build_vita_graph(checkpointer=None):
             "patient": said, "kind": out.get("kind"), "engine": out.get("engine"), "language": out.get("language"),
             "route": state.get("route"), "why": state.get("why"), "decision": state.get("decision"),
             "understanding": {k: v for k, v in (state.get("understanding") or {}).items() if k != "failed"},
+            "need": state.get("need") or {},
             "tools": turn.tools_used, "checks": turn.checks, "reply": (out.get("message") or "")[:700],
             "specialist": next((o.get("specialist") for o in (out.get("card") or {}).get("outputs") or []
                                 if o.get("role") == "PRIMARY"), None),
@@ -307,7 +328,8 @@ def build_vita_graph(checkpointer=None):
     names = [n for n, _ in STEPS]
     for n, run in STEPS:
         g.add_node(n, step(n, run))
-    for name, fn in (("gate", gate), ("fallback", fallback), ("recall", recall), ("understand", understand),
+    for name, fn in (("gate", gate), ("fallback", fallback), ("recall", recall), ("planner", planner),
+                     ("understand", understand),
                      ("plan", plan), ("emergency", emergency), ("handoff", handoff), ("choose", choose),
                      ("visit_help", visit_help), ("search", search), ("route", route), ("ask", ask),
                      ("answer", answer), ("respond", respond), ("remember", remember)):
@@ -316,8 +338,11 @@ def build_vita_graph(checkpointer=None):
     for here, nxt in zip(names, names[1:] + ["gate"]):
         g.add_conditional_edges(here, lambda s, nxt=nxt: "remember" if s.get("out") else nxt,
                                 {"remember": "remember", nxt: nxt})
-    g.add_conditional_edges("gate", lambda s: s["route"], {"agent": "recall", "fallback": "fallback"})
-    g.add_edge("recall", "understand")
+    g.add_conditional_edges("gate", lambda s: s["route"], {"agent": "recall", "planner": "recall",
+                                                            "fallback": "fallback"})
+    g.add_conditional_edges("recall", lambda s: "planner" if s.get("route") == "planner" else "understand",
+                            {"planner": "planner", "understand": "understand"})
+    g.add_edge("planner", "remember")
     g.add_edge("understand", "plan")
     g.add_conditional_edges("plan", lambda s: s["decision"],
                             {d: d for d in ("fallback", "emergency", "handoff", "choose", "visit_help", "search", "route",

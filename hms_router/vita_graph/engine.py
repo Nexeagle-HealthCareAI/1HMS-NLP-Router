@@ -8,8 +8,9 @@
     to our team" (the emergency check has already run). There is no second conversation engine.
 Every turn is traced for learning (learning.py).
 
-Control (`vita:control` in Redis, admin API): mode "agent" (default) or "off" (no LLM: code steps and the fallback),
-per channel if wanted: {"mode": "agent", "channels": {"whatsapp": "off"}}. "rules" is read as "off".
+Control (`vita:control` in Redis, admin API): mode "agent" (default: the model labels the message, code picks the next
+move), "planner" (the model plans with tools around the patient's needs: planner.py) or "off" (no LLM: code steps and
+the fallback), per channel if wanted: {"mode": "agent", "channels": {"whatsapp": "planner"}}. "rules" is read as "off".
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ import time
 from ..application.doctor_chat import DoctorChat, SelectionError
 from .learning import ExampleStore, TraceStore, redact
 from .memory import PatientMemory
+from .planner import PLAN_TOOLS
 from .prompts import REPLY_TOOL, UNDERSTAND_TOOL
 from .tools import Turn
 
@@ -68,10 +70,11 @@ class VitaRuntime:
         self.breaker = breaker or Breaker()
         self.memory, self.traces, self.examples = PatientMemory(redis_client), TraceStore(redis_client), \
             ExampleStore(redis_client)
-        self.llm_understand = self.llm_respond = None
+        self.llm_understand = self.llm_respond = self.llm_plan = None
         if llm is not None:
             self.llm_understand = _bind(llm, UNDERSTAND_TOOL)
             self.llm_respond = _bind(llm, REPLY_TOOL)
+            self.llm_plan = _bind_all(llm, PLAN_TOOLS)
         if graph is None:
             from .checkpoint import RedisCheckpointSaver
             from .graph import build_vita_graph
@@ -83,8 +86,8 @@ class VitaRuntime:
         return self.llm_understand is not None and self.llm_respond is not None
 
     def agent_on(self, channel: str | None) -> bool:
-        """The LLM agent may answer this message: an LLM, the switch on "agent", the breaker closed."""
-        return self.has_llm and self.mode(channel) == "agent" and not self.breaker.open
+        """The LLM may answer this message: an LLM, the switch on "agent" or "planner", the breaker closed."""
+        return self.has_llm and self.mode(channel) in MODES_ON and not self.breaker.open
 
     # ---------------------------------------------------------------- control
     def control(self) -> dict:
@@ -95,9 +98,9 @@ class VitaRuntime:
 
     def set_control(self, value: dict) -> dict:
         mode = _mode(value.get("mode", "agent"))
-        channels = {k: _mode(v) for k, v in (value.get("channels") or {}).items() if _mode(v) in ("agent", "off")}
-        if mode not in ("agent", "off"):
-            raise ValueError("mode must be agent or off")
+        channels = {k: _mode(v) for k, v in (value.get("channels") or {}).items() if _mode(v) in MODES}
+        if mode not in MODES:
+            raise ValueError("mode must be agent, planner or off")
         ctl = {"mode": mode, "channels": channels, "at": int(time.time())}
         self.r.set("vita:control", json.dumps(ctl))
         return ctl
@@ -107,8 +110,20 @@ class VitaRuntime:
         return _mode((ctl.get("channels") or {}).get(channel or "web") or ctl.get("mode") or "agent")
 
 
+MODES = ("agent", "planner", "off")
+MODES_ON = ("agent", "planner")
+
+
 def _mode(value) -> str:
     return "off" if value == "rules" else value
+
+
+def _bind_all(llm, tools: list[dict]):
+    """The planner: the model chooses among all its tools, but must call one (reply is a tool too)."""
+    try:
+        return llm.bind_tools(tools, tool_choice="required")
+    except Exception:
+        return llm.bind_tools(tools)
 
 
 def _bind(llm, tool: dict):

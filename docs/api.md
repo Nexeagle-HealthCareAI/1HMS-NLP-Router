@@ -34,7 +34,7 @@ Interactive docs: `/docs` on any instance.
 | `POST /v2/agent/feedback` | chat | 👍/👎 on a conversation (Vita's learning) |
 | `DELETE /v2/agent/patient-memory` | chat | Forget a returning patient (token, or verified mobile with that scope) |
 | `POST /v2/agent/search-intent` | route | One search-bar query → what Vita reads: specialty or symptoms (with route-symptom's decision), doctor name, degree, hospital, city, near me, emergency. See [vita_graph.md](vita_graph.md#the-search-bar) |
-| `GET/PUT /v2/agent/admin/control` | admin | Vita's mode, `agent` or `off` (code steps and the fallback only), per channel (kill switch) |
+| `GET/PUT /v2/agent/admin/control` | admin | Vita's mode, per channel: `agent` (the model labels, code picks the move), `planner` (the model plans with tools around the patient's needs) or `off` (code steps and the fallback only) |
 | `GET /v2/agent/admin/conversations`, `GET /v2/agent/admin/conversations/{id}` | admin | Review conversations by outcome; one conversation turn by turn |
 | `GET/POST /v2/agent/admin/examples`, `DELETE /v2/agent/admin/examples/{id}`, `POST /v2/agent/admin/examples/promote` | admin | Approve or correct turns as examples; make them live through the scenario-suite gate. See [vita_graph.md](vita_graph.md) |
 | `POST /v1/route-symptom` (alias `POST /route-symptom`) | route | Symptom text → ranked specialties + emergency flag. See [route_symptom.md](route_symptom.md) |
@@ -82,7 +82,7 @@ Optional: `lat`/`lng`, `hospital_id`, `select_doctor_id`, `page`, `ui_language`,
 `reply_id` (a tapped WhatsApp row), `client_ip`, `patient_token`, `verified_mobile`, `visit_appointment_id`,
 `new_search`, `remember` (the patient agreed that Vita may remember who they book for and past doctors). The reply has `kind` (`follow_up`, `emergency`, `recommendation`, `doctor_list`, `doctor_selected`,
 `info`, `handoff`, booking and visit kinds), `message`, `clarify` (tap options), `doctors`, `card`,
-`language`, `engine` (`step`, `agent`, `agent+step`, `agent+template`, `fallback`; see [vita_graph.md](vita_graph.md)) and, for WhatsApp, `whatsapp`
+`language`, `engine` (`step`, `agent`, `agent+step`, `agent+template`, `planner`, `planner+step`, `planner+template`, `fallback`; see [vita_graph.md](vita_graph.md)) and, for WhatsApp, `whatsapp`
 (ready-to-send messages).
 
 ## Changing the API

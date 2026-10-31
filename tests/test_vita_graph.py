@@ -337,3 +337,37 @@ def test_promotion_gate_runs_the_suite(client):
     rep = client.post("/v2/agent/admin/examples/promote").json()
     assert rep["after"]["total"] >= 15 and rep["after"]["safetyPassed"] and rep["promoted"] == 1
     assert client.get("/v2/agent/admin/examples").json()["draft"] == []
+
+
+@pytest.mark.parametrize("text", ["nahi, aur kuch nahi", "aur kuch nahi", "nahi aur kuch nahi hai"])
+def test_a_short_no_is_not_an_emergency(client, text):
+    assert vita(client, text)["kind"] != "emergency"         # the model alone scored these 0.73, with no sign
+
+
+def test_bleeding_when_pregnant_is_an_emergency(client):
+    assert vita(client, "main 5 mahine pregnant hoon aur bleeding ho rahi hai")["kind"] == "emergency"
+
+
+def test_every_safety_scenario_passes_without_a_model(client):
+    from hms_router.vita_graph.evals import SCENARIOS, run_suite
+    a = client.app.state
+    rep = run_suite(lexicon=a.vita_pipeline.lex, directory=a.doctors, booking_client=None,
+                    route_service=lambda: a.route, llm_understand=None, llm_respond=None, examples=[],
+                    scenarios=[s for s in SCENARIOS if s.safety])
+    assert rep["safetyPassed"], [r for r in rep["results"] if not r["passed"]]
+
+
+# ------------------------------------------------------------------------------------------- fallback small talk
+@pytest.mark.parametrize("text,start", [("kkrh", "I'm here"), ("kya kr rhe ho", "I'm here"), ("hru", "I'm well"),
+                                        ("thanks", "No problem"), ("tum kaun ho", "I'm Vita")])
+def test_without_llm_small_talk_gets_a_friendly_answer_not_try_again(client, text, start):
+    out = vita(client, text, language="english")
+    assert out["engine"] == "fallback" and "108" not in out["message"] and not out.get("degraded"), out["message"]
+
+
+def test_without_llm_gibberish_shows_how_to_ask_and_symptoms_say_try_again(client):
+    out = vita(client, "asdfgh")
+    assert "108" not in out["message"] and not out.get("degraded")
+    assert "human" in [o["id"] for o in out["clarify"]["options"]]
+    out = vita(client, "pet me bahut dard")
+    assert "108" in out["message"] and out["degraded"] == ["understanding"]

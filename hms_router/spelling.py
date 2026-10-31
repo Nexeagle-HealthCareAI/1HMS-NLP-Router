@@ -96,7 +96,7 @@ class SpellingCorrector:
     # ---- A. word-level repair
     def repair_word(self, word: str) -> tuple[str, str]:
         """Returns (fixed_word, method). method in exact | alias | phonetic | fuzzy | unknown."""
-        if word in self.lex.vocab or word.isdigit():
+        if word in self.lex.vocab or word in getattr(self.lex, "phrase_words", ()) or word.isdigit():
             return word, "exact"
         if word in self.lex.aliases:                           # curated typo list (spelling_variants.csv)
             return self.lex.aliases[word], "alias"

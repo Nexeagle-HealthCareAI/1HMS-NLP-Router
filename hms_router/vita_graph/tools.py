@@ -8,6 +8,7 @@ import json
 import logging
 import time
 
+from ..application import everyday
 from .. import voice as V
 from ..application.doctor_chat import DOCTOR_LIST, FOLLOW_UP, DoctorChat
 from ..doctors import FALLBACK_SPECIALIST, DoctorLookupError, specialty_key
@@ -51,7 +52,8 @@ class Turn:
         """When the LLM agent cannot answer (off, failing, or its reply was blocked): a plain doctor search when the
         message is plainly one, else "please try again, or talk to our team". The safety step has already run."""
         steps = self.flow
-        return steps.plain_search(self.text, self.session_id, self.ctx) or \
+        return steps.social(self.text, self.session_id, moves=everyday.SOCIAL_MOVES) or \
+            steps.plain_search(self.text, self.session_id, self.ctx) or \
             steps.unavailable(self.text, self.session_id, self.ctx)
 
     @property
@@ -149,11 +151,14 @@ class Turn:
                 "outputs": [{"role": r, "specialist": x.specialist, "confidence": x.confidence}
                             for r, x in zip(("PRIMARY", "SECONDARY", "ALTERNATIVE"), recs)]}
         base = {"session_id": ing.session_id, "turn": ing.turn, "language": ing.language.language}
+        cl = decision.clarify if decision.decision.value == "clarify" else None      # the engine's own doubt
         if routing.low_confidence:
             self.ui = flow._reply(base, "recommendation", "")
             self.ui["card"] = card
             return json.dumps({"confident": False, "advice": "Not sure which specialist. Suggest a General Physician "
-                               "first, or ask one short question about the main problem."})
+                               "first, or ask one short question about the main problem.",
+                               "engine_question": cl.question if cl else None,
+                               "engine_options": list(cl.options) if cl else []}, ensure_ascii=False)
         primary = recs[0].specialist
         second = recs[1].specialist if len(recs) > 1 and recs[1].source == "route-symptom" else None
         t0 = time.perf_counter()
@@ -191,8 +196,58 @@ class Turn:
         return json.dumps({"specialist": primary, "second_option": second,
                            "doctors": [_brief(d) for d in doctors][:5],
                            "fallback_used": bool(found and found["fallbackUsed"]),
+                           "engine_unsure": cl is not None, "engine_question": cl.question if cl else None,
+                           "engine_options": list(cl.options) if cl else [],
                            "note": "Doctors are on screen with a Choose button. In one or two lines say which kind "
-                                   "of doctor fits and why in simple words (no disease names)."})
+                                   "of doctor fits and why in simple words (no disease names). If the engine was "
+                                   "unsure, you may also ask its question."}, ensure_ascii=False)
+
+    def t_doctor_days(self, doctor_name: str | None = None, day: str | None = None) -> str:
+        """Which days / hours a doctor sits (the one chosen, or by name). day: today | tomorrow | day after tomorrow |
+        a weekday | next."""
+        self.tools_used.append("doctor_days")
+        flow, sid = self.flow, self.session_id
+        st = flow.load(sid)
+        ask = flow.read_ask(self.text, sid)
+        ask.name_query = doctor_name or ask.name_query
+        ask.when = _when(day) or ask.when or "next"
+        ask.available_today = False
+        if not ask.name_query and not (st.get("selected") or {}).get("doctorId"):
+            return json.dumps({"error": "no doctor chosen yet: ask which doctor, or find one first"})
+        self.final = flow._availability(self.text, sid, ask, st, self.ctx)
+        return json.dumps({"answered": True})
+
+    def t_choose_doctor(self, doctor_name: str | None = None, position: int | None = None) -> str:
+        """Choose a doctor already shown, by name or by position in the list on screen (1 = first); booking starts
+        when the channel books."""
+        self.tools_used.append("choose_doctor")
+        flow, sid = self.flow, self.session_id
+        st = flow.load(sid)
+        if position:
+            ids = st.get("page_ids") or []
+            if 1 <= int(position) <= len(ids):
+                self.final = flow._select(self.text, sid, ids[int(position) - 1], self.ctx)
+                return json.dumps({"answered": True})
+            return json.dumps({"error": f"only {len(ids)} doctors are on screen"})
+        out = flow.choose(self.text, sid, self.ctx, doctor_name)
+        if out is None:
+            return json.dumps({"error": "no such doctor shown yet: find doctors first, or ask which one"})
+        self.final = out
+        return json.dumps({"answered": True})
+
+    def t_visit_help(self) -> str:
+        """The day of a booked visit: directions, reaching, check-in, token, queue."""
+        self.tools_used.append("visit_help")
+        out = self.flow.step_visit(self.text, self.session_id, self.ctx, asked=True)
+        if out is None:
+            return json.dumps({"error": "no booked visit found for this patient"})
+        self.final = out
+        return json.dumps({"answered": True})
+
+    def t_talk_to_person(self, reason: str = "asked") -> str:
+        self.tools_used.append("handoff")
+        self.final = self.flow.handoff(self.text, self.session_id, "asked")
+        return json.dumps({"answered": True})
 
     # ------------------------------------------------------------------------------------------------- helpers
     def emergency(self, signs: list[str]) -> dict:
@@ -232,3 +287,12 @@ def _brief(d: dict) -> dict:
                               ("fee", d.get("discountedFee") if d.get("discountedFee") is not None else d.get("consultFee")),
                               ("experienceYears", d.get("experienceYears")), ("availableToday", d.get("availableToday")),
                               ("distanceKm", d.get("distanceKm"))) if v is not None}
+
+
+_DAYS = {"today": "+0", "aaj": "+0", "tomorrow": "+1", "kal": "+1", "day after tomorrow": "+2", "parso": "+2",
+         "next": "next", "monday": "dow:0", "tuesday": "dow:1", "wednesday": "dow:2", "thursday": "dow:3",
+         "friday": "dow:4", "saturday": "dow:5", "sunday": "dow:6"}
+
+
+def _when(day: str | None) -> str | None:
+    return _DAYS.get((day or "").strip().lower()) if day else None

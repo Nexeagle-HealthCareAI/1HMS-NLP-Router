@@ -88,7 +88,9 @@ def to_routing(decision, symptoms: list[str], query: str, age_group: str | None 
         cands = [_as_paediatrics(c) if c.specialtyId == "general" else c for c in cands]
         seen: set[str] = set()
         cands = [c for c in cands if not (c.specialtyId in seen or seen.add(c.specialtyId))]
-    low = (kind == "abstain" or not cands or (kind == "clarify" and cands[0].confidence < CLARIFY_MIN))
+    # a close call never sends anyone first to an alarming specialty ("theek nahi lag raha" -> Oncologist): a GP first
+    low = (kind == "abstain" or not cands or (kind == "clarify" and (cands[0].confidence < CLARIFY_MIN
+                                                                    or cands[0].specialtyId in NOT_SECONDARY)))
     recs: list[Recommendation] = []
     if not low:
         top = cands[0]

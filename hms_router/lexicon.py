@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -33,6 +34,10 @@ class Lexicon:
         self.max_ngram = max((len(k.split()) for k in self.phrase_index), default=1)
         # single-word vocabulary used for word-level spell repair
         self.vocab = {e.variant for e in entries if " " not in e.variant}
+        # every word inside a known phrase is a real word: never "repaired" into another ("chalne mein dikkat" must not
+        # become "chhale" = mouth ulcers), never a repair target itself
+        self.phrase_words = {w for e in entries if " " in e.variant for w in re.findall(r"[a-z]+", e.variant)
+                             if len(w) > 2} - self.vocab
         self.spellable_vocab = {
             e.variant for e in entries
             if " " not in e.variant and e.category in {"symptom", "body_part", "intensity", "time"}

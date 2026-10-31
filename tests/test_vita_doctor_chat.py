@@ -506,7 +506,7 @@ def test_front_desk_number_only_from_1hms(client, hms):
 @pytest.mark.parametrize("text", ["bas dekh raha tha", "no thanks", "thank you"])
 def test_just_looking_is_fine(client, hms, text):
     body = chat(client, text)
-    assert body["kind"] == "info" and "No problem" in body["message"] or "Koi baat nahi" in body["message"]
+    assert body["kind"] == "info" and any(w in body["message"] for w in ("No problem", "Koi baat nahi", "welcome"))
     assert searches(hms) == []
 
 

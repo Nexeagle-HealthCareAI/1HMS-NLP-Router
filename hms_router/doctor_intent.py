@@ -131,7 +131,8 @@ _JUST_LOOKING = re.compile(r"^((nahi|nahin|no|na) )?(bas |sirf |just )?(pooch ra
                            r"dhanyavad|dhanyawad|ok bye|bye|ok thanks?|theek hai|thik hai|ok|okay)\b")
 _DECLINE = re.compile(r"^(nahi|nahin|nhi|no|na|nope)( (abhi|ji|thanks?|thank you|bas|sir|madam))*( (nahi|nahin|nhi))?$")
 _GREETING = re.compile(r"^(koi hai|suniye|suno|excuse me|(sir|madam|mam|maam|madam ji|sir ji|bhaiya|didi)$|h+i+|h+e+y+a*|h+e+l+o+w?|hlo+|hy+|hola|yo+|namast[ea]+y?|namaskar|pranam|pranaam|"
-                       r"salaam|salam|assalam\w*|adaab|sat sri akal|jai shri krishna|radhe radhe|ram ram|"
+                       r"salaam|salam|assalam\w*|adaab|aadab|sat sri akal|sat shri akal|jai shri krishna|jai shree krishna|radhe radhe|ram ram|"
+                       r"jai (shri|shree|sri|siya) ram|jai hind|jai mata di|hare krishna|jai jinendra|jai bhim|"
                        r"good (morning|afternoon|evening|night)|gm|kaise ho|kaisi ho|kaise hain|kya haal|how are you|"
                        r"what'?s up|wassup|sup)\b")
 _MORE = re.compile(r"\b(show more|more doctors|aur doctor|aur doctors|aur dikhao|aur dikhaiye|aur batao|dusre doctor|doosre doctor|"
@@ -229,8 +230,11 @@ _DOCTOR_FORMS = WordIndex({"doctor": "doctor", "doctors": "doctor", "specialist"
 _DOCTOR_SHORT = {"doc": "doctor", "docs": "doctors", "drr": "dr", "dctr": "doctor", "dktr": "doctor", "doctr": "doctor",
                  "docter": "doctor", "doctorr": "doctor"}
 _MBBS = re.compile(r"^m+b+s+$")
+_SPOKEN = re.compile(r"\b(hindi|english|angrezi|angreji|bangla|bengali|urdu|bhojpuri|maithili)\s+(bolne|bolte|bolnewale|bolnewala"
+                     r"|speaking|samajhne)(\s+(wale|wala|wali|vale|vala))?\b|\bwho speaks? (hindi|english|bangla|bengali|urdu)\b")
 # Ordinary words that are close to a search word and must never become one ("done" is not "bone", "here" not "heart")
 _PLAIN = {"done", "dont", "gone", "tone", "zone", "none", "cone", "lone", "hard", "heard", "hearts", "chess", "cheat",
+          "bolne", "bolna", "bolte", "bole", "bola", "boli", "bolo", "baat", "baad", "speak", "speaking", "talking",
           "river", "lover", "liver", "dyes", "byes", "skip", "skit", "kin", "kidnap", "cheap", "child", "chill", "kids",
           "bane", "bond", "band", "test", "best", "rest", "nest", "west", "past", "post", "most", "must", "just",
           "ear", "eat", "eye", "dear", "near", "hear", "year", "here", "there", "where", "wear", "bear", "fear",
@@ -490,6 +494,8 @@ def parse(text: str, *, names: Iterable[str] | None = None,
     the place to search."""
     # Hindi script -> the casual Hinglish these rules read; typing mistakes in search words repaired
     norm = search_text(text, known_names=known_names or names, cities=cities, medical_terms=medical_terms)
+    # "english bolne wale doctor": the doctor's spoken language is not something the directory lists; never a place
+    norm = _SPOKEN.sub(" ", norm).strip() or norm
     ask = DoctorAsk()
     consumed: set[str] = set()
 
