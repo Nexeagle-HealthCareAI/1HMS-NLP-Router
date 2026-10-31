@@ -220,6 +220,9 @@ CASES = [
     C("q-7", "question", T("aaj cricket kaun jeeta", wants={"question", "smalltalk"}, urgent=False)),
     C("q-8", "question", T("ayushman card chalta hai?", wants="question")),
     C("q-9", "question", T("clinic kahan hai, main pahunch gaya", wants="visit")),
+    C("q-10", "question", T("hello Vita", wants="smalltalk", urgent=False),
+      T("kkrh", wants="smalltalk", urgent=False)),
+    C("q-11", "question", T("hru", wants="smalltalk", urgent=False)),
 
     # ================================================================== a conversation that builds up
     C("build-1", "context",

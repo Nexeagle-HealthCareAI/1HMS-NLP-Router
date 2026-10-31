@@ -105,6 +105,11 @@ SHORT_FORMS = {
     "okk": "ok", "okkk": "ok", "kk": "ok", "k": "ok", "okey": "okay", "tk": "theek", "thk": "theek", "thik": "theek",
     "thx": "thanks", "thnx": "thanks", "thanx": "thanks", "tq": "thanks", "ty": "thanks", "thanku": "thank you",
     "plz": "please", "pls": "please", "plss": "please", "plzz": "please", "gn": "good night",
+    # chat shorthand
+    "kkrh": "kya kar rahe ho", "kkrhe": "kya kar rahe ho", "kkr": "kya kar rahe ho", "hru": "how are you",
+    "wbu": "and you", "hbu": "and you", "gm": "good morning", "wassup": "whats up", "wasup": "whats up",
+    "sup": "whats up", "whatsup": "whats up", "hlo": "hello", "hlw": "hello", "helo": "hello", "hii": "hi",
+    "rha": "raha", "rhi": "rahi", "rhe": "rahe", "kch": "kuch", "kuchh": "kuch",
     # question words, verbs
     "ky": "kya", "kyaa": "kya", "kyu": "kyun", "kb": "kab", "kaha": "kahan", "kitna": "kitna",
     "kru": "karu", "kroon": "karu", "kro": "karo", "kr": "kar", "krna": "karna", "krni": "karni", "krein": "karein",

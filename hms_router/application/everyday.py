@@ -63,6 +63,9 @@ MOVES: list[tuple[str, re.Pattern]] = [
                            r"|kaun dekh|share hoga|share hogi)\b|\b(kyun|kyu|why)\b.{0,12}\b(number|naam|otp|details)\b"
                            r"|\bmera data\b|\bprivacy\b")),
     ("howareyou", re.compile(r"^((aap|tum|ap) )?(kaise|kaisi|kese) (ho|hain|hai|h)\b|^how (are|r) (you|u)\b|^kya haal\b|^kaisa hai\b")),
+    ("chitchat", re.compile(r"\bkya (kar|kr) (rahe|rahi|raha) (ho|hai|hain|h)\b|\bkya chal raha\b|\bwhats up\b"
+                            r"|\bwhat (are|r) (you|u) doing\b|\bkya ho raha\b|^(and you|aur aap|aur tum|tum batao|aap batao)$"
+                            r"|^(good morning|good evening|good afternoon|suprabhat)\b")),
     ("goodnight", re.compile(r"^(good night|shubh ratri|shubhratri|sweet dreams)\b")),
     ("praise", re.compile(r"\b(thank you so much|thanks a lot|bahut (accha|achha|acha|badhiya|badiya|sahi)|great|awesome|nice|"
                           r"good job|well done|(tum|aap|you) (bahut )?(acchi|achhi|achi|smart|great|nice|helpful)|love you"
@@ -89,6 +92,11 @@ MOVES: list[tuple[str, re.Pattern]] = [
 # Moves that may lead a reply and let the symptom flow go on ("bukhar hai, kaunsi dawai lu?" -> no medicine advice,
 # then triage on the fever).
 PREFIX_MOVES = {"medicine", "serious"}
+# Answers that need no model: the fallback (LLM off or down) can still give them. Medicine / "is it serious" / "what
+# should I do" usually come with a symptom, which needs the model, so they are not here.
+NO_MODEL_MOVES = {"about", "what_is_dd", "fees", "free", "coming_soon", "online", "appointments", "reports", "timings",
+                  "insurance", "ambulance", "blood_vaccine", "privacy", "howareyou", "chitchat", "goodnight", "praise",
+                  "upset", "offtopic", "what", "ack", "better", "distance"}
 # Repair words: they only mean something in context and never beat a doctor or symptom ask.
 REPAIR_MOVES = {"what", "continue", "pick", "restart", "better", "distance", "ack", "yes"}
 
@@ -225,6 +233,10 @@ def reply(move: str, v: Voice, *, fee: object = None, doctor: str | None = None)
         return v("I'm well, thank you! How can I help you today?",
                  "Main theek hoon, shukriya! Aap batayein, kya madad karun?",
                  "मैं ठीक हूँ, शुक्रिया! आप बताइए, क्या मदद करूँ?")
+    if move == "chitchat":
+        return v("I'm here to help you find a doctor. Is something bothering you, or do you need a doctor?",
+                 "Main yahin hoon, aapki madad ke liye. Koi takleef hai, ya kisi doctor ki zaroorat hai?",
+                 "मैं यहीं हूँ, आपकी मदद के लिए। कोई तकलीफ़ है, या किसी डॉक्टर की ज़रूरत है?")
     if move == "goodnight":
         return v("Good night! Write any time you need a doctor.",
                  "Shubh ratri! Doctor ki zaroorat ho to kabhi bhi likhiye.",

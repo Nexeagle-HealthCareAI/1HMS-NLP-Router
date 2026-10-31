@@ -523,7 +523,9 @@ class DoctorChat:
         search. Emergencies never reach here: the safety step runs first on every message."""
         ing, st, base, v = self._ingest(text, sid)
         self._save(ing.session_id, st)
-        if self.read_ask(text, sid).move == "greeting":           # "hello", "namaste": a hello back, the ways to ask
+        ask = self.read_ask(text, sid)
+        move = everyday.detect(intent_text(self.tidy(text)), text)
+        if ask.move == "greeting" and move not in ("howareyou", "chitchat"):                                # "hello", "namaste": a hello back, the ways to ask
             if ing.language.strength != "strong":                 # "heyyy" does not say which language comes next
                 self.pipeline.sessions.set_context(ing.session_id, language="")
                 st.pop("language", None)
@@ -533,6 +535,19 @@ class DoctorChat:
                   "नमस्ते! मैं Vita हूँ। आपको किस तरह का डॉक्टर चाहिए?")
             return self._reply(base, FOLLOW_UP, q, question=q,
                                clarify={"kind": "ask_kind", "question": q, "options": V.ask_kind_options(v)})
+        if move in everyday.NO_MODEL_MOVES and not self._said_symptom(text):   # "kkrh", "fees kitni", "thanks"
+            msg = everyday.reply(move, v)
+            options = ([V.human_option(v)] if move == "upset" else []) + V.ask_kind_options(v)   # upset: a person first
+            return self._reply(base, INFO, msg, clarify={"kind": "ask_kind", "question": msg, "options": options})
+        if not (ask.symptomish or self._said_symptom(text)):     # not medical and not understood: show how to ask
+            msg = v("Sorry, I didn't get that. Tell me what's bothering you (like 'fever for 2 days') or which doctor "
+                    "you need (like 'skin doctor').",
+                    "Maaf kijiye, main samajh nahi paayi. Apni takleef likhiye (jaise 'bukhar 2 din se') ya kaunsa doctor "
+                    "chahiye (jaise 'skin doctor').",
+                    "माफ़ कीजिए, मैं समझ नहीं पाई। अपनी तकलीफ़ लिखिए (जैसे 'बुखार 2 दिन से') या कौन-सा डॉक्टर चाहिए "
+                    "(जैसे 'स्किन डॉक्टर')।")
+            return self._reply(base, FOLLOW_UP, msg, question=msg, clarify={
+                "kind": "ask_kind", "question": msg, "options": V.ask_kind_options(v) + [V.human_option(v)]})
         msg = v("Sorry, I couldn't follow that just now. Please try again in a minute, or I can connect you to our team. "
                 "In an emergency call 108.",
                 "Maaf kijiye, abhi main theek se samajh nahi paayi. Ek minute mein dobara likhiye, ya main aapko hamari "

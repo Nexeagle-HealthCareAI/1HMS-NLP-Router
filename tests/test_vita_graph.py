@@ -355,3 +355,19 @@ def test_every_safety_scenario_passes_without_a_model(client):
                     route_service=lambda: a.route, llm_understand=None, llm_respond=None, examples=[],
                     scenarios=[s for s in SCENARIOS if s.safety])
     assert rep["safetyPassed"], [r for r in rep["results"] if not r["passed"]]
+
+
+# ------------------------------------------------------------------------------------------- fallback small talk
+@pytest.mark.parametrize("text,start", [("kkrh", "I'm here"), ("kya kr rhe ho", "I'm here"), ("hru", "I'm well"),
+                                        ("thanks", "No problem"), ("tum kaun ho", "I'm Vita")])
+def test_without_llm_small_talk_gets_a_friendly_answer_not_try_again(client, text, start):
+    out = vita(client, text, language="english")
+    assert out["engine"] == "fallback" and "108" not in out["message"] and not out.get("degraded"), out["message"]
+
+
+def test_without_llm_gibberish_shows_how_to_ask_and_symptoms_say_try_again(client):
+    out = vita(client, "asdfgh")
+    assert "108" not in out["message"] and not out.get("degraded")
+    assert "human" in [o["id"] for o in out["clarify"]["options"]]
+    out = vita(client, "pet me bahut dard")
+    assert "108" in out["message"] and out["degraded"] == ["understanding"]
