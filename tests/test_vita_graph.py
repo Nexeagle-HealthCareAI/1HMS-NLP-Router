@@ -1,5 +1,6 @@
 """Vita on LangGraph (hms_router/vita_graph): the whole conversation as one graph with saved state, learning and the
-promotion gate. A scripted model stands in for Groq: each step is (understanding, reply) as tool calls."""
+promotion gate; no other conversation engine. A scripted model stands in for Groq: each step is (understanding, reply)
+as tool calls."""
 import json
 
 import pytest
@@ -76,18 +77,23 @@ def vita(client, text, sid=None, **kw):
 def engine(client) -> VitaEngine:
     from hms_router.application.doctor_chat import DoctorChat
     a = client.app.state
-    return VitaEngine(DoctorChat(a.vita_agent, a.doctors, a.redis, booking_client=None), a.vita_runtime)
+    return VitaEngine(DoctorChat(a.vita_pipeline, a.doctors, a.redis, booking_client=None,
+                                 detector=a.emergency_detector), a.vita_runtime)
 
 
 def primary(out):
     return next(o["specialist"] for o in out["card"]["outputs"] if o["role"] == "PRIMARY")
 
 
-# ------------------------------------------------------------------------------------------- rules first
-def test_without_llm_vita_is_the_rules_engine_and_still_traced(client):
+# ------------------------------------------------------------------------------------------- code steps first
+def test_without_llm_the_graph_runs_its_steps_and_fallback_and_is_traced(client):
     out = vita(client, "hello")
-    assert out["engine"] == "rules"
+    assert out["engine"] == "fallback" and out["message"].startswith("Hello")
     assert client.app.state.vita_runtime.traces.turns(out["session_id"])
+    assert vita(client, "cardiologist")["kind"] == "doctor_list"            # a plain search still works
+    out = vita(client, "mujhe 3 din se bukhar hai")                         # triage needs the LLM
+    assert out["engine"] == "fallback" and "108" in out["message"] and out["degraded"] == ["understanding"]
+    assert out["clarify"]["options"][0]["id"] == "human"                     # "talk to our team" first
 
 
 @pytest.mark.parametrize("text", ["I don't want to live anymore", "seene mein dard aur pasina aa raha hai",
@@ -95,7 +101,7 @@ def test_without_llm_vita_is_the_rules_engine_and_still_traced(client):
 def test_danger_and_warning_signs_never_wait_for_the_llm(client, llm, text):
     model = llm()
     out = vita(client, text)
-    assert out["engine"] == "rules" and model.seen == []
+    assert out["engine"] == "step" and model.seen == []
     assert out["kind"] == "emergency" or out["clarify"]["kind"] == "warning_signs"
 
 
@@ -162,19 +168,50 @@ def test_find_doctors_with_filters(client, llm):
     assert {d["name"] for d in out["doctors"]["items"]} <= {"Dr. Anita Sen", "Dr. Priya Bose"}
 
 
-def test_near_me_without_location_asks_where_then_rules_take_the_answer(client, llm):
+def test_near_me_without_location_asks_where_then_a_step_takes_the_answer(client, llm):
     llm(u("find_doctor", doctor={"specialty": "Dermatologist", "near_me": True}))
     first = vita(client, "paas mein skin doctor", city=None)
     assert first["clarify"]["kind"] == "location"
     model = llm()
     out = vita(client, "Kolkata", first["session_id"])
-    assert out["engine"] == "rules" and out["kind"] == "doctor_list" and model.seen == []
+    assert out["engine"] == "step" and out["kind"] == "doctor_list" and model.seen == []
 
 
-def test_booking_and_handoff_go_to_the_tested_flow(client, llm):
+def test_handoff_is_a_step_the_agent_chooses(client, llm):
     llm(u("human"))
     out = vita(client, "mujhe kisi real person se baat karni hai please")
-    assert out["kind"] == "handoff" and out["engine"] == "agent+flow"
+    assert out["kind"] == "handoff" and out["engine"] == "agent+step"
+
+
+def test_choosing_a_shown_doctor_by_name(client, llm):
+    llm(u("find_doctor", doctor={"specialty": "Cardiologist"}), say("Ye heart ke doctor hain."))
+    first = vita(client, "heart doctor chahiye")
+    llm(u("choose_or_book", doctor={"doctor_name": "Amit Das"}))
+    out = vita(client, "amit das wale ko book karna hai", first["session_id"])
+    assert out["kind"] == "doctor_selected" and out["doctor"]["name"] == "Dr. Amit Das" and out["engine"] == "agent+step"
+
+
+def test_nothing_to_choose_yet_is_answered_by_the_llm(client, llm):
+    llm(u("choose_or_book"), say("Kis doctor ke saath? Main doctor dhoondh sakti hoon."))
+    out = vita(client, "appointment book karna hai")
+    assert out["engine"] == "agent" and "doctor" in out["message"].lower()
+
+
+def test_a_refinement_narrows_the_last_list(client, llm):
+    llm(u("find_doctor", doctor={"specialty": "Cardiologist"}), say("Ye heart ke doctor hain."))
+    first = vita(client, "cardiologist")
+    llm(u("find_doctor", doctor={"gender": "female"}), say("Ye mahila heart doctor hain."))
+    out = vita(client, "inme se lady doctor", first["session_id"])
+    assert [d["name"] for d in out["doctors"]["items"]] == ["Dr. Neha Sharma"]
+    assert out["doctors"]["filters"]["gender"] == "female"
+
+
+def test_booking_steps_never_reach_the_llm(client, llm):
+    llm(u("find_doctor", doctor={"specialty": "Dermatologist"}), say("Ye skin doctor hain."))
+    first = vita(client, "skin doctor")
+    model = llm()
+    picked = vita(client, "choose", first["session_id"], select_doctor_id=first["doctors"]["items"][0]["doctorId"])
+    assert picked["kind"] == "doctor_selected" and picked["engine"] == "step" and model.seen == []
 
 
 def test_a_new_complaint_after_advice_starts_triage_again(client, llm):
@@ -193,7 +230,7 @@ def test_a_new_complaint_after_advice_starts_triage_again(client, llm):
 def test_unsafe_llm_reply_never_reaches_the_patient(client, llm, bad):
     llm(u("question", question_topic="anything"), say(bad))
     out = vita(client, "kuch batao")
-    assert bad not in out["message"] and out["engine"] == "rules-fallback"
+    assert bad not in out["message"] and out["engine"] == "fallback"
 
 
 def test_blocked_reply_after_doctors_keeps_vitas_own_words(client, llm):
@@ -210,22 +247,26 @@ def test_checker_allows_ordinary_replies(ok):
 
 
 # ------------------------------------------------------------------------------------------- failures, control
-def test_llm_failure_falls_back_to_rules_and_opens_the_breaker(client, llm):
+def test_llm_failure_falls_back_and_opens_the_breaker(client, llm):
     llm(RuntimeError("groq down"))
     out = vita(client, "hello")
-    assert out["engine"] == "rules-fallback" and out["message"]
+    assert out["engine"] == "fallback" and out["message"]
     rt = client.app.state.vita_runtime
     rt.breaker = Breaker(limit=1, cooldown=60)
     rt.breaker.fail()
-    assert vita(client, "hello")["engine"] == "rules"
+    model = rt.llm_understand
+    assert vita(client, "hello")["engine"] == "fallback" and model.steps == []
+    assert vita(client, "dr neha sharma")["kind"] == "doctor_list"            # searches still work while it is down
 
 
 def test_control_switch_per_channel(client, llm):
     model = llm()
-    r = client.put("/v2/agent/admin/control", json={"mode": "agent", "channels": {"whatsapp": "rules"}})
+    r = client.put("/v2/agent/admin/control", json={"mode": "agent", "channels": {"whatsapp": "off"}})
     assert r.status_code == 200
-    assert vita(client, "hello", channel="whatsapp")["engine"] == "rules" and model.seen == []
-    assert client.get("/v2/agent/admin/control").json()["channels"] == {"whatsapp": "rules"}
+    assert vita(client, "hello", channel="whatsapp")["engine"] == "fallback" and model.seen == []
+    assert client.get("/v2/agent/admin/control").json()["channels"] == {"whatsapp": "off"}
+    client.put("/v2/agent/admin/control", json={"mode": "agent", "channels": {"web": "rules"}})   # the old word
+    assert client.get("/v2/agent/admin/control").json()["channels"] == {"web": "off"}
     client.put("/v2/agent/admin/control", json={"mode": "agent"})
 
 

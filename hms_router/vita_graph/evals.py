@@ -80,7 +80,7 @@ def _check(sc: Scenario, out: dict) -> list[str]:
     return bad
 
 
-def run_suite(*, agent, directory, booking_client, route_service, llm_understand, llm_respond,
+def run_suite(*, lexicon=None, directory, booking_client, route_service, llm_understand, llm_respond,
               examples: list[dict], scenarios: list[Scenario] = SCENARIOS) -> dict:
     """Plays the scenarios through a private Vita (fakeredis + in-memory checkpointer)."""
     import fakeredis
@@ -92,9 +92,9 @@ def run_suite(*, agent, directory, booking_client, route_service, llm_understand
     from .learning import ExampleStore
 
     r = fakeredis.FakeRedis(decode_responses=True)
-    rt = VitaRuntime(None, r, route_service=route_service, breaker=Breaker(limit=10_000))
-    if llm_understand is not None:
-        rt.llm_understand, rt.llm_respond, rt.graph = llm_understand, llm_respond, build_vita_graph(InMemorySaver())
+    rt = VitaRuntime(None, r, route_service=route_service, breaker=Breaker(limit=10_000),
+                     graph=build_vita_graph(InMemorySaver()))
+    rt.llm_understand, rt.llm_respond = llm_understand, llm_respond
 
     class Fixed(ExampleStore):
         def similar(self, text, k=3, examples=None):          # noqa: D401 - the set under test
@@ -102,13 +102,13 @@ def run_suite(*, agent, directory, booking_client, route_service, llm_understand
     examples_under_test = examples
     rt.examples = Fixed(r)
 
-    from ..agent import HMSRouterAgent
-    private_agent = HMSRouterAgent(r, settings=agent.cfg, lexicon=agent.pipeline.lex, corpus=agent.corpus,
-                                   classifier=agent.classifier, emergency_detector=agent.emergency_detector,
-                                   route_service=agent.route_service)
+    from ..pipeline import HMSRouterPipeline
+    pipeline = HMSRouterPipeline(r, lexicon)
+    svc = route_service() if route_service else None
     results, t0 = [], time.perf_counter()
     for sc in scenarios:
-        engine = VitaEngine(DoctorChat(private_agent, directory, r, booking_client=None), rt)
+        engine = VitaEngine(DoctorChat(pipeline, directory, r, booking_client=None,
+                                       detector=lambda: getattr(svc, "detector", None)), rt)
         sid, out, follow = None, {}, list(sc.followups)
         try:
             for text in sc.turns:
@@ -132,7 +132,7 @@ def promotion_gate(app, rt) -> dict:
     drafts, active = rt.examples.drafts(), rt.examples.active()
     if not drafts:
         return {"promoted": 0, "verdict": "no drafts to promote"}
-    common = dict(agent=app.state.vita_agent, directory=app.state.doctors, booking_client=None,
+    common = dict(lexicon=app.state.vita_pipeline.lex, directory=app.state.doctors, booking_client=None,
                   route_service=lambda: getattr(app.state, "route", None),
                   llm_understand=rt.llm_understand, llm_respond=rt.llm_respond)
     base = run_suite(examples=active, **common)
@@ -159,7 +159,7 @@ if __name__ == "__main__":                                          # pragma: no
     with TestClient(create_app()) as c:
         a = c.app
         rt = a.state.vita_runtime
-        rep = run_suite(agent=a.state.vita_agent, directory=a.state.doctors, booking_client=None,
+        rep = run_suite(lexicon=a.state.vita_pipeline.lex, directory=a.state.doctors, booking_client=None,
                         route_service=lambda: a.state.route, llm_understand=rt.llm_understand if rt else None,
                         llm_respond=rt.llm_respond if rt else None, examples=rt.examples.active() if rt else [])
         print(json.dumps(rep, indent=1, ensure_ascii=False))

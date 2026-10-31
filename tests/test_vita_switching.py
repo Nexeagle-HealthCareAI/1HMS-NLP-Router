@@ -78,7 +78,7 @@ def test_a_child_after_a_recommendation_shows_childrens_doctors(client, hms):
 # ============================================================================ while booking
 @pytest.mark.parametrize("text, kind, spec", [
     ("dil ka doctor chahiye", "doctor_list", "Cardiologist"),
-    ("mujhe bukhar hai", "recommendation", None),
+    ("mujhe bukhar hai", "follow_up", None),            # triage is the LLM's (none here): the booking still ends
     ("Dr Neha Sharma dikhao", "doctor_list", None),
     ("Patna mein skin doctor", "doctor_list", "Dermatologist")])
 def test_a_new_ask_instead_of_the_name_ends_the_booking(client, hms, api, text, kind, spec):

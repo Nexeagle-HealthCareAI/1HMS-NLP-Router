@@ -98,8 +98,13 @@ def test_missing_and_bad_keys(secured):
 def test_scopes(secured):
     ok = secured.post("/v1/route-symptom", json={"query": "dant dard"}, headers={"X-Api-Key": ROUTE_KEY})
     assert ok.status_code == 200
-    denied = secured.post("/chat", json={"text": "dant dard"}, headers={"X-Api-Key": ROUTE_KEY})
+    denied = secured.post("/v2/agent/chat", json={"text": "dant dard"}, headers={"X-Api-Key": ROUTE_KEY})
     assert denied.status_code == 403
+    assert secured.post("/v2/agent/chat", json={"text": "dant dard"}, headers={"X-Api-Key": CHAT_KEY}).status_code == 200
+    # the search bar's key (route scope) reads queries through Vita; /chat is an alias of Vita (chat scope)
+    assert secured.post("/v2/agent/search-intent", json={"query": "dant dard"},
+                        headers={"X-Api-Key": ROUTE_KEY}).status_code == 200
+    assert secured.post("/chat", json={"text": "dant dard"}, headers={"X-Api-Key": ROUTE_KEY}).status_code == 403
     assert secured.post("/chat", json={"text": "dant dard"}, headers={"X-Api-Key": CHAT_KEY}).status_code == 200
 
 

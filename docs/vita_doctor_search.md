@@ -1,10 +1,10 @@
 # Vita: `POST /v2/agent/chat`
 
 Vita Chat requirements, Part 2 (VITA-1 to VITA-13), and the Phase 1 rules of the NLP Router Agentic AI
-vision ("How Vita talks"). Vita is its own endpoint; **`/chat` is unchanged** (it still adds the older
-`doctors` block on a confident recommendation while lookups are on). Code: `hms_router/doctor_intent.py` (what kind of ask),
-`hms_router/doctors.py` (`DoctorDirectory`, the only way to 1HMS), `hms_router/application/doctor_chat.py`
-(the turn logic). Tests: `tests/test_vita_doctor_chat.py`.
+vision ("How Vita talks"). The old `/chat` agent is gone (2026-10-31); `POST /chat` is now an alias of Vita. Code:
+`hms_router/doctor_intent.py` (what kind of ask), `hms_router/doctors.py` (`DoctorDirectory`, the only way to 1HMS),
+`hms_router/application/doctor_chat.py` (Vita's code steps), `hms_router/vita_graph/` (the conversation). Tests:
+`tests/test_vita_doctor_chat.py`, `tests/test_vita_graph.py`.
 
 ## Turn it on
 
@@ -19,15 +19,17 @@ Unset = Vita still talks and triages, but every doctor search answers with `degr
 
 ## Engine
 
-Since 2026-10-30 the whole conversation runs on LangGraph with an LLM understanding and replying, saved state per
-session, learning and a control switch: see [vita_graph.md](vita_graph.md). Without `VITA_LLM_PROVIDER` (or with the
-control switch on `rules`) Vita answers with the rules engine described below; the rules engine also always handles
-emergencies, warning signs, booking/OTP and the other steps listed there.
+The whole conversation runs on one LangGraph graph: code steps first (self-harm, taps, after an emergency, the visit,
+booking/OTP, answers to Vita's own questions, emergencies and warning signs, private numbers), then the LLM agent
+(understanding, triage, search, replies): see [vita_graph.md](vita_graph.md). Since 2026-10-31 there is no rules
+engine behind it. Without `VITA_LLM_PROVIDER`, with the control switch `off`, or while Groq fails, the code steps still
+run, plain doctor searches still work, and anything else gets "please try again, or talk to our team" (the sections
+below on symptom triage wording describe what the agent now does with the LLM).
 
 ## Request
 
 ```json
-POST /v2/agent/chat          (same API keys and rate limit as /chat)
+POST /v2/agent/chat          (API key with the chat scope)
 {
   "text": "skin ka doctor chahiye",
   "session_id": "…",              // from the previous reply; omit on the first message
@@ -86,7 +88,7 @@ are repaired only when the message asks for a doctor, so symptom typos stay with
 city lists come from `list_doctor_names` (cached 15 min, `DoctorDirectory.index()`).
 
 Body words alone ("pet mein dard", "kaan mein dard") are symptoms and go to triage; "pet ka doctor" is a
-specialty ask. Triage asks **at most two** follow-up questions before showing something (`/chat` keeps 3).
+specialty ask. Triage asks **at most two** follow-up questions before showing something.
 
 ## Booking (vision Phase 2)
 
@@ -219,7 +221,6 @@ Hindi) or Hindi (Devanagari). `language` on every reply says which.
   the patient's language and keep one English line as a backup.
 - The triage result is said like a person ("Samajh gaya: 3 din se bukhar aur khansi. Iske liye General
   Physician ko dikhana sahi rahega…"), not the printed card; `card` still carries the full detail.
-- `/chat` keeps its own wording; only its language detection improved.
 
 ## How Vita talks (conversation moves)
 

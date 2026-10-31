@@ -1,12 +1,9 @@
-"""Doctor lookups from 1HMSAPI's MCP server (hms_router/doctors.py) and the /chat `doctors` block."""
+"""Doctor lookups from 1HMSAPI's MCP server (hms_router/doctors.py) (Vita's doctor lists are tested in test_vita_doctor_chat.py)."""
 import json
 
 import httpx
 import pytest
-from fastapi.testclient import TestClient
 
-from hms_router.adapters.http import create_app
-from hms_router.adapters.settings import ServiceSettings
 from hms_router.doctors import DoctorDirectory, McpClient, build_directory, specialty_key
 
 API_CATEGORIES = ["General Physician", "Paediatrician", "Cardiologist (Heart)", "Dermatologist (Skin)",
@@ -149,48 +146,3 @@ def test_off_without_settings():
     assert build_directory(None, None).for_specialist("Cardiologist") is None
 
 
-# ----------------------------------------------------------------------------- /chat
-@pytest.fixture(scope="module")
-def chat_app():
-    with TestClient(create_app(ServiceSettings())) as client:     # built once: startup loads the route model
-        yield client
-
-
-def test_chat_has_no_doctors_block_when_off(chat_app):
-    assert not chat_app.app.state.doctors.enabled                  # what the lifespan builds without settings
-    body = chat_app.post("/chat", json={"text": "bukhar hai 3 din se bahut tez"}).json()
-    assert body["kind"] == "recommendation" and "doctors" not in body
-
-
-def test_chat_recommendation_lists_doctors_when_on(chat_app):
-    server = FakeMcp()
-    chat_app.app.state.doctors = directory(server)
-    body = chat_app.post("/chat", json={"text": "bukhar hai 3 din se bahut tez", "city": "Kolkata"}).json()
-    primary = next(o for o in body["card"]["outputs"] if o["role"] == "PRIMARY")
-    assert body["doctors"]["specialist"] == primary["specialist"] and len(body["doctors"]["doctors"]) == 3
-    assert server.calls[-1][1]["city"] == "Kolkata"
-
-
-def test_chat_emergency_never_looks_up_doctors(chat_app):
-    server = FakeMcp()
-    chat_app.app.state.doctors = directory(server)
-    body = chat_app.post("/chat", json={"text": "seene mein dard ho raha hai"}).json()
-    assert body["kind"] == "emergency" and "doctors" not in body and server.calls == []
-
-
-def test_chat_survives_mcp_outage(chat_app):
-    chat_app.app.state.doctors = directory(FakeMcp(fail_status=503))
-    r = chat_app.post("/chat", json={"text": "bukhar hai 3 din se bahut tez"})
-    assert r.status_code == 200 and r.json()["kind"] == "recommendation" and "doctors" not in r.json()
-
-
-def test_chat_rejects_bad_location(chat_app):
-    assert chat_app.post("/chat", json={"text": "bukhar", "lat": 95, "lng": 88}).status_code == 422
-
-
-def test_settings_read_doctor_env():
-    s = ServiceSettings.from_env({"HMS_DOCTORS_MCP_URL": "https://x/mcp", "HMS_DOCTORS_MCP_KEY": "k",
-                                  "HMS_DOCTORS_LIMIT": "5"})
-    assert s.doctors_configured and s.doctors_limit == 5 and s.doctors_timeout == 2.0
-    with pytest.raises(RuntimeError):
-        ServiceSettings.from_env({"HMS_DOCTORS_LIMIT": "11"})

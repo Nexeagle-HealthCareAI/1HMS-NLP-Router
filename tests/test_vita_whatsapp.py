@@ -84,9 +84,17 @@ def test_every_reply_renders_to_messages_whatsapp_accepts(client, hms, text, ext
 
 
 def test_multi_turn_triage_stays_valid(client, hms):
+    from hms_router.vita_graph.engine import VitaRuntime
+    from tests.test_vita_graph import ScriptedLLM, say, u
+    a = client.app.state
+    a.vita_runtime = VitaRuntime(ScriptedLLM(u("symptoms", "fever and headache for 3 days"), say("Khansi bhi hai?"),
+                                             u("symptoms", "fever, headache, mild cough, 3 days", enough=True),
+                                             say("General Physician ko dikhayein.")), a.redis,
+                                 route_service=lambda: a.route)
     q = wa(client, "3 din se bukhar aur sar dard hai", city="Kolkata")
     rec = wa(client, "haan thodi khasi bhi", session_id=q["session_id"], city="Kolkata")
-    assert rec["kind"] == "recommendation"
+    assert rec["kind"] == "recommendation" and rec["whatsapp"]
+    a.vita_runtime = VitaRuntime(None, a.redis, route_service=lambda: a.route)
 
 
 def test_web_replies_do_not_carry_whatsapp(client, hms):

@@ -7,7 +7,7 @@ from hms_router.adapters.settings import ServiceSettings
 from hms_router.application.retraining import Retrainer
 from hms_router.rag.corpus import LabelledExample
 from hms_router.rag.evaluation import EvalResult, promotion_verdict
-from hms_router.telemetry import DECISIONS, FEEDBACK, MODEL_VERSIONS, DecisionRecorder, route_record
+from hms_router.telemetry import DECISIONS, MODEL_VERSIONS, DecisionRecorder, route_record
 from hms_router.textnorm import preprocess
 
 
@@ -169,13 +169,11 @@ def monitored(bundle):
 def test_route_and_chat_are_recorded(monitored):
     rec = monitored.app.state.telemetry
     monitored.post("/route-symptom", json={"query": "dant mein bahut dard hai"})
-    monitored.post("/chat", json={"text": "mujhe bukhar hai"})
-    monitored.post("/feedback", json={"kind": "wrong_specialist", "specialist": "ENT", "symptoms": ["kaan dard"],
-                                      "suggested_specialist": "Neurologist"})
+    monitored.post("/v2/agent/chat", json={"text": "mujhe bukhar hai"})            # Vita (the old /chat is retired)
     rec.flush()
-    kinds = {k: [x for _, b in rec.sink.sent if _ == k for x in b] for k in (DECISIONS, FEEDBACK)}
+    kinds = {k: [x for _, b in rec.sink.sent if _ == k for x in b] for k in (DECISIONS,)}
     agents = {x["agent"] for x in kinds[DECISIONS]}
-    assert {"route", "chat"} <= agents and kinds[FEEDBACK][0]["text"] == "kaan dard"
+    assert {"route", "chat"} <= agents
 
 
 def test_admin_endpoints(monitored):

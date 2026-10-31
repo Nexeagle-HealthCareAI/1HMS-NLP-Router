@@ -150,17 +150,24 @@ def test_misspelled_or_old_city_names(chat, text):
 
 
 @pytest.mark.parametrize("text,said", [
-    ("chest pian", "emergency"), ("tooth ache", "toothache"), ("back ache", "back pain"), ("eye redness", "red eye"),
-    ("coughing blood", "coughing up blood"), ("hedache since 2 days", "headache"), ("stomuch pain", "stomach"),
+    ("tooth ache", "toothache"), ("back ache", "back pain"), ("eye redness", "red eye"),
+    ("coughing blood", "coughing up blood"), ("hedache since 2 days", "headache"), ("stomuch pain", "stomach pain"),
 ])
-def test_misspelled_symptoms(chat, text, said):
-    out, _ = chat(text)
-    assert said in (out["kind"] + " " + out["message"]).lower()
+def test_misspelled_symptoms(text, said):
+    from hms_router.lexicon import Lexicon
+    from hms_router.spelling import SpellingCorrector
+    assert said in SpellingCorrector(Lexicon.from_csv()).correct(text).symptoms
 
 
-def test_achha_is_not_ache(chat):
-    out, _ = chat("achha")
-    assert "pain" not in out["message"].lower()
+def test_misspelled_red_flag_is_an_emergency(chat):
+    out, _ = chat("chest pian")
+    assert out["kind"] == "emergency"
+
+
+def test_achha_is_not_ache():
+    from hms_router.lexicon import Lexicon
+    from hms_router.spelling import SpellingCorrector
+    assert SpellingCorrector(Lexicon.from_csv()).correct("achha").symptoms == []
 
 
 def test_no_is_not_a_doctor_called_neha(chat):

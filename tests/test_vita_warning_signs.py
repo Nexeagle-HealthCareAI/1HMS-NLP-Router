@@ -65,8 +65,3 @@ def test_a_sign_in_the_first_message_is_108_at_once(client, first):
     assert out["kind"] == "emergency" and "108" in out["message"]
 
 
-@pytest.mark.parametrize("text,heard", [("mujhe pair mein sujan hai", "sujan"), ("daant mein bahut dard hai", "daant"),
-                                        ("gale mein gaanth hai", "gaanth")])
-def test_feet_teeth_and_lump_are_heard(client, text, heard):
-    msg = vita(client, text)["message"]
-    assert heard in msg and "pain aur" not in msg and "daane" not in msg

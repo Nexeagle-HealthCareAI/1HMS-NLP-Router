@@ -1,44 +1,41 @@
 """Vita as one LangGraph graph: the whole conversation, one run per patient message, state saved per session
-(thread_id = Vita session id) by the Redis checkpointer.
+(thread_id = Vita session id) by the Redis checkpointer. There is no other conversation engine.
 
-    START -> guard_in ──(danger, a step in progress, a tap, a warning-sign question)──> rules ──────────┐
-               └─> recall -> understand (LLM) -> plan ─┬─> emergency ─────────────────────────────────┤
-                                                      ├─> flow  (booking, visit, choosing: tested code) ─┤
-                                                      ├─> search ─┬─────────────────────────────────────┤
-                                                      ├─> route  ─┤  (answered by the tool)               │
-                                                      ├─> ask     │                                     │
-                                                      └─> answer  └─> respond (LLM) + checker ──────────┴─> remember -> END
+    START -> self_harm -> tap -> bangla -> emergency_care -> visit -> booking -> picks -> safety -> privacy ─┐
+              (each step answers what is its business, or passes the message on)               │   any answer
+                                                                                                 │   -> remember
+             gate ─(no LLM, switch off, breaker open)─> fallback ───────────────────────────────┤
+               └─> recall -> understand (LLM) -> plan ─┬─> emergency ───────────────────────────┤
+                                                      ├─> handoff ─────────────────────────────┤
+                                                      ├─> choose (a shown doctor, a day)  ──┬───┤
+                                                      ├─> visit_help ─────────────────────┬─┘   │
+                                                      ├─> search ──┬────────────────────────────┤
+                                                      ├─> route  ──┤ (answered by the tool)     │
+                                                      ├─> ask      │                            │
+                                                      └─> answer ──┴─> respond (LLM) + checker ─┴─> remember -> END
 
 State that lives across turns: messages (the conversation), patient (who, age group, pregnant, language), triage
 (complaint so far in English, questions asked), stage. Per turn: understanding, decision, facts, out.
 
-Rules that stay in code (never a model's choice): guard_in on every message (self-harm, the shared emergency detector,
-warning-sign questions, booking/OTP and other steps in progress); the LLM can only ADD urgency (danger_signs, or
-assess_symptoms finding a red flag in its reading); the specialist comes from the route-symptom engine; every LLM reply
-passes checker.py or is replaced by Vita's own wording.
+Rules that stay in code (never a model's choice): the steps above on every message (self-harm, the shared emergency
+detector, warning-sign questions, booking/OTP and other steps in progress); the LLM can only ADD urgency (danger_signs,
+or assess_symptoms finding a red flag in its reading); the specialist comes from the route-symptom engine; every LLM
+reply passes checker.py or is replaced by the tool's own wording or the fallback.
 """
 from __future__ import annotations
 
 import json
 import logging
 import operator
-import time
 from typing import Annotated, Any, TypedDict
 
-from ..application.everyday import warn_kind
-from ..application.journey import wants as journey_wants
-from ..application.visit_help import wants as visit_wants
-from ..safety.self_harm import mentions_self_harm
-from ..textnorm import intent_text
 from . import checker
 from .learning import redact
 from .prompts import RESPOND, UNDERSTAND, respond_input, understand_input
 
 log = logging.getLogger("hms_router.vita_graph")
 
-AFTER_EMERGENCY_S = 2 * 3600
 MAX_QUESTIONS = 2
-STICKY = ("booking", "emergency", "pending", "warn", "which", "which_hospital")
 
 
 class VitaState(TypedDict, total=False):
@@ -60,38 +57,6 @@ def _turn(config) -> Any:
     return config["configurable"]["turn"]
 
 
-def sticky_reason(turn) -> str | None:
-    """Why this message must go to Vita's tested rules, or None for the LLM agent."""
-    flow, text, kw = turn.flow, turn.text, turn.kw
-    if kw.get("select_doctor_id") or (kw.get("page") or 1) > 1 or kw.get("new_search"):
-        return "tap"
-    if mentions_self_harm(text):
-        return "self_harm"
-    if text.strip().lower() in ("location", "my location") or (turn.ctx.get("located") and len(text.split()) <= 2):
-        return "location"
-    try:
-        if flow.agent.pipeline.detector.detect(text).language == "bangla":
-            return "bangla"
-    except Exception:
-        pass
-    st = flow.load(turn.session_id) if turn.session_id else {}
-    for k in STICKY:
-        if st.get(k):
-            return "in_progress:" + k
-    ae = st.get("after_emergency") or {}
-    if ae and time.time() - float(ae.get("at") or 0) < AFTER_EMERGENCY_S:
-        return "after_emergency"
-    if flow.visit.enabled and visit_wants(text):
-        return "visit"
-    if flow.journey.enabled and kw.get("channel") != "whatsapp" and journey_wants(text):
-        return "journey"
-    if warn_kind(intent_text(text)):
-        return "warning_signs"
-    if flow._emergency(text):                       # the shared detector (rules + model); fails safe to True
-        return "emergency"
-    return None
-
-
 def _tool_args(msg, name: str) -> dict | None:
     for call in getattr(msg, "tool_calls", None) or []:
         if call.get("name") == name:
@@ -104,15 +69,41 @@ def build_vita_graph(checkpointer=None):
     from langgraph.graph import END, START, StateGraph
 
     # ------------------------------------------------------------------------------------------------ nodes
-    def guard_in(state: VitaState, config) -> dict:
-        why = sticky_reason(_turn(config))
-        return {"route": "rules", "why": why} if why else {"route": "agent", "why": ""}
+    # ---------------------------------------------------------------- code steps, in order (application/doctor_chat.py)
+    def step(name, run):
+        def node(state: VitaState, config) -> dict:
+            turn = _turn(config)
+            out = run(turn)
+            if out is None:
+                return {}
+            out["engine"] = "step"
+            if turn.ctx.get("restarted"):                       # "naya shuru karo": what Vita knew is forgotten too
+                return {"out": out, "route": "step", "why": name, "triage": {}, "patient": {}, "stage": "start"}
+            return {"out": out, "route": "step", "why": name}
+        node.__name__ = name
+        return node
 
-    def rules(state: VitaState, config) -> dict:
+    STEPS = (
+        ("self_harm", lambda t: t.steps.step_self_harm(t.text, t.session_id, t.ctx)),
+        ("tap", lambda t: t.steps.step_tap(t.text, t.session_id, t.ctx, t.kw)),
+        ("bangla", lambda t: t.steps.step_bangla(t.text, t.session_id)),
+        ("emergency_care", lambda t: t.steps.step_emergency_care(t.text, t.session_id, t.ctx)),
+        ("visit", lambda t: t.steps.step_visit(t.text, t.session_id, t.ctx)),
+        ("booking", lambda t: t.steps.step_booking(t.text, t.session_id, t.ctx)),
+        ("picks", lambda t: t.steps.step_picks(t.text, t.session_id, t.ctx)),
+        ("safety", lambda t: t.steps.step_safety(t.text, t.session_id, t.ctx)),
+        ("privacy", lambda t: t.steps.step_privacy(t.text, t.session_id, t.ctx)),
+    )
+
+    def gate(state: VitaState, config) -> dict:
         turn = _turn(config)
-        out = turn.flow.handle(turn.text, turn.session_id, **turn.kw)
-        out["engine"] = "rules" if state.get("route") == "rules" else "rules-fallback"
-        return {"out": out, "decision": "rules"}
+        on = turn.rt.agent_on(turn.kw.get("channel"))
+        return {"route": "agent" if on else "fallback"}
+
+    def fallback(state: VitaState, config) -> dict:
+        out = _turn(config).fallback()
+        out["engine"] = "fallback"
+        return {"out": out, "decision": "fallback"}
 
     def recall(state: VitaState, config) -> dict:
         turn = _turn(config)
@@ -124,7 +115,7 @@ def build_vita_graph(checkpointer=None):
     def understand(state: VitaState, config) -> dict:
         turn = _turn(config)
         prompt = understand_input(state.get("messages") or [], state.get("patient") or {}, state.get("triage") or {},
-                                  turn.text)
+                                  turn.raw)
         try:
             msg = turn.rt.llm_understand.invoke([SystemMessage(content=UNDERSTAND),
                                                  HumanMessage(content=redact(prompt))])
@@ -152,12 +143,16 @@ def build_vita_graph(checkpointer=None):
     def plan(state: VitaState, config) -> dict:
         u, triage = state.get("understanding") or {}, state.get("triage") or {}
         if u.get("failed"):
-            return {"decision": "rules"}
+            return {"decision": "fallback"}
         intent, doctor = u.get("intent"), {k: v for k, v in (u.get("doctor") or {}).items() if v}
         if u.get("danger_signs"):
             return {"decision": "emergency"}
-        if intent in ("choose_or_book", "visit_help", "human"):
-            return {"decision": "flow"}
+        if intent == "human":
+            return {"decision": "handoff"}
+        if intent == "choose_or_book":
+            return {"decision": "choose"}
+        if intent == "visit_help":
+            return {"decision": "visit_help"}
         if intent == "more_doctors" or (intent == "find_doctor" and doctor):
             return {"decision": "search"}
         if intent == "symptoms" or (intent in ("find_doctor", "other") and triage.get("symptoms_en")
@@ -173,13 +168,34 @@ def build_vita_graph(checkpointer=None):
         out["engine"] = "agent"
         return {"out": out, "stage": "emergency"}
 
-    def flow(state: VitaState, config) -> dict:
+    def handoff(state: VitaState, config) -> dict:
         turn = _turn(config)
-        turn.t_vita_flow(turn.text)                                  # the patient's own words, to the tested flow
-        out = turn.final
-        out["engine"] = "agent+flow"
+        out = turn.steps.handoff(turn.text, turn.session_id, "asked")
+        out["engine"] = "agent+step"
+        return {"out": out, "stage": "handoff"}
+
+    def choose(state: VitaState, config) -> dict:
+        turn = _turn(config)
+        name = ((state.get("understanding") or {}).get("doctor") or {}).get("doctor_name")
+        turn.tools_used.append("choose")
+        out = turn.steps.choose(turn.text, turn.session_id, turn.ctx, name)
+        if out is None:                                  # nothing to choose yet: say so, offer to search
+            return {"facts": {"no_doctor_chosen_yet": True, **turn.steps.facts(turn.session_id),
+                              "next": "ask which doctor, or offer to find one by need, name or place"},
+                    "decision": "answer"}
+        out["engine"] = "agent+step"
         return {"out": out, "stage": "booking" if str(out.get("kind", "")).startswith(("book", "doctor_sel")) else
                 state.get("stage") or "search"}
+
+    def visit_help(state: VitaState, config) -> dict:
+        turn = _turn(config)
+        turn.tools_used.append("visit")
+        out = turn.steps.step_visit(turn.text, turn.session_id, turn.ctx, asked=True)
+        if out is None:
+            return {"facts": {"no_booked_visit_found": True, **turn.steps.facts(turn.session_id)},
+                    "decision": "answer"}
+        out["engine"] = "agent+step"
+        return {"out": out, "stage": "visit"}
 
     def search(state: VitaState, config) -> dict:
         turn = _turn(config)
@@ -213,7 +229,9 @@ def build_vita_graph(checkpointer=None):
 
     def answer(state: VitaState, config) -> dict:
         u = state.get("understanding") or {}
+        turn = _turn(config)
         return {"facts": {"intent": u.get("intent"), "topic": u.get("question_topic"),
+                          "doctor_in_hand": turn.steps.facts(turn.session_id),
                           "vita_can": ["find the right kind of doctor from symptoms", "find doctors by name, specialty,"
                                        " hospital or place", "book an appointment", "help on the day of the visit"]},
                 "decision": "answer"}
@@ -224,7 +242,7 @@ def build_vita_graph(checkpointer=None):
         prompt = respond_input(decision=state.get("decision") or "answer", facts=state.get("facts") or {},
                                conversation=state.get("messages") or [], patient=patient,
                                memory=state.get("memory") or {}, examples=state.get("examples") or [],
-                               text=turn.text, language=patient.get("language"), channel=turn.kw.get("channel") or "web")
+                               text=turn.raw, language=patient.get("language"), channel=turn.kw.get("channel") or "web")
         try:
             msg = turn.rt.llm_respond.invoke([SystemMessage(content=RESPOND), HumanMessage(content=redact(prompt))])
             args = _tool_args(msg, "reply")
@@ -249,8 +267,8 @@ def build_vita_graph(checkpointer=None):
             out = dict(turn.ui)
             out["engine"] = "agent+template"
             return {"out": out}
-        out = turn.fresh_rules()                                     # nothing usable: the rules engine answers
-        out["engine"] = "rules-fallback"
+        out = turn.fallback()                                        # nothing usable: search, or "try again / our team"
+        out["engine"] = "fallback"
         return {"out": out}
 
     def remember(state: VitaState, config) -> dict:
@@ -286,22 +304,30 @@ def build_vita_graph(checkpointer=None):
 
     # ------------------------------------------------------------------------------------------------ wiring
     g = StateGraph(VitaState)
-    for name, fn in (("guard_in", guard_in), ("rules", rules), ("recall", recall), ("understand", understand),
-                     ("plan", plan), ("emergency", emergency), ("flow", flow), ("search", search), ("route", route),
-                     ("ask", ask), ("answer", answer), ("respond", respond), ("remember", remember)):
+    names = [n for n, _ in STEPS]
+    for n, run in STEPS:
+        g.add_node(n, step(n, run))
+    for name, fn in (("gate", gate), ("fallback", fallback), ("recall", recall), ("understand", understand),
+                     ("plan", plan), ("emergency", emergency), ("handoff", handoff), ("choose", choose),
+                     ("visit_help", visit_help), ("search", search), ("route", route), ("ask", ask),
+                     ("answer", answer), ("respond", respond), ("remember", remember)):
         g.add_node(name, fn)
-    g.add_edge(START, "guard_in")
-    g.add_conditional_edges("guard_in", lambda s: s["route"], {"rules": "rules", "agent": "recall"})
+    g.add_edge(START, names[0])
+    for here, nxt in zip(names, names[1:] + ["gate"]):
+        g.add_conditional_edges(here, lambda s, nxt=nxt: "remember" if s.get("out") else nxt,
+                                {"remember": "remember", nxt: nxt})
+    g.add_conditional_edges("gate", lambda s: s["route"], {"agent": "recall", "fallback": "fallback"})
     g.add_edge("recall", "understand")
     g.add_edge("understand", "plan")
     g.add_conditional_edges("plan", lambda s: s["decision"],
-                            {d: d for d in ("rules", "emergency", "flow", "search", "route", "ask", "answer")})
+                            {d: d for d in ("fallback", "emergency", "handoff", "choose", "visit_help", "search", "route",
+                                            "ask", "answer")})
     answered = lambda s: "remember" if s.get("out") else "respond"           # noqa: E731
-    g.add_conditional_edges("search", answered, {"remember": "remember", "respond": "respond"})
-    g.add_conditional_edges("route", answered, {"remember": "remember", "respond": "respond"})
+    for n in ("search", "route", "choose", "visit_help"):
+        g.add_conditional_edges(n, answered, {"remember": "remember", "respond": "respond"})
     for n in ("ask", "answer"):
         g.add_edge(n, "respond")
-    for n in ("rules", "emergency", "flow", "respond"):
+    for n in ("fallback", "emergency", "handoff", "respond"):
         g.add_edge(n, "remember")
     g.add_edge("remember", END)
     return g.compile(checkpointer=checkpointer)

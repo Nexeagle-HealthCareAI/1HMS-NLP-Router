@@ -3,7 +3,14 @@ breathlessness again), "ambulance aa gayi" / "ab theek hoon" / "108 nahi lag rah
 repeated once before anything else, and the model's internal reason is never shown as a sign."""
 import pytest
 
+from hms_router.vita_graph.engine import VitaRuntime
 from tests.test_vita_doctor_chat import chat, client, hms  # noqa: F401
+from tests.test_vita_graph import ScriptedLLM, say as reply, u
+
+
+def scripted(client, *steps):
+    a = client.app.state
+    a.vita_runtime = VitaRuntime(ScriptedLLM(*steps), a.redis, route_service=lambda: a.route)
 
 
 def say(client, prev, text):
@@ -26,8 +33,10 @@ def test_the_models_reason_is_not_a_sign(client, hms):
 
 
 def test_a_new_symptom_is_not_the_old_emergency(client, breathless):
+    scripted(client, u("symptoms", "stomach pain", enough=True), reply("Pet dard ke liye ye doctor sahi rahenge."),
+             u("symptoms", "stomach pain and vomiting", enough=True), reply("Ye doctor sahi rahenge."))
     out = say(client, breathless, "pet mai dard")
-    assert out["kind"] == "recommendation" and out["state"]["symptoms"] == ["stomach pain"]
+    assert out["kind"] == "recommendation" and out["card"]["outputs"][0]["specialist"] != "Emergency Medicine"
     assert out["message"].startswith("Pehle: agar saans phoolna abhi bhi hai, to turant 108 par call karein.")
     again = say(client, out, "aur ulti bhi")                      # the number is said once, not on every reply
     assert not again["message"].startswith("Pehle:")
@@ -57,11 +66,3 @@ def test_a_new_red_flag_is_an_emergency_again(client, breathless):
     out = say(client, out, "seene mein tez dard aur paseena")
     assert out["kind"] == "emergency" and out["card"]["emergency_reasons"] == ["Chest pain"]
     assert "Lakshan: seene mein dard." in out["message"]
-
-
-def test_advice_is_not_repeated_for_nothing_new(client, hms):
-    out = chat(client, "pet mein dard hai", city="Kolkata")
-    out = say(client, out, "2 din se")
-    assert out["kind"] == "recommendation"
-    again = say(client, out, "achha")
-    assert again["kind"] == "info" and again["message"].startswith("Kya aap upar diye doctors")

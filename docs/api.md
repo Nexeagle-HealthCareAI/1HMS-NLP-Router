@@ -18,7 +18,7 @@ Interactive docs: `/docs` on any instance.
   (`client:scope1|scope2:sha256hex`, comma-separated). Make one with
   `python scripts/make_api_key.py <client> <scope>...`. With no keys configured, auth is off (development only;
   production refuses to start).
-- **Scopes:** `route` (specialty routing), `chat` (`/chat` and Vita), `admin` (rebuild, telemetry),
+- **Scopes:** `route` (specialty routing and the search bar), `chat` (Vita), `admin` (rebuild, telemetry, Vita's control),
   `verified_mobile` (a channel that already verified the patient's number, e.g. WhatsApp; lets Vita skip the OTP).
 - **Rate limits** per client per minute, in Redis: `route` 120 (`HMS_RATE_LIMIT_ROUTE`), `chat` 30
   (`HMS_RATE_LIMIT_CHAT`). Over the limit → `429`.
@@ -33,20 +33,19 @@ Interactive docs: `/docs` on any instance.
 | `GET /v2/agent/session/{id}`, `DELETE /v2/agent/session/{id}` | chat | What Vita remembers / forget it |
 | `POST /v2/agent/feedback` | chat | 👍/👎 on a conversation (Vita's learning) |
 | `DELETE /v2/agent/patient-memory` | chat | Forget a returning patient (token, or verified mobile with that scope) |
-| `GET/PUT /v2/agent/admin/control` | admin | Vita's mode, `agent` or `rules`, per channel (kill switch) |
+| `POST /v2/agent/search-intent` | route | One search-bar query → what Vita reads: specialty or symptoms (with route-symptom's decision), doctor name, degree, hospital, city, near me, emergency. See [vita_graph.md](vita_graph.md#the-search-bar) |
+| `GET/PUT /v2/agent/admin/control` | admin | Vita's mode, `agent` or `off` (code steps and the fallback only), per channel (kill switch) |
 | `GET /v2/agent/admin/conversations`, `GET /v2/agent/admin/conversations/{id}` | admin | Review conversations by outcome; one conversation turn by turn |
 | `GET/POST /v2/agent/admin/examples`, `DELETE /v2/agent/admin/examples/{id}`, `POST /v2/agent/admin/examples/promote` | admin | Approve or correct turns as examples; make them live through the scenario-suite gate. See [vita_graph.md](vita_graph.md) |
 | `POST /v1/route-symptom` (alias `POST /route-symptom`) | route | Symptom text → ranked specialties + emergency flag. See [route_symptom.md](route_symptom.md) |
 | `POST /legacy/route-symptom` | route | Same engine, the old `{specialtyIds, noMatch, method, confidence, modelVersion, raw}` shape |
 | `GET /v1/taxonomy` | route | The 30 specialty ids and names |
 | `GET /model-info` | route | Version and validation metrics of the serving model |
-| `POST /chat` | chat | The older multi-turn triage agent (up to 3 follow-ups, then specialists or an emergency card) |
-| `POST /feedback` | chat | `correct_match`, `wrong_specialist` or `new_symptom_phrase` for a `/chat` reply |
-| `GET /session/{id}`, `DELETE /session/{id}` | chat | `/chat` session state / reset |
+| `POST /chat` | chat | **Deprecated** alias of `POST /v2/agent/chat` (Vita answers). The old triage agent, `/feedback` and `/session/{id}` were removed on 2026-10-31 |
 | `POST /admin/rebuild` | admin | Start a rebuild with CMS-approved examples; promoted only if not worse. `202` started, `409` already running |
 | `GET /admin/rebuild` | admin | Progress and last result (`state` idle / running / done / failed, `promoted`, `verdict`, `validation`) |
 | `GET /admin/telemetry` | admin | Decision telemetry queue and doctor-lookup stats |
-| `GET /health` | none | Liveness |
+| `GET /health` | none | Liveness, and whether Vita's LLM is on: `vita: {llm, model, mode, breakerOpen}` |
 | `GET /ready` | none | Readiness: model loaded and Redis reachable (`503` until then) |
 
 ### `POST /v1/route-symptom`
@@ -73,15 +72,6 @@ Read `emergency.flag` first, even when `noMatch` is true. `decision`: `answer` (
 `clarify` (ask `clarify.question`, offer `clarify.options`, or show the hedge list), `abstain` (nothing medical
 recognised: suggest a General Physician).
 
-### `POST /chat`
-
-```json
-{"text": "pet mein dard aur ulti", "session_id": null, "city": "Kolkata", "lat": null, "lng": null}
-```
-
-Returns `{session_id, turn, kind, message, question, card, state, severity, keywords, language, degraded}`;
-`kind` is `follow_up`, `recommendation` or `emergency`. Send `session_id` back on the next message.
-
 ### `POST /v2/agent/chat`
 
 ```json
@@ -92,7 +82,7 @@ Optional: `lat`/`lng`, `hospital_id`, `select_doctor_id`, `page`, `ui_language`,
 `reply_id` (a tapped WhatsApp row), `client_ip`, `patient_token`, `verified_mobile`, `visit_appointment_id`,
 `new_search`, `remember` (the patient agreed that Vita may remember who they book for and past doctors). The reply has `kind` (`follow_up`, `emergency`, `recommendation`, `doctor_list`, `doctor_selected`,
 `info`, `handoff`, booking and visit kinds), `message`, `clarify` (tap options), `doctors`, `card`,
-`language`, `engine` (`agent`, `agent+template`, `rules`, `rules-fallback`) and, for WhatsApp, `whatsapp`
+`language`, `engine` (`step`, `agent`, `agent+step`, `agent+template`, `fallback`; see [vita_graph.md](vita_graph.md)) and, for WhatsApp, `whatsapp`
 (ready-to-send messages).
 
 ## Changing the API

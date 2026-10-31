@@ -73,6 +73,12 @@ def test_vita_first_message(client, text, lang_line):
 
 def test_vita_mid_triage_after_a_recommendation(client):
     """Was: "Kya aap upar diye doctors mein se kisi ko dikhana chahenge" (nothing new since the last advice)."""
+    from hms_router.vita_graph.engine import VitaRuntime
+    from tests.test_vita_graph import ScriptedLLM, say, u
+    a = client.app.state
+    a.vita_runtime = VitaRuntime(ScriptedLLM(u("symptoms", "headache"), say("Kab se hai?"),
+                                             u("symptoms", "headache for 2 days", enough=True), say("Ye doctor sahi rahenge.")),
+                                 a.redis, route_service=lambda: a.route)
     sid = _vita(client, "sar dard hai")["session_id"]
     assert _vita(client, "2 din se", sid)["kind"] == "recommendation"
     out = _vita(client, "ab jeene ka mann nahi karta", sid)
