@@ -89,7 +89,7 @@ class OutputGenerator:
                 watch_for=[], alert=severity.get("alert"), emergency_reasons=reasons,
                 after_stabilisation=others, **base)
 
-        pool = [r for r in routing.recommendations if r.source == "retrieval"]
+        pool = [r for r in routing.recommendations if r.source in ("retrieval", "route-symptom")]
         chosen: list[SpecialistOutput] = []
         used: set[str] = set()
 

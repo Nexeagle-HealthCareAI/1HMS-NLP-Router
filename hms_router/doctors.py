@@ -62,6 +62,21 @@ _KEY_PATTERNS: list[tuple[str, str]] = [
 ]
 
 
+# specialty key -> the title patients see in Vita's replies (one name per specialty, whichever engine chose it)
+SPECIALIST_TITLES = {
+    "cardiology": "Cardiologist", "dermatology": "Dermatologist", "orthopaedics": "Orthopaedic",
+    "gynaecology": "Gynaecologist", "dentistry": "Dentist", "ent": "ENT Specialist",
+    "ophthalmology": "Eye Specialist", "neurology": "Neurologist", "neurosurgery": "Neurosurgeon",
+    "psychiatry": "Psychiatrist", "urology": "Urologist", "gastroenterology": "Gastroenterologist",
+    "endocrinology": "Endocrinologist", "pulmonology": "Pulmonologist", "nephrology": "Nephrologist",
+    "oncology": "Oncologist", "rheumatology": "Rheumatologist", "physiotherapy": "Physiotherapist",
+    "paediatrics": "Paediatrician", "geriatrics": "Geriatrician", "general-medicine": "General Physician",
+    "general-surgery": "General Surgeon", "plastic-surgery": "Plastic Surgeon", "vascular-surgery": "Vascular Surgeon",
+    "cardiothoracic-surgery": "Cardiothoracic Surgeon", "emergency-medicine": "Emergency Medicine",
+    "sports-medicine": "Sports Medicine",
+}
+
+
 def specialty_key(name: str | None) -> str | None:
     """'Orthopedist' / 'Orthopaedic Surgeon (Bone)' / 'Orthopaedics' -> 'orthopaedics'. None if unknown
     (e.g. 'Telemedicine consult', 'OPD triage desk')."""

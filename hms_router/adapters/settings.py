@@ -11,6 +11,9 @@
     HMS_ROUTE_MODEL         model file path (default hms_router/data/route_model.joblib; built on first start)
     HMS_LLM_PROVIDER        empty (default, reasoner OFF) | groq | anthropic | openai
     HMS_LLM_MODEL           provider model name; HMS_LLM_TIMEOUT seconds (default 2.0)
+    VITA_LLM_PROVIDER       empty (Vita on its rules engine) | groq | anthropic | openai - Vita's conversation
+                            agent on LangGraph (hms_router/vita_graph); groq needs GROQ_API_KEY
+    VITA_LLM_MODEL          default openai/gpt-oss-120b on groq; VITA_LLM_TIMEOUT seconds per call (default 6)
     REDIS_URL               required when HMS_ENV=production (sessions, rate limits)
     HMS_CMS_API_URL         CMS API base incl. version, e.g. https://cms-api.example.com/api/v1 - enables the
                             AI Agents dashboard feed (decision telemetry) and training on CMS-approved examples
@@ -68,6 +71,9 @@ class ServiceSettings:
     llm_provider: str | None = None
     llm_model: str | None = None
     llm_timeout: float = 2.0
+    vita_llm_provider: str | None = None
+    vita_llm_model: str | None = None
+    vita_llm_timeout: float = 6.0
     redis_url: str | None = None
     cms_api_url: str | None = None
     cms_service_key: str | None = None
@@ -113,6 +119,9 @@ class ServiceSettings:
             llm_provider=(e.get("HMS_LLM_PROVIDER") or "").strip().lower() or None,
             llm_model=e.get("HMS_LLM_MODEL") or None,
             llm_timeout=float(e.get("HMS_LLM_TIMEOUT", "2.0")),
+            vita_llm_provider=(e.get("VITA_LLM_PROVIDER") or "").strip().lower() or None,
+            vita_llm_model=(e.get("VITA_LLM_MODEL") or "").strip() or None,
+            vita_llm_timeout=float(e.get("VITA_LLM_TIMEOUT", "6.0")),
             redis_url=e.get("REDIS_URL") or None,
             cms_api_url=(e.get("HMS_CMS_API_URL") or "").strip() or None,
             cms_service_key=(e.get("HMS_CMS_SERVICE_KEY") or "").strip() or None,

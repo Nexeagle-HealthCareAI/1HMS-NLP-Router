@@ -19,6 +19,7 @@ from ..reasoning.verifier import Verifier
 from ..safety.denial import DenialAware
 from ..safety.detectors import AnyOf, ModelDetector, RuleDetector
 from ..safety.rules import RED_FLAGS_PATH, load_red_flags
+from ..safety.self_harm import SelfHarmDetector
 from .route_symptom import RouteSymptomService
 
 
@@ -51,10 +52,15 @@ def build_route_symptom_service(bundle: ModelBundle | None = None, *, model_path
     policy = policy or RoutingPolicy()
     encoder = TextEncoder(bundle.vectorizer)
     extract, language_of = _nlp_helpers()
-    detector = DenialAware(AnyOf([
-        RuleDetector(load_red_flags(red_flags_path), extract),
-        ModelDetector(EmergencyModelScore(encoder, bundle.emergency_model), policy.emergency_min_score),
-    ]))
+    # self-harm is judged by meaning, outside the denial filter (which knows nothing of it); it has its own
+    # "I am not suicidal" handling. Detectors can only add urgency.
+    detector = AnyOf([
+        SelfHarmDetector(),
+        DenialAware(AnyOf([
+            RuleDetector(load_red_flags(red_flags_path), extract),
+            ModelDetector(EmergencyModelScore(encoder, bundle.emergency_model), policy.emergency_min_score),
+        ])),
+    ])
     vocabulary = MedicalVocabulary.from_data()
     return RouteSymptomService(
         retriever=ExampleRetriever(encoder, bundle.index, bundle.examples),

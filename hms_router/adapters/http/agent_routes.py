@@ -17,6 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request, status
 from pydantic import BaseModel, Field
 
 from ...application.doctor_chat import DoctorChat
+from ...vita_graph.engine import VitaEngine
 from ...channels import whatsapp
 from ...doctors import DoctorDirectory
 from ...language import ui_language
@@ -67,13 +68,15 @@ class AgentChatRequest(BaseModel):
                                                 "search (the screen removed a filter chip)")
 
 
-def _flow(request: Request) -> DoctorChat:
+def _flow(request: Request) -> VitaEngine:
     agent = getattr(request.app.state, "vita_agent", None)
     if agent is None:
         raise HTTPException(status_code=503, detail="Agent not initialised yet")
     directory = getattr(request.app.state, "doctors", None) or DoctorDirectory(None)
-    return DoctorChat(agent, directory, request.app.state.redis,
+    flow = DoctorChat(agent, directory, request.app.state.redis,
                       booking_client=getattr(request.app.state, "booking", None))
+    # the LangGraph agent when VITA_LLM_PROVIDER is set (hms_router/vita_graph), else the rules engine as before
+    return VitaEngine(flow, getattr(request.app.state, "vita_runtime", None))
 
 
 def build_router(guard) -> APIRouter:
@@ -115,7 +118,7 @@ def build_router(guard) -> APIRouter:
                 record = chat_record(out, recorder=rec, caller=getattr(request.state, "client", "unknown"),
                                      latency_ms=(time.perf_counter() - t0) * 1000,
                                      text="[booking details]" if booking_turn else text,   # names, numbers, codes
-                                     model_version="vita-agent-v2")
+                                     model_version="vita-agent-v3-" + str(out.get("engine") or "rules"))
                 rec.record(DECISIONS, record)
             except Exception:
                 log.exception("telemetry record failed")
