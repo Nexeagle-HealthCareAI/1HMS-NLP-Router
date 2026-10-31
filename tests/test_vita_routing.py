@@ -77,3 +77,11 @@ def test_denied_symptoms_do_not_choose_the_specialist(client, text):
 def test_no_paediatrician_without_a_child(client):
     out = _until_advice(client, "pet mein dard hai aur ulti")
     assert all(o["specialist"] != "Paediatrician" for o in out["card"]["outputs"])
+
+
+@pytest.mark.parametrize("text", ["theek nahi lag raha", "feeling unwell . theek nahi lag raha"])
+def test_a_vague_complaint_never_goes_first_to_an_alarming_specialty(client, text):
+    from hms_router.route_bridge import to_routing
+    decision = client.app.state.route.route(text, top_k=5)
+    routing = to_routing(decision, [text], text, None)
+    assert routing.low_confidence or routing.recommendations[0].specialist != "Oncologist"

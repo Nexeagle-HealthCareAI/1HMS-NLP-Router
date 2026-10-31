@@ -337,3 +337,21 @@ def test_promotion_gate_runs_the_suite(client):
     rep = client.post("/v2/agent/admin/examples/promote").json()
     assert rep["after"]["total"] >= 15 and rep["after"]["safetyPassed"] and rep["promoted"] == 1
     assert client.get("/v2/agent/admin/examples").json()["draft"] == []
+
+
+@pytest.mark.parametrize("text", ["nahi, aur kuch nahi", "aur kuch nahi", "nahi aur kuch nahi hai"])
+def test_a_short_no_is_not_an_emergency(client, text):
+    assert vita(client, text)["kind"] != "emergency"         # the model alone scored these 0.73, with no sign
+
+
+def test_bleeding_when_pregnant_is_an_emergency(client):
+    assert vita(client, "main 5 mahine pregnant hoon aur bleeding ho rahi hai")["kind"] == "emergency"
+
+
+def test_every_safety_scenario_passes_without_a_model(client):
+    from hms_router.vita_graph.evals import SCENARIOS, run_suite
+    a = client.app.state
+    rep = run_suite(lexicon=a.vita_pipeline.lex, directory=a.doctors, booking_client=None,
+                    route_service=lambda: a.route, llm_understand=None, llm_respond=None, examples=[],
+                    scenarios=[s for s in SCENARIOS if s.safety])
+    assert rep["safetyPassed"], [r for r in rep["results"] if not r["passed"]]

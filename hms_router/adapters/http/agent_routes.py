@@ -92,9 +92,11 @@ class ExampleIn(BaseModel):
 
 
 class ControlIn(BaseModel):
-    mode: Literal["agent", "off", "rules"] = Field("agent", description='"agent": the LLM agent; "off": code steps and '
-                                                    'the fallback only ("rules" is read as "off")')
-    channels: dict[str, Literal["agent", "off", "rules"]] = Field(default_factory=dict)
+    mode: Literal["agent", "planner", "off", "rules"] = Field(
+        "agent", description='"agent": the LLM labels each message, code picks the next move; "planner": the LLM plans '
+                             'with tools around the patient\'s needs; "off": code steps and the fallback only '
+                             '("rules" is read as "off")')
+    channels: dict[str, Literal["agent", "planner", "off", "rules"]] = Field(default_factory=dict)
 
 
 class SearchContext(BaseModel):

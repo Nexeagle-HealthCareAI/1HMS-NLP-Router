@@ -51,6 +51,36 @@ far, questions asked, routed), `stage`. Per-turn fields are reset at the start o
 `application/doctor_chat.py` (`step_*`, and the agent's code tools `read_ask`, `plain_search`, `choose`, `handoff`,
 `facts`, `emergency_reply`, `unavailable`).
 
+## The planner (mode "planner")
+
+The `agent` path above has the model label each message with a fixed intent; code then picks the next move. With the
+control switch on `"planner"` (all channels or one), the model plans instead (`vita_graph/planner.py`):
+
+| Tool | |
+|---|---|
+| `note_needs` | One picture of what the patient needs, updated from anything they say, in any order: who, age group, pregnant, the complaint so far, danger signs, language, place / near me, day, time of day, budget, doctor gender, a specialty / doctor / degree / hospital they want, in a hurry. Kept per conversation (`need` in the graph state); "koi bhi chalega" removes a preference |
+| `find_doctors` | Any mix of filters in one search; the needs fill what the model left out (a lady doctor, cheaper, the place, today) |
+| `assess_symptoms` | The route-symptom engine on the complaint (emergency check first); says when the engine is unsure and gives its question ("child or adult?") |
+| `doctor_days`, `choose_doctor`, `visit_help`, `talk_to_person` | When a doctor sits; a doctor on screen by name or position; the day of the visit; a handoff |
+| `reply` | Vita's message (always last) |
+
+Usually two model calls a message: [`note_needs` + a tool] then [`reply`]; at most 4. Code still decides what matters:
+the safety steps run first; danger signs in `note_needs` end the turn with the emergency reply at once; a tool that
+answers the patient itself (an emergency, a location question, a doctor chosen, a handoff) ends the turn in its own
+words; every reply passes `checker.py`; after 3 questions without an answer the complaint is assessed instead of asked
+about again; booking/OTP stay in the booking step. Replies carry `engine`: `planner`, `planner+step`,
+`planner+template`, `fallback`. Tests: `tests/test_vita_planner.py`.
+
+## Scenario suite against the real model
+
+`python -m hms_router.vita_graph.evals --mode both --out evals.json` (in the router container, with the service's
+settings) plays 37 scenarios through a private Vita with the real model, the real doctor directory and route-symptom:
+safety (self-harm in three scripts and mid-conversation, chest pain, stroke, child breathing, pregnancy bleeding,
+poisoning, minor burn, diagnosis / dose / phone-number bait), triage (fever, tooth, child, eye, periods, back, sugar,
+vague complaints never to an alarming specialist), and flexibility (many needs in one message, cheaper after a list,
+a change of mind, in a hurry, typos, degree, English, Hindi script). It prints agent vs planner side by side and every
+failing reply. Without a model only the safety scenarios can pass (they do: `test_every_safety_scenario_passes_without_a_model`).
+
 ## How Vita grows
 
 | Signal | Where |
@@ -66,7 +96,7 @@ far, questions asked, routed), `stage`. Per-turn fields are reset at the start o
 
 ## Control
 
-`GET/PUT /v2/agent/admin/control` (scope `admin`): `{"mode": "agent" | "off", "channels": {"whatsapp": "off"}}`
+`GET/PUT /v2/agent/admin/control` (scope `admin`): `{"mode": "agent" | "planner" | "off", "channels": {"whatsapp": "planner"}}`
 — a kill switch, per channel (`"rules"` is still accepted and read as `"off"`). With the agent off, without
 `VITA_LLM_PROVIDER`, on any error, and for 60 s after 3 failures in a row, the code steps still run (safety, booking,
 taps, after an emergency, the visit) and everything else gets the fallback. `GET /health` shows

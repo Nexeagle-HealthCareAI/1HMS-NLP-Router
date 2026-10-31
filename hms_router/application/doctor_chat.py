@@ -48,6 +48,10 @@ from .journey import _NO as _JOURNEY_NO, _YES as _JOURNEY_YES, JourneyHelp, want
 from .visit_help import VisitHelp, wants as visit_wants
 
 SELF_HARM_SIGN = _SELF_HARM.lower()
+# the words of a plain "no / nothing else" answer (see emergency_signs)
+_ANSWER_WORDS = {"nahi", "nahin", "nai", "na", "no", "nope", "aur", "kuch", "koi", "bhi", "hai", "hain", "bas", "itna",
+                 "hi", "ji", "nothing", "else", "thats", "that", "s", "it", "all", "theek", "thik", "ok", "okay", "haan",
+                 "han", "yes", "aage", "abhi", "toh", "to", "sab", "sirf", "else", "more"}
 AFTER_EMERGENCY_S = 2 * 3600      # how long "ambulance aa gayi", "ab theek hoon" are read as about that emergency
 # what patients say after Vita told them to call 108
 _AFTER_EMERGENCY = (
@@ -560,6 +564,11 @@ class DoctorChat:
         try:
             shared = self._shared(text, texts)
             if shared is not None:
+                if shared.flag and not shared.reasons and shared.source == "model" \
+                        and set(re.findall(r"[a-z]+", texts[0])) <= _ANSWER_WORDS:
+                    # the model alone, no sign, on a reply made only of "no / nothing else" words ("nahi, aur kuch
+                    # nahi" scored 0.73): an answer, not an emergency. Any other word, or any rule, still counts.
+                    return None
                 return [r.lower() for r in shared.reasons] if shared.flag else None
             hits = [h["english"].lower() for h in emergency_check({}, texts) if h["flag"] == EMERGENCY]
             return hits or None
