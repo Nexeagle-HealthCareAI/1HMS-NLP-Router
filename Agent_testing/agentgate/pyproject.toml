@@ -9,7 +9,7 @@ description = "Framework-driven pre-production testing for AI agents, with a one
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-dependencies = ["requests>=2.31", "pyyaml>=6.0", "reportlab>=4.0"]
+dependencies = ["requests>=2.31", "pyyaml>=6.0", "reportlab>=4.0", "openpyxl>=3.1"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "pypdf>=4"]

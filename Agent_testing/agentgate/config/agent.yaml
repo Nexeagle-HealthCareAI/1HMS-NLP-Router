@@ -1,4 +1,5 @@
-# HOW agentgate TALKS TO YOUR AGENT. Edit this file to point at your own agent's API.
+# HOW agentgate TALKS TO YOUR AGENT. Edit this file for an HTTP adapter, or use
+# `agentgate run --source path/to/api.py [--endpoint /chat]` for source discovery.
 # ${VAR} values come from environment variables or your local .env (never commit secrets).
 type: http          # http | python (python: see agent.demo.yaml)
 

@@ -1,6 +1,8 @@
 """Runs the dataset against the agent: repeats, deterministic checks, then judge."""
 from __future__ import annotations
 
+import json
+
 from agentgate.checks import evaluate
 
 
@@ -18,6 +20,13 @@ def select_cases(cases: list[dict], tier: str) -> list[dict]:
     return list(cases)
 
 
+def _json_safe(value):
+    try:
+        return json.loads(json.dumps(value, ensure_ascii=False, default=str))
+    except (TypeError, ValueError, RecursionError):
+        return repr(value)
+
+
 def run_suite(cases, adapter, rules, tier, judge=None, log=lambda *_: None) -> list[dict]:
     run_cfg = rules.get("run", {})
     default_repeats = run_cfg.get("smoke_repeats", 1) if tier == "smoke" else run_cfg.get("repeats", 3)
@@ -32,6 +41,9 @@ def run_suite(cases, adapter, rules, tier, judge=None, log=lambda *_: None) -> l
         need = repeats if cat_rule.get("zero_tolerance") else min(min_passes, repeats)
         passes, errors, events = 0, 0, []
         latencies, failed, tokens = [], [], []
+        check_totals = {}
+        produced = None
+        produced_failed = False
         first_pass_text, sample = None, None
 
         for _ in range(repeats):
@@ -43,6 +55,29 @@ def run_suite(cases, adapter, rules, tier, judge=None, log=lambda *_: None) -> l
             if res.tokens is not None:
                 tokens.append(res.tokens)
             bad = [c for c in checks if not c["passed"]]
+            for check in checks:
+                summary = check_totals.setdefault(check["name"], {
+                    "name": check["name"], "passed": 0, "total": 0,
+                    "expected": _json_safe(check.get("expected")),
+                    "actual": _json_safe(check.get("actual")),
+                })
+                summary["total"] += 1
+                if check["passed"]:
+                    summary["passed"] += 1
+                elif not ev:
+                    summary["actual"] = _json_safe(check.get("actual"))
+            current_produced = _json_safe({
+                "text": res.text,
+                "tool_calls": res.tool_calls,
+                "final_state": res.final_state,
+                "handoff": res.handoff,
+                "tokens": res.tokens,
+                "error": res.error,
+                "raw": res.raw,
+            })
+            if produced is None or (bad and not produced_failed):
+                produced = current_produced
+                produced_failed = bool(bad)
             for e in ev:
                 if e not in events:
                     events.append(e)
@@ -59,12 +94,32 @@ def run_suite(cases, adapter, rules, tier, judge=None, log=lambda *_: None) -> l
                     sample = res.text[:160]
 
         passed = passes >= need and not events
+        checks_total = sum(c["total"] for c in check_totals.values())
+        checks_passed = sum(c["passed"] for c in check_totals.values())
+        for check in check_totals.values():
+            check["match_percentage"] = round(100 * check["passed"] / check["total"], 1)
+            if events:
+                check["actual"] = "[withheld: forbidden content]"
+        if events:
+            produced = {"text": "[withheld: forbidden content]", "tool_calls": [],
+                        "final_state": {}, "handoff": False, "tokens": None,
+                        "error": None, "raw": None}
         rec = {
             "id": case["id"], "category": case["category"], "kind": case.get("kind", ""),
             "tier": case.get("tier", "full"), "repeats": repeats, "passes": passes,
             "required_passes": need, "passed": passed, "must_never": events,
             "failed_checks": failed[:6], "latencies_ms": [round(x, 1) for x in latencies],
             "errors": errors, "tokens": tokens, "judge": None,
+            "input": case.get("input", ""),
+            "expected": case.get("expect") or {},
+            "source_constraints": {
+                "must_never": case.get("must_never") or {},
+                **(case.get("source_constraints") or {}),
+            },
+            "produced": produced or {},
+            "check_results": list(check_totals.values()),
+            "checks_passed": checks_passed, "checks_total": checks_total,
+            "match_percentage": round(100 * checks_passed / checks_total, 1) if checks_total else 0.0,
             "sample": "[withheld: forbidden content]" if events else sample,
         }
 

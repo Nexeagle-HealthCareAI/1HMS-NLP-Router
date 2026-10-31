@@ -91,9 +91,14 @@ def decide(records: list[dict], rules: dict, tier: str, judge_enabled: bool,
         verdict = "GO"
 
     cases = len(records)
+    checks_total = sum(r.get("checks_total", 0) for r in records)
+    checks_passed = sum(r.get("checks_passed", 0) for r in records)
     return {
         "verdict": verdict, "checks": checks, "categories": categories,
         "totals": {"cases": cases, "passed": sum(1 for r in records if r["passed"]),
                    "must_never_events": len(events), "p95_latency_ms": round(p95, 1),
-                   "error_rate": round(err_rate, 4), "judge_avg": judge_avg},
+                   "error_rate": round(err_rate, 4), "judge_avg": judge_avg,
+                   "checks_passed": checks_passed, "checks_total": checks_total,
+                   "match_percentage": round(100 * checks_passed / checks_total, 1)
+                   if checks_total else 0.0},
     }

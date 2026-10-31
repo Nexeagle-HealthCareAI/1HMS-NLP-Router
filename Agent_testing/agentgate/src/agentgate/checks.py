@@ -34,11 +34,18 @@ def evaluate(case: dict, res, rules: dict) -> tuple[list[dict], list[str]]:
     checks: list[dict] = []
     events: list[str] = []
 
-    def add(name, ok, detail=""):
-        checks.append({"name": name, "passed": bool(ok), "detail": detail})
+    def add(name, ok, detail="", expected=None, actual=None):
+        checks.append({"name": name, "passed": bool(ok), "detail": detail,
+                       "expected": expected, "actual": actual})
+
+    if "response_received" in exp:
+        received = res.error is None
+        add("response_received", received == bool(exp["response_received"]),
+            res.error or "", bool(exp["response_received"]), received)
 
     if res.error:
-        add("agent_responded", False, res.error)
+        if "response_received" not in exp:
+            add("agent_responded", False, res.error, "successful response", res.error)
         return checks, events
 
     names = [c["name"] for c in res.tool_calls]
@@ -53,48 +60,59 @@ def evaluate(case: dict, res, rules: dict) -> tuple[list[dict], list[str]]:
         if re.search(pat, res.text, re.I):
             events.append(f"forbidden text matched pattern: {pat}")
     if events:
-        add("must_never", False, "; ".join(events))
+        add("must_never", False, "; ".join(events), "no forbidden behavior", "forbidden behavior detected")
 
     if "tools_called" in exp:
         missing = [t for t in exp["tools_called"] if t not in names]
-        add("tools_called", not missing, f"missing: {missing}; actual: {names}" if missing else "")
+        add("tools_called", not missing, f"missing: {missing}; actual: {names}" if missing else "",
+            exp["tools_called"], names)
     if "tool_order" in exp:
         add("tool_order", _subsequence(exp["tool_order"], names),
-            f"wanted order {exp['tool_order']}; actual: {names}")
+            f"wanted order {exp['tool_order']}; actual: {names}", exp["tool_order"], names)
     if exp.get("tools_not_called"):
         bad = [t for t in exp["tools_not_called"] if t in names]
-        add("tools_not_called", not bad, f"called: {bad}" if bad else "")
+        add("tools_not_called", not bad, f"called: {bad}" if bad else "",
+            {"not_called": exp["tools_not_called"]}, {"called": bad})
     for spec in exp.get("tool_args", []):
-        ok = any(c["name"] == spec["tool"] and _subset(spec["args"], c.get("arguments") or {})
-                 for c in res.tool_calls)
-        add(f"tool_args:{spec['tool']}", ok, f"expected args {spec['args']}")
+        actual = [c.get("arguments") or {} for c in res.tool_calls if c["name"] == spec["tool"]]
+        ok = any(_subset(spec["args"], args) for args in actual)
+        add(f"tool_args:{spec['tool']}", ok, f"expected args {spec['args']}", spec["args"], actual)
 
     limit = exp.get("max_tool_calls", rules.get("limits", {}).get("max_tool_calls_per_case"))
     if limit is not None:
-        add("tool_call_budget", len(names) <= limit, f"{len(names)} calls (limit {limit})")
+        add("tool_call_budget", len(names) <= limit, f"{len(names)} calls (limit {limit})",
+            f"at most {limit} calls", len(names))
     if not exp.get("allow_repeats"):
         sigs = [json.dumps([c["name"], c.get("arguments")], sort_keys=True) for c in res.tool_calls]
         dup = len(sigs) - len(set(sigs))
-        add("no_repeated_calls", dup == 0, f"{dup} repeated identical call(s)" if dup else "")
+        add("no_repeated_calls", dup == 0, f"{dup} repeated identical call(s)" if dup else "",
+            "no repeated calls", dup)
 
     tok_limit = rules.get("limits", {}).get("max_tokens_per_case")
     if tok_limit is not None and res.tokens is not None:
-        add("token_budget", res.tokens <= tok_limit, f"{res.tokens} tokens (limit {tok_limit})")
+        add("token_budget", res.tokens <= tok_limit, f"{res.tokens} tokens (limit {tok_limit})",
+            f"at most {tok_limit} tokens", res.tokens)
 
     if "final_state" in exp:
         add("final_state", _subset(exp["final_state"], res.final_state),
-            f"expected {exp['final_state']}; got {res.final_state}")
+            f"expected {exp['final_state']}; got {res.final_state}", exp["final_state"], res.final_state)
     if "handoff" in exp:
         add("handoff", bool(res.handoff) == bool(exp["handoff"]),
-            f"expected handoff={exp['handoff']}; got {bool(res.handoff)}")
+            f"expected handoff={exp['handoff']}; got {bool(res.handoff)}",
+            bool(exp["handoff"]), bool(res.handoff))
 
     low = res.text.lower()
     for s in exp.get("text_contains", []):
-        add(f"text_contains:{s}", s.lower() in low)
+        add(f"text_contains:{s}", s.lower() in low, expected=f"contains {s!r}", actual=res.text)
+    if "text_equals" in exp:
+        expected_text = str(exp["text_equals"])
+        add("text_equals", low == expected_text.lower(),
+            f"expected {expected_text!r}; got {res.text!r}", expected_text, res.text)
     if exp.get("text_contains_any"):
         add("text_contains_any", any(s.lower() in low for s in exp["text_contains_any"]),
-            f"none of {exp['text_contains_any']}")
+            f"none of {exp['text_contains_any']}", {"contains_any": exp["text_contains_any"]}, res.text)
     for s in exp.get("text_not_contains", []):
-        add(f"text_not_contains:{s}", s.lower() not in low)
+        add(f"text_not_contains:{s}", s.lower() not in low,
+            expected=f"does not contain {s!r}", actual=res.text)
 
     return checks, events

@@ -1,9 +1,9 @@
 # agentgate
 
 Test any AI agent before production with the 8-step framework (criteria, golden dataset,
-layered tests, LLM judge, release gate, gradual release). Clone it, point one config file at
-your agent's API, run one command, and get a **one-page PDF report** with a clear
-GO / NO-GO verdict.
+layered tests, LLM judge, release gate, gradual release). Run it against a configured API/Python
+adapter or discover an agent from its Python entrypoint. Every run produces a detailed Excel
+workbook, a one-page PDF summary, and machine-readable JSON.
 
 ## Try it in 60 seconds (no agent, no LLM needed)
 
@@ -16,7 +16,10 @@ agentgate validate                                        # check the golden dat
 agentgate run --tier smoke --agent config/agent.demo.yaml # fast tier, deterministic only
 ```
 
-Open `reports/latest/report.pdf`. See the failure path with a deliberately flawed agent:
+Open `reports/latest/report.xlsx` for every golden case in the **Golden Dataset** sheet. Its columns
+are Input, Expected output, Generated response, Match or error, % accuracy of response, and Pass / fail.
+Cases excluded by the selected run tier remain in the sheet as `NOT RUN`, with accuracy left blank.
+`report.pdf` is the summary. See the failure path with a deliberately flawed agent:
 
 ```bash
 MOCK_AGENT_BUGGY=1 agentgate run --tier full --no-judge --agent config/agent.demo.yaml
@@ -26,16 +29,37 @@ MOCK_AGENT_BUGGY=1 agentgate run --tier full --no-judge --agent config/agent.dem
 
 ## Test your own agent
 
-1. **Point it at your API.** Edit `config/agent.yaml`: URL, auth header (from env), a request
+1. **Connect the agent.** Either edit `config/agent.yaml`: URL, auth header (from env), a request
    template using `{{input}}` / `{{context.key}}`, and a `response_map` that says where your
-   JSON response keeps the reply, tool calls, final state and handoff flag. Python agent instead?
-   Use `type: python` as in `config/agent.demo.yaml`.
+   JSON response keeps the reply, tool calls, final state and handoff flag; or point automatic
+   discovery at a Python entrypoint:
+
+   ```bash
+   agentgate run --tier smoke --source ..\..\api.py --endpoint /v1/route-symptom
+   ```
+
+   Automatic discovery runs a discovered FastAPI app in-process or calls a single supported
+   Python entrypoint (`predict`, `run`, `invoke`, or `process_case`). It does not execute arbitrary
+   scripts or guess between ambiguous endpoints/functions. Use `--endpoint` when an API exposes
+   multiple POST routes. Keep agent dependencies installed in the active Python environment.
+   For a Python function with a non-standard interface, use `type: python` in an agent config.
+   JSON golden cases use the documented `expect` structure. CSV datasets with `input` (or
+   `symptoms_hinglish`), `specialty`, `triage`, and optional `acceptable_alt_specialty` columns
+   are also supported; routing expectations are derived from those columns.
 2. **Agree the criteria.** Edit `config/thresholds.yaml` (per-category thresholds, must-never
    tools and text patterns, limits) and get it signed off before the first run.
 3. **Write your cases.** Replace `dataset/golden_cases.json` with yours. Start with 20-50:
    normal, ambiguous, tool failure, adversarial. Use fake data and test accounts only.
    Assert on tool calls, arguments, order and final state, not exact wording.
 4. **Run.** `agentgate run --tier smoke` on every change; `agentgate run --tier full` before release.
+   For this repository's symptom suite, run
+   `agentgate run --tier smoke --source ..\..\api.py --endpoint /v1/route-symptom --dataset dataset\golden_symptom_dataset_v1.csv`.
+   To test the same 99 golden queries against the DoctorDekho search API, run this from
+   `Agent_testing\agentgate`:
+   `python -m agentgate run --tier smoke --agent config\agent-search.yaml --dataset dataset\golden_dataset.csv`.
+   Or from the repository root, run `.\Agent_testing\agentgate\run_multiple_queries.ps1`.
+   CSV rows use `id,input,expected_output,tier`; put `|` between acceptable response alternatives.
+   `NO_MATCH` asserts that the mapped response text is empty (for an API returning no `specialtyId`).
 
 ## Commands
 
@@ -46,7 +70,8 @@ MOCK_AGENT_BUGGY=1 agentgate run --tier full --no-judge --agent config/agent.dem
 | `agentgate run --tier full` | All cases, repeated runs, LLM judge, release gate. Add `--no-judge` to skip the judge, `--rollback-rehearsed` once you have rehearsed rollback |
 | `agentgate calibrate` | Check the judge against labelled examples (`dataset/judge_gold.json`) before trusting it |
 | `agentgate triage --text ... --label bug --category refunds` | Anonymise and queue a production finding for review (step 8) |
-| `agentgate report reports/latest/results.json` | Rebuild the PDF |
+| `agentgate run --source path/to/api.py --endpoint /chat` | Discover and test a Python agent entrypoint or FastAPI app |
+| `agentgate report reports/latest/results.json` | Rebuild the Excel and PDF reports |
 
 Exit code is 1 on NO-GO or SMOKE FAIL, so CI can block a merge.
 
@@ -69,8 +94,12 @@ The judge talks to any OpenAI-compatible `/chat/completions` endpoint. Set it in
 
 ## What you get after a run
 
-`reports/<run-id>/report.pdf` (one page, always) and `results.json` (every case, check and
-judge result), plus a copy in `reports/latest/`. The report lists the verdict, per-category
+`reports/<run-id>/report.xlsx` (Summary, Golden Dataset, and Check Details sheets),
+`report.pdf` (one page), and `results.json` (every case, check and judge result), plus copies
+in `reports/latest/`. The workbook compares expected and produced values, includes per-check
+and per-case match percentages, and shows request/agent errors. Per-case accuracy is the share of
+deterministic checks passed across the case's run attempts; the separate case result still applies
+the configured repeat and release thresholds. The PDF lists the verdict, per-category
 results, gate checks, failed cases, next actions, and the pinned versions (dataset hash,
 thresholds hash, judge model, commit) so a result can be traced and reproduced.
 
