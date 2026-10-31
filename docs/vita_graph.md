@@ -81,6 +81,25 @@ vague complaints never to an alarming specialist), and flexibility (many needs i
 a change of mind, in a hurry, typos, degree, English, Hindi script). It prints agent vs planner side by side and every
 failing reply. Without a model only the safety scenarios can pass (they do: `test_every_safety_scenario_passes_without_a_model`).
 
+## Understanding test set
+
+The scenario suite checks replies; this checks the reading underneath them. `understanding_cases.py` holds 123
+conversations (149 turns) written the way patients write: code-mixed and misspelt, voice-typed, for a parent or a
+child, several needs in one message, "doosre wale", corrections ("mujhe nahi, mere bete ko"), vague, denials,
+urgency both ways, self-harm, worry, questions. Every turn states only what a careful receptionist would be sure of:
+who the patient is, age group, pregnancy, the complaint (words the English summary must contain or must not), urgent
+(emergency / warning-sign question / no), what they want, gender, place, specialty, budget, today, degree, a doctor's
+name, and what Vita should do (reply kind, specialist, which shown doctor was chosen).
+
+`python -m hms_router.vita_graph.understanding --mode both --out understanding.json` (in the router container, with
+Groq) runs the set through a private Vita in agent and planner mode and prints, per mode: understood % (the reading),
+acted % (what Vita did), missed emergencies, false alarms, a score per field and per category, and every wrong turn
+with what Vita read. The same reading is taken whichever engine answered (agent understanding, planner needs and
+tools, applied filters, code steps), so the two modes are compared fairly. `--category proxy` runs one category.
+
+A missed emergency makes the run unsafe. Without a model the code steps alone catch every emergency in the set
+(`test_code_steps_catch_the_emergencies_without_any_model`). Add a case for every misreading staff find.
+
 ## How Vita grows
 
 | Signal | Where |
@@ -124,4 +143,6 @@ emails, OTP-like numbers, "my name is ...") before it is sent. Checkpoints: `vit
 covering the code steps before the agent, the fallback, every agent node, choosing a shown doctor, refinements, the
 checker, the breaker, the control switch, restarts, memory with and without consent, feedback → review → correction →
 recall, and the promotion gate. `tests/test_vita_routing.py` (the route tool on the patient's own words),
-`tests/test_search_intent.py` (the search bar), and the step tests (`test_vita_*.py`) run without a model.
+`tests/test_search_intent.py` (the search bar), and the step tests (`test_vita_*.py`) run without a model. `tests/test_vita_understanding.py` checks the
+understanding set is well formed and that the scorer marks right readings right, wrong ones wrong, and counts missed
+emergencies.
