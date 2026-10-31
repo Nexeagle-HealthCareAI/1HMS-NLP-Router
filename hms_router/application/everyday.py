@@ -29,9 +29,9 @@ MOVES: list[tuple[str, re.Pattern]] = [
     ("thanks", re.compile(r"^(ok |okay |accha |achha )?(thanks?|thank (you|u)|thanku|thnks|ty|shukriya|shukria|dhanyavaa?d"
                           r"|dhanyawaa?d|dhonnobad|dhanyabad|meherbani|shukran|jazakallah\w*|bahut shukriya|bahut dhanyavaad)"
                           r"( (ji|vita|dear|bhai|bhaiya|didi|madam|mam|sir|yaar|so much|a lot|again))*$")),
-    ("bye", re.compile(r"^(ok |okay |chalo |accha |achha |theek hai )?(bye|bye bye|byee+|tata|ta ta|alvida|khuda hafiz"
+    ("bye", re.compile(r"^(ok |okay |chalo |accha |achha |theek hai |thanks |thank you )?((bye|bye bye|byee+|tata|ta ta|alvida|khuda hafiz"
                        r"|allah hafiz|see (you|u|ya)|see you later|phir milte( hain)?|fir milte( hain)?|baad mein baat (karte|karenge)"
-                       r"( hain)?|take care|good ?bye|chalta hu|chalta hoon|chalti hu|chalti hoon)( (ji|vita|dear|bhai|bhaiya|didi|madam|mam|sir|yaar|so much|a lot|again))*$")),
+                       r"( hain)?|take care|good ?bye|chalta hu|chalta hoon|chalti hu|chalti hoon) ?)+( (ji|vita|dear|bhai|bhaiya|didi|madam|mam|sir|yaar|so much|a lot|again))*$")),
     ("later", re.compile(r"^(abhi )?(nahi|nhi|no) ?(abhi|abhi nahi|chahiye|zarurat|zaroorat)?( nahi)?( chahiye| hai)?$"
                          r"|^(abhi nahi chahiye|zarurat nahi|zaroorat nahi|koi zarurat nahi|nahi chahiye|kal dekhte hain"
                          r"|baad mein dekhte hain|baad mein|later|rehne do|rehne dijiye|bas itna hi|bas itna hi tha|bas"

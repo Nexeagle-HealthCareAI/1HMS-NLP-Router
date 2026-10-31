@@ -19,6 +19,7 @@ import logging
 import threading
 import time
 
+from .knowledge import KnowledgeBase
 from ..application.doctor_chat import DoctorChat, SelectionError
 from .learning import ExampleStore, TraceStore, redact
 from .memory import PatientMemory
@@ -70,6 +71,7 @@ class VitaRuntime:
         self.breaker = breaker or Breaker()
         self.memory, self.traces, self.examples = PatientMemory(redis_client), TraceStore(redis_client), \
             ExampleStore(redis_client)
+        self.knowledge = KnowledgeBase(redis_client)
         self.llm_understand = self.llm_respond = self.llm_plan = None
         if llm is not None:
             self.llm_understand = _bind(llm, UNDERSTAND_TOOL)

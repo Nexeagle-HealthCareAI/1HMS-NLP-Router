@@ -123,6 +123,27 @@ in context, and without it the fallback answers them before any doctor search.
   bolne wale doctor") is a search, never a language switch, a place, or "bone".
 - `tests/test_vita_general_language.py` holds ~150 of these messages; the understanding set has a `general` category.
 
+## Adapting to each patient, memory and knowledge
+
+- **Examples by meaning** (`vita_graph/meaning.py`): approved examples are recalled by what a message means, not how
+  it is spelt. Each message becomes a few concepts from Vita's own readers: the symptom in English (lexicon), the
+  specialty, the intent (thanks, cheaper, cancel...), who it is for. Score = 0.65 concepts + 0.35 character n-grams.
+  "pet me jalan" finds "acidity hoti hai", "chamdi ka doctor" finds "skin doctor", Hindi script finds Hinglish.
+  Off-the-shelf multilingual embeddings were tested and rejected: they do not understand Romanised Hindi
+  (multilingual MiniLM got 1-2 of 13 right; concepts get 13 of 13).
+- **How the patient wants Vita to talk** (`vita_graph/style.py`): "short me batao" / "detail mein samjhao" (length),
+  "sawal mat poocho" / "bas doctor dikhao" (no questions), aap/ji vs tum/yaar (tone). Kept in graph state and, as a
+  preference, in patient memory for the next visit. Both prompts get `how_to_reply` (with the chosen language), and
+  "no questions" changes the plan: the agent advises on what it knows, the planner assesses instead of asking.
+- **Earlier in the conversation**: turns older than the prompt window (12 messages) go to the model as a short digest
+  (`earlier_in_conversation`: what the patient asked, what Vita did), so earlier requests still count.
+- **Knowledge base** (`vita_graph/knowledge.py`, RAG for facts): seed facts in `hms_router/data/knowledge/*.md`
+  (confirmed Doctor Dekho facts: free booking, fee at the hospital, online and insurance coming, cancel, OTP...) and
+  staff facts per hospital (`GET/POST/DELETE /v2/agent/admin/knowledge`, `scope` = the hospital's name). Search is
+  meaning + words; the hospital in the conversation goes first; other hospitals' facts never show. The agent's
+  `answer` gets `facts.knowledge`, the planner has a `look_up` tool; both answer only from it, and say they will check
+  with the team when nothing matches. Service facts only, never medical advice.
+
 ## How Vita grows
 
 | Signal | Where |

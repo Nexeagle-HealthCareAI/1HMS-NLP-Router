@@ -33,6 +33,7 @@ from typing import Annotated, Any, TypedDict
 from . import checker
 from .learning import redact
 from .prompts import RESPOND, UNDERSTAND, respond_input, understand_input
+from .style import how_to_reply, read as read_style
 
 log = logging.getLogger("hms_router.vita_graph")
 
@@ -41,6 +42,7 @@ MAX_QUESTIONS = 2
 
 class VitaState(TypedDict, total=False):
     messages: Annotated[list, operator.add]       # [{"role": "patient"|"vita", "text", "kind"?}]
+    style: dict                                   # how the patient wants Vita to talk (style.py)
     patient: dict                                 # who, age_group, pregnant, language
     triage: dict                                  # symptoms_en, asked, routed
     need: dict                                    # the planner's picture of what the patient needs (planner.py)
@@ -114,6 +116,8 @@ def build_vita_graph(checkpointer=None):
         for k in ("who", "age_group", "pregnant", "language"):
             if need.get(k) not in (None, ""):
                 patient[k] = need[k]
+        if turn.language_pref():
+            patient["language"] = turn.language_pref()
         upd["patient"] = patient
         return upd
 
@@ -127,7 +131,8 @@ def build_vita_graph(checkpointer=None):
         memory = turn.rt.memory.load(turn.identity) if turn.identity else {}
         if memory.get("city") and not turn.ctx.get("city"):
             turn.ctx["city"] = memory["city"]                       # a returning patient's city, for search
-        return {"memory": memory, "examples": turn.rt.examples.similar(turn.text, k=3)}
+        style = read_style(turn.raw, state.get("style") or memory.get("style"))
+        return {"memory": memory, "examples": turn.rt.examples.similar(turn.text, k=3), "style": style}
 
     def understand(state: VitaState, config) -> dict:
         turn = _turn(config)
@@ -151,7 +156,7 @@ def build_vita_graph(checkpointer=None):
             patient["pregnant"] = True
         if u.get("language"):
             patient["language"] = u["language"]
-        pref = turn.flow.pipeline.sessions.context(turn.sid).get("language_pref") if turn.sid else None
+        pref = turn.language_pref()
         if pref:                                                     # "hindi mein baat karo" earlier: keep to it
             patient["language"] = pref
         if (u.get("symptoms_en") or "").strip():
@@ -177,7 +182,8 @@ def build_vita_graph(checkpointer=None):
             return {"decision": "search"}
         if intent == "symptoms" or (intent in ("find_doctor", "other") and triage.get("symptoms_en")
                                     and not triage.get("routed")):
-            enough = u.get("enough_to_choose_doctor") or triage.get("asked", 0) >= MAX_QUESTIONS
+            enough = u.get("enough_to_choose_doctor") or triage.get("asked", 0) >= MAX_QUESTIONS \
+                or (state.get("style") or {}).get("questions") == "avoid"       # "sawal mat poocho": act on what's known
             return {"decision": "route" if enough and triage.get("symptoms_en") else "ask"}
         return {"decision": "answer"}
 
@@ -250,7 +256,11 @@ def build_vita_graph(checkpointer=None):
     def answer(state: VitaState, config) -> dict:
         u = state.get("understanding") or {}
         turn = _turn(config)
+        known = turn.knowledge(turn.raw)
+        if known:
+            turn.tools_used.append("look_up")
         return {"facts": {"intent": u.get("intent"), "topic": u.get("question_topic"),
+                          "knowledge": known or "nothing in Vita's knowledge for this question",
                           "doctor_in_hand": turn.steps.facts(turn.session_id),
                           "vita_can": ["find the right kind of doctor from symptoms", "find doctors by name, specialty,"
                                        " hospital or place", "book an appointment", "help on the day of the visit"]},
@@ -262,7 +272,8 @@ def build_vita_graph(checkpointer=None):
         prompt = respond_input(decision=state.get("decision") or "answer", facts=state.get("facts") or {},
                                conversation=state.get("messages") or [], patient=patient,
                                memory=state.get("memory") or {}, examples=state.get("examples") or [],
-                               text=turn.raw, language=patient.get("language"), channel=turn.kw.get("channel") or "web")
+                               text=turn.raw, language=patient.get("language"), channel=turn.kw.get("channel") or "web",
+                               how=how_to_reply(state.get("style"), turn.language_pref()))
         try:
             msg = turn.rt.llm_respond.invoke([SystemMessage(content=RESPOND), HumanMessage(content=redact(prompt))])
             args = _tool_args(msg, "reply")
@@ -309,12 +320,13 @@ def build_vita_graph(checkpointer=None):
                 doctors = [sel["name"]] if sel.get("name") else []
             turn.rt.memory.update(turn.identity, consent=bool(turn.kw.get("remember")),
                                   language=out.get("language"), city=turn.ctx.get("city"), who=patient.get("who"),
-                                  specialties=[s for s in specialties if s], doctors=doctors)
+                                  specialties=[s for s in specialties if s], doctors=doctors,
+                                  style={k: v for k, v in (state.get("style") or {}).items() if v})
         turn.rt.traces.record(out.get("session_id") or turn.session_id, {
             "patient": said, "kind": out.get("kind"), "engine": out.get("engine"), "language": out.get("language"),
             "route": state.get("route"), "why": state.get("why"), "decision": state.get("decision"),
             "understanding": {k: v for k, v in (state.get("understanding") or {}).items() if k != "failed"},
-            "need": state.get("need") or {},
+            "need": state.get("need") or {}, "style": state.get("style") or {},
             "tools": turn.tools_used, "checks": turn.checks, "reply": (out.get("message") or "")[:700],
             "specialist": next((o.get("specialist") for o in (out.get("card") or {}).get("outputs") or []
                                 if o.get("role") == "PRIMARY"), None),

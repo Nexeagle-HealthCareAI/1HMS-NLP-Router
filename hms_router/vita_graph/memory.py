@@ -19,7 +19,7 @@ import time
 log = logging.getLogger("hms_router.vita_memory")
 
 TTL_S = 180 * 24 * 3600
-_PREFS = ("language", "city")
+_PREFS = ("language", "city", "style")     # how they like Vita to talk is not personal data
 _CONSENTED = ("who", "specialties", "doctors")
 
 

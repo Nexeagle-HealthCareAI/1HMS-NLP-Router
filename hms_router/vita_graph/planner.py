@@ -26,6 +26,7 @@ import logging
 from . import checker
 from .learning import redact
 from .prompts import NEVER, PERSONA, _fn
+from .style import digest, how_to_reply
 
 log = logging.getLogger("hms_router.vita_planner")
 
@@ -50,8 +51,11 @@ would. Each message, decide what helps most NOW and use the tools:
   doctor dikhao") gets doctors now.
 - "This one", "the second", "Dr Sen wale ko book karo" -> choose_doctor. "Kab baithte hain / kal milenge?" ->
   doctor_days. Directions, "I've reached", token, queue -> visit_help. Wants a person -> talk_to_person.
+- A question about Doctor Dekho or a hospital (free?, fees, payment, timings, Sunday, online, Ayushman, cancel, OTP)
+  -> look_up, and answer only from what it returns; if it returns nothing, say you'll check with the team. Never guess.
 - Use what you know about a returning patient (memory) to save them effort, e.g. offer their usual doctor or city.
-- Finish with reply: 1-3 short sentences in the patient's language and script, warm and natural; mention one or two
+- Finish with reply, following how_to_reply (length, questions, tone, language; the patient chose these): usually
+  1-3 short sentences in the patient's language and script, warm and natural; mention one or two
   doctors by name at most (the list is on screen); up to 3 short tap options when they make answering easier. Adapt
   to the person: brief and simple for someone anxious, elderly or in a hurry; reassure a worried parent first.
 """
@@ -87,9 +91,11 @@ CHOOSE = _fn("choose_doctor", "Choose a doctor on screen, by name or position (1
              {"doctor_name": _STR, "position": {"type": "integer", "minimum": 1}})
 VISIT = _fn("visit_help", "The day of a booked visit: directions, reached, check-in, token, queue.", {})
 PERSON = _fn("talk_to_person", "Hand the conversation to a person.", {"reason": _STR})
+LOOK_UP = _fn("look_up", "Facts about Doctor Dekho and the hospital in this conversation: free booking, fees, "
+                         "payment, timings, online consults, insurance, cancelling, OTP, services.", {"question": _STR})
 REPLY = _fn("reply", "Send Vita's message to the patient. Always the last call of a turn.", {
     "message": _STR, "options": {"type": "array", "items": _STR, "maxItems": 3}}, ["message"])
-PLAN_TOOLS = [NOTE_NEEDS, FIND, ASSESS, DAYS, CHOOSE, VISIT, PERSON, REPLY]
+PLAN_TOOLS = [NOTE_NEEDS, FIND, ASSESS, DAYS, CHOOSE, VISIT, PERSON, LOOK_UP, REPLY]
 
 _KEEP = ("who", "age_group", "pregnant", "complaint_en", "language", "place", "near_me", "day", "time_of_day", "budget",
          "doctor_gender", "specialty", "doctor_name", "degree", "hospital", "in_a_hurry")
@@ -109,11 +115,12 @@ def merge_needs(need: dict, said: dict) -> dict:
 
 
 def plan_input(*, need: dict, conversation: list, memory: dict, examples: list, last_question: str | None,
-               doctor_in_hand: dict, text: str, channel: str) -> str:
+               doctor_in_hand: dict, text: str, channel: str, how: dict | None = None) -> str:
     shots = [{"patient_said": e.get("patient"), "vita_replied": e.get("reply"), "right_doctor": e.get("specialist"),
               "note": e.get("note")} for e in examples]
-    return json.dumps({"latest_message": text, "patient_needs_so_far": need, "vita_last_asked": last_question,
-                       "doctor_in_hand": doctor_in_hand, "conversation_so_far": conversation[-12:],
+    return json.dumps({"latest_message": text, "how_to_reply": how or {}, "patient_needs_so_far": need,
+                       "vita_last_asked": last_question, "doctor_in_hand": doctor_in_hand,
+                       "earlier_in_conversation": digest(conversation, 12), "conversation_so_far": conversation[-12:],
                        "returning_patient_memory": memory, "how_vita_answered_similar_patients": shots,
                        "channel": channel}, ensure_ascii=False, default=str)
 
@@ -147,12 +154,15 @@ def run_planner(turn, state: dict) -> dict:
 
     steps, rt = turn.steps, turn.rt
     need = dict(state.get("need") or {})
+    style = state.get("style") or {}
+    if style.get("questions") == "avoid" and need.get("complaint_en"):
+        need["questions"] = MAX_QUESTIONS                # "sawal mat poocho": a question becomes an assessment
     st = steps.load(turn.session_id)
     prompt = plan_input(need=need, conversation=state.get("messages") or [], memory=state.get("memory") or {},
                         examples=state.get("examples") or [],
                         last_question=(st.get("last_reply") or {}).get("message"),
                         doctor_in_hand=steps.facts(turn.session_id), text=turn.raw,
-                        channel=turn.kw.get("channel") or "web")
+                        channel=turn.kw.get("channel") or "web", how=how_to_reply(style, turn.language_pref()))
     msgs = [SystemMessage(content=PLAN), HumanMessage(content=redact(prompt))]
     replied, used = None, []
     for _ in range(MAX_ROUNDS):

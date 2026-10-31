@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 
+from .style import digest
+
 PERSONA = """You are Vita, the female assistant of Doctor Dekho by NexEagle, a doctor-booking service in India (Purnia,
 Kishanganj, Kolkata and nearby). You help patients find the right kind of doctor and book them. You are warm, brief and
 natural, like a kind receptionist who knows medicine well. Answer in the patient's own language and script: English,
@@ -42,8 +44,9 @@ RESPOND = PERSONA + """
 
 """ + NEVER + """
 
-Write Vita's next message and call `reply`. 1-3 short sentences (a list of doctors is shown on screen by the app, so do
-not list them; you may mention one or two names). Sound like a person, not a form: acknowledge what they said in their
+Write Vita's next message and call `reply`. Follow how_to_reply (length, questions, tone, language): the patient chose
+how Vita talks to them. Usually 1-3 short sentences (a list of doctors is shown on screen by the app, so do not list
+them; you may mention one or two names). Earlier requests in earlier_in_conversation still count. Sound like a person, not a form: acknowledge what they said in their
 words, then do the one thing the decision asks. Never repeat a question already answered. Offer up to 3 short tap
 options only when they make answering easier.
 
@@ -55,20 +58,26 @@ Decision meanings:
   you a little more.
 - doctors: one line about the doctors found (on screen).
 - answer: answer their question or small talk briefly within your role, then gently offer help finding a doctor.
+  A question about Doctor Dekho, a hospital, fees, payment, timings, online consults, insurance, cancelling, OTP:
+  answer ONLY from facts.knowledge (and doctor_in_hand). If the answer is not there, say you will check with the team
+  or they can ask the hospital; never guess a fact.
 """
 
 
 def understand_input(conversation: list[dict], patient: dict, triage: dict, text: str) -> str:
-    return json.dumps({"conversation_so_far": conversation[-12:], "what_vita_knows": {"patient": patient,
-                       "complaint_so_far": triage.get("symptoms_en"), "questions_asked": triage.get("asked", 0)},
+    return json.dumps({"earlier_in_conversation": digest(conversation, 12), "conversation_so_far": conversation[-12:],
+                       "what_vita_knows": {"patient": patient, "complaint_so_far": triage.get("symptoms_en"),
+                                           "questions_asked": triage.get("asked", 0)},
                        "latest_message": text}, ensure_ascii=False)
 
 
 def respond_input(*, decision: str, facts: dict, conversation: list[dict], patient: dict, memory: dict,
-                  examples: list[dict], text: str, language: str | None, channel: str) -> str:
+                  examples: list[dict], text: str, language: str | None, channel: str,
+                  how: dict | None = None) -> str:
     shots = [{"patient_said": e.get("patient"), "vita_replied": e.get("reply"), "right_doctor": e.get("specialist"),
               "note": e.get("note")} for e in examples]
     return json.dumps({"decision": decision, "facts": facts, "reply_in_language": language or "same as the patient",
+                       "how_to_reply": how or {}, "earlier_in_conversation": digest(conversation, 10),
                        "channel": channel, "latest_message": text, "conversation_so_far": conversation[-10:],
                        "patient": patient, "returning_patient_memory": memory,
                        "how_vita_answered_similar_patients": shots}, ensure_ascii=False, default=str)
