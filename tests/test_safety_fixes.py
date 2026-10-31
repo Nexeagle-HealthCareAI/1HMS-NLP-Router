@@ -52,19 +52,19 @@ def client(bundle):
 
 # ----------------------------------------------------------------------------- one detector everywhere
 @pytest.mark.parametrize("text", EMERGENCIES)
-def test_chat_flags_every_emergency_route_symptom_flags(client, text):
+def test_vita_flags_every_emergency_route_symptom_flags(client, text):
     assert client.post("/v1/route-symptom", json={"query": text}).json()["emergency"]["flag"] is True
-    reply = client.post("/chat", json={"text": text}).json()
+    reply = client.post("/v2/agent/chat", json={"text": text}).json()
     assert reply["kind"] == "emergency", reply.get("message")
 
 
 @pytest.mark.parametrize("text", ROUTINE)
-def test_chat_raises_no_false_alarm_on_routine_text(client, text):
-    assert client.post("/chat", json={"text": text}).json()["kind"] != "emergency"
+def test_vita_raises_no_false_alarm_on_routine_text(client, text):
+    assert client.post("/v2/agent/chat", json={"text": text}).json()["kind"] != "emergency"
 
 
-def test_chat_emergency_card_carries_the_detector_reasons(client):
-    card = client.post("/chat", json={"text": "mujhe marne ka mann kar raha hai"}).json()["card"]
+def test_vita_emergency_card_carries_the_detector_reasons(client):
+    card = client.post("/v2/agent/chat", json={"text": "mujhe marne ka mann kar raha hai"}).json()["card"]
     assert card["kind"] == "emergency"
     assert any("self-harm" in r.lower() or "suicid" in r.lower() for r in card["emergency_reasons"])
 

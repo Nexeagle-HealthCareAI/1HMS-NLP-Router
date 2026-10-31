@@ -2,7 +2,6 @@
 from pathlib import Path
 
 import pytest
-from hms_router.specialist_rag import _default_corpus
 
 _ROOT = Path(__file__).resolve().parent.parent
 _REQUIRED = [
@@ -28,11 +27,20 @@ def pytest_sessionstart(session):
         pytest.exit("Missing required data files: " + ", ".join(missing), returncode=2)
 
 
-@pytest.fixture(autouse=True)
-def _fresh_corpus_cache():
-    _default_corpus.cache_clear()
-    yield
-    _default_corpus.cache_clear()
-
 # /route-symptom fixtures (bundle, service) and fakes live in tests/conftest_route.py
 from tests.conftest_route import bundle, service  # noqa: E402,F401
+
+
+_ROUTE_SERVICE = None
+
+
+def route_service():
+    """One route-symptom service per test session (the model takes a second or two to load). Tests that build
+    build Vita directly pass `route_service=route_service`, as the app does."""
+    global _ROUTE_SERVICE
+    if _ROUTE_SERVICE is None:
+        from hms_router.application.container import build_route_symptom_service
+        _ROUTE_SERVICE = build_route_symptom_service()
+    return _ROUTE_SERVICE
+
+

@@ -1,118 +1,93 @@
-# api/ — the FastAPI layer
+# HTTP API
 
-HTTP contract + orchestration **only**. This layer loads one
-`nlp_brain.SymptomClassifier` at startup and translates HTTP requests into
-`classifier.predict()` calls — no TF-IDF/gibberish/coverage-gate logic is
-reimplemented here. If you find yourself writing ML logic in this
-directory, it belongs in `nlp_brain/` instead (see
-[docs/nlp_brain.md](nlp_brain.md)).
+One FastAPI service: `api.py` → `hms_router.adapters.http.create_app()` (routers in `hms_router/adapters/http/`).
+The old `api_legacy/` app and `nlp_brain` are gone; this page replaces their description.
 
-Entry point: `api.main:app` — run it with `uvicorn api.main:app`.
+| Where | Address |
+|---|---|
+| Local | `uvicorn api:app --reload --port 5005` (no auth, in-memory Redis, LLMs off) |
+| Dev VM | `http://151.185.45.77:5003` (container `nlp-router-dev`, `--network host`, `HMS_PORT=5003`) |
+| Prod VM | `https://nlp-api.nexeagle.com` (Caddy → `localhost:5003`, container `nlp-router-prod`) |
 
-## Module map
+The image defaults to port 5005; the VMs run it on 5003 (`deploy-router.yml`), the port every caller uses.
+Interactive docs: `/docs` on any instance.
 
-| File | Responsibility | Touch it when... |
-|---|---|---|
-| `main.py` | Creates the `FastAPI` app, wires the `lifespan` (loads the classifier once at startup), attaches the rate limiter | Changing how/when the model is loaded, or adding another cross-cutting concern (auth, CORS, etc. — see the security note in `docs/testing.md`'s caveats). |
-| `routes.py` | The four endpoints; translates `PredictionResult` → `RouteResponse` | Adding a new endpoint, or changing what `/route-symptom`/`/route-symptom-audio` return. |
-| `schemas.py` | Request/response pydantic models, `MAX_QUERY_LENGTH`, `MAX_AUDIO_BYTES` | Changing the request/response contract NexEagleWebsite and `voice/` depend on. |
-| `rate_limit.py` | The shared `slowapi.Limiter` instance | Changing the rate limit (currently 30/min per IP, set in `routes.py`'s `@limiter.limit("30/minute")` decorator) or the key function (currently raw client IP — see the caveat in `main.py`'s comment about reverse proxies). |
+## Auth, limits, errors
+
+- **API key** in `X-Api-Key`. Only SHA-256 digests are configured, in `HMS_API_KEYS`
+  (`client:scope1|scope2:sha256hex`, comma-separated). Make one with
+  `python scripts/make_api_key.py <client> <scope>...`. With no keys configured, auth is off (development only;
+  production refuses to start).
+- **Scopes:** `route` (specialty routing and the search bar), `chat` (Vita), `admin` (rebuild, telemetry, Vita's control),
+  `verified_mobile` (a channel that already verified the patient's number, e.g. WhatsApp; lets Vita skip the OTP).
+- **Rate limits** per client per minute, in Redis: `route` 120 (`HMS_RATE_LIMIT_ROUTE`), `chat` 30
+  (`HMS_RATE_LIMIT_CHAT`). Over the limit → `429`.
+- **Body cap** 16 KB (`HMS_MAX_BODY_BYTES`) → `413`. Every response carries `X-Request-Id`.
+- **Errors** are RFC 9457 `application/problem+json`: `{type, title, status, detail, instance}` (+ `errors` on 422).
 
 ## Endpoints
 
-### `GET /health`
-Liveness/readiness probe. `ready: false` only in the narrow window before
-startup finishes loading the classifier. What `deploy-nlp.yml`'s
-health-check step polls after every deploy.
+| Method and path | Scope | What it does |
+|---|---|---|
+| `POST /v2/agent/chat` | chat | Vita, the patient agent: find a doctor, book, emergencies, visit help. See [vita_doctor_search.md](vita_doctor_search.md) and [vita_whatsapp.md](vita_whatsapp.md) |
+| `GET /v2/agent/session/{id}`, `DELETE /v2/agent/session/{id}` | chat | What Vita remembers / forget it |
+| `POST /v2/agent/feedback` | chat | 👍/👎 on a conversation (Vita's learning) |
+| `DELETE /v2/agent/patient-memory` | chat | Forget a returning patient (token, or verified mobile with that scope) |
+| `POST /v2/agent/search-intent` | route | One search-bar query → what Vita reads: specialty or symptoms (with route-symptom's decision), doctor name, degree, hospital, city, near me, emergency. See [vita_graph.md](vita_graph.md#the-search-bar) |
+| `GET/PUT /v2/agent/admin/control` | admin | Vita's mode, `agent` or `off` (code steps and the fallback only), per channel (kill switch) |
+| `GET /v2/agent/admin/conversations`, `GET /v2/agent/admin/conversations/{id}` | admin | Review conversations by outcome; one conversation turn by turn |
+| `GET/POST /v2/agent/admin/examples`, `DELETE /v2/agent/admin/examples/{id}`, `POST /v2/agent/admin/examples/promote` | admin | Approve or correct turns as examples; make them live through the scenario-suite gate. See [vita_graph.md](vita_graph.md) |
+| `POST /v1/route-symptom` (alias `POST /route-symptom`) | route | Symptom text → ranked specialties + emergency flag. See [route_symptom.md](route_symptom.md) |
+| `POST /legacy/route-symptom` | route | Same engine, the old `{specialtyIds, noMatch, method, confidence, modelVersion, raw}` shape |
+| `GET /v1/taxonomy` | route | The 30 specialty ids and names |
+| `GET /model-info` | route | Version and validation metrics of the serving model |
+| `POST /chat` | chat | **Deprecated** alias of `POST /v2/agent/chat` (Vita answers). The old triage agent, `/feedback` and `/session/{id}` were removed on 2026-10-31 |
+| `POST /admin/rebuild` | admin | Start a rebuild with CMS-approved examples; promoted only if not worse. `202` started, `409` already running |
+| `GET /admin/rebuild` | admin | Progress and last result (`state` idle / running / done / failed, `promoted`, `verdict`, `validation`) |
+| `GET /admin/telemetry` | admin | Decision telemetry queue and doctor-lookup stats |
+| `GET /health` | none | Liveness, and whether Vita's LLM is on: `vita: {llm, model, mode, breakerOpen}` |
+| `GET /ready` | none | Readiness: model loaded and Redis reachable (`503` until then) |
 
-### `GET /model-info`
-Returns `model_meta.json` as-is (model version, last retrain time,
-validation metrics). Read fresh on every call, not cached — so it always
-reflects the latest promoted model even without a restart.
+### `POST /v1/route-symptom`
 
-### `POST /route-symptom`
 ```json
-// request
-{"query": "Dant mein bahut dard hai, thanda garam nahi sehta"}
+{"query": "daant mein bahut dard hai", "topK": 5, "context": {"ageGroup": "adult"}}
 ```
-```json
-// response
-{
-  "specialtyIds": ["dentistry"],
-  "noMatch": false,
-  "method": "classifier",
-  "confidence": 0.65,
-  "modelVersion": "2026-08-04-083503",
-  "raw": {
-    "specialist": "Dentist",
-    "matchRatio": 0.65,
-    "closestKnownExample": "Daant mein bahut dard hai...",
-    "flaggedGibberish": false,
-    "message": null
-  }
-}
-```
-`specialtyIds` has at most one entry (mapped from the Brain's internal
-label via `specialty_mapping.LABEL_TO_NEXEAGLE_SPECIALTY_ID`). `noMatch:
-true` with empty `specialtyIds` means gibberish or "too dissimilar from
-anything trained on" — there is deliberately no default-specialist
-fallback. Rate-limited to 30 requests/minute per client IP; a `429` means
-the caller needs to back off, not retry immediately.
 
-### `POST /route-symptom-audio`
-The voice counterpart: accepts an uploaded audio recording instead of text,
-transcribes + transliterates it server-side (see
-[docs/speech.md](speech.md)), then routes it exactly like `/route-symptom`.
-For a client that records its own audio (e.g. a browser's `MediaRecorder`
-or a mobile app) rather than running Python against a live microphone —
-that's what `voice/`'s own CLI does instead.
+`query` 1–1000 characters (no control characters); `topK` 1–10 (default 5); `context.ageGroup` `child` | `adult`,
+also the answer to a clarify of kind `age`. Add `?include=evidence` to get the labelled sentences behind each score.
 
-```
-POST /route-symptom-audio
-Content-Type: multipart/form-data; boundary=...
-
-audio: <the recording, any format ffmpeg can decode>
-```
-Response is `RouteResponse` plus one extra field:
 ```json
 {
-  "transcript": "Dant mein bahut dard hai",
-  "specialtyIds": ["dentistry"],
-  "noMatch": false,
-  "...": "... (same as /route-symptom)"
+  "decision": "answer",
+  "specialties": [{"specialtyId": "dentistry", "name": "Dentistry", "confidence": 0.98, "evidence": null}],
+  "emergency": {"flag": false, "reasons": [], "source": null, "score": 0.01, "recommendedSpecialtyIds": []},
+  "clarify": null, "reason": "…", "method": "deterministic", "decisive": true, "noMatch": false,
+  "matchScore": 0.71, "specialtyIds": ["dentistry"], "usedDefault": false, "confidence": 0.98,
+  "modelVersion": "2026-10-30-133204-fe4967a5", "requestId": "…"
 }
 ```
-`transcript` is `null` when nothing intelligible could be transcribed
-(`noMatch: true` in that case, same as an unclear text query — not an error
-response). Show it to the user so they can see/correct what the server
-heard before trusting the routing decision.
 
-Max upload size 10MB (`413` if exceeded). Rate-limited tighter than the
-text endpoint — **10 requests/minute** per IP, not 30 — since decoding
-audio + calling the speech-recognition service is real work on top of the
-same classification cost `/route-symptom` already pays. Error responses:
-`400` (unrecognizable audio format), `502` (speech service failed, e.g.
-network issue), `503` (transcription unavailable on this server, e.g.
-`ffmpeg` not installed — an operational problem, not the caller's fault).
+Read `emergency.flag` first, even when `noMatch` is true. `decision`: `answer` (act on `specialties[0]`),
+`clarify` (ask `clarify.question`, offer `clarify.options`, or show the hedge list), `abstain` (nothing medical
+recognised: suggest a General Physician).
 
-## Common recipes
+### `POST /v2/agent/chat`
 
-**Run locally against the committed model:**
-```bash
-uvicorn api.main:app --reload --port 5003
+```json
+{"text": "mujhe 3 din se bukhar hai", "session_id": null, "city": "Purnia", "channel": "web"}
 ```
 
-**Add a new endpoint:** add the route function to `routes.py`, add its
-response shape to `schemas.py` if it returns structured data, then add a
-test to `tests/test_api.py` using the `api_client` fixture (see
-[docs/testing.md](testing.md) — it's wired to a small fixture classifier,
-not the production bundle, so it stays fast).
+Optional: `lat`/`lng`, `hospital_id`, `select_doctor_id`, `page`, `ui_language`, `channel` (`web` | `whatsapp`),
+`reply_id` (a tapped WhatsApp row), `client_ip`, `patient_token`, `verified_mobile`, `visit_appointment_id`,
+`new_search`, `remember` (the patient agreed that Vita may remember who they book for and past doctors). The reply has `kind` (`follow_up`, `emergency`, `recommendation`, `doctor_list`, `doctor_selected`,
+`info`, `handoff`, booking and visit kinds), `message`, `clarify` (tap options), `doctors`, `card`,
+`language`, `engine` (`step`, `agent`, `agent+step`, `agent+template`, `fallback`; see [vita_graph.md](vita_graph.md)) and, for WhatsApp, `whatsapp`
+(ready-to-send messages).
 
-**Change the rate limit:** edit the `@limiter.limit("30/minute")` string
-in `routes.py`. `tests/test_api.py::TestRateLimit` asserts the exact
-current number — update that test in the same change.
+## Changing the API
 
-**Test against a specific model version:** point `MODEL_BUNDLE_PATH`
-elsewhere (it's derived from `nlp_brain.MODEL_OUT` in `main.py`) — most
-often easier to just swap `symptom_specialist_classifier.joblib` on disk
-and restart.
+Add the route to the router module of its concern in `hms_router/adapters/http/` (business logic belongs in
+`hms_router/application/`), give it a scope through `Guard`, and add a test with FastAPI's `TestClient`
+(`tests/test_http_api.py`, `tests/test_api.py`). Contract changes for existing callers (Doctor Dekho, the CMS,
+the WhatsApp bot) must be additive.

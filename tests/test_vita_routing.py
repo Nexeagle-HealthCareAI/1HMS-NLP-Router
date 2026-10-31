@@ -1,11 +1,15 @@
-"""Vita's specialist comes from the route-symptom engine (route_bridge.py). Probe 2026-10-30 cases."""
+"""Vita's specialist comes from the route-symptom engine (route_bridge.py), on the LLM's reading of the complaint plus
+the patient's own words. Probe 2026-10-30 cases. The scripted model reads each complaint back as the patient said it
+(the worst case for the engine), so these test route-symptom and the child rule, not the model."""
 import pytest
 from fastapi.testclient import TestClient
 
 from hms_router.adapters.http import create_app
 from hms_router.adapters.settings import ServiceSettings
 from hms_router.route_bridge import age_group_of
+from hms_router.vita_graph.engine import VitaRuntime
 from tests.test_vita_doctor_chat import Fake1Hms, make_directory
+from tests.test_vita_graph import ScriptedLLM, say, u
 
 
 @pytest.fixture(scope="module")
@@ -16,13 +20,10 @@ def client():
 
 
 def _until_advice(client, first):
-    sid, out = None, None
-    for msg in [first, "nahi", "3 din se", "nahi"]:
-        out = client.post("/v2/agent/chat", json={"text": msg, "session_id": sid, "city": "Kolkata"}).json()
-        sid = out["session_id"]
-        if out["kind"] != "follow_up":
-            break
-    return out
+    a = client.app.state
+    a.vita_runtime = VitaRuntime(ScriptedLLM(u("symptoms", first, enough=True), say("Ye doctor sahi rahenge.")),
+                                 a.redis, route_service=lambda: a.route)
+    return client.post("/v2/agent/chat", json={"text": first, "city": "Kolkata"}).json()
 
 
 @pytest.mark.parametrize("first,primary", [
@@ -61,7 +62,18 @@ def test_age_group(text, group):
     assert age_group_of(text) == group
 
 
-def test_chat_endpoint_unchanged(client):
-    """/chat keeps the older retriever (route_service is only given to Vita)."""
-    assert client.app.state.chat.agent.route_service is None
-    assert client.app.state.vita_agent.route_service is not None
+def test_one_specialty_engine_for_route_symptom_and_vita(client):
+    """Vita chooses through route-symptom (the old /chat agent and cluster retriever are gone)."""
+    assert client.app.state.vita_runtime.route_service() is client.app.state.route
+
+
+@pytest.mark.parametrize("text", ["chest pain nahi hai bas khansi hai", "seene mein dard nahi hai, bas khansi hai"])
+def test_denied_symptoms_do_not_choose_the_specialist(client, text):
+    out = _until_advice(client, text)
+    assert out["kind"] == "recommendation"
+    assert out["card"]["outputs"][0]["specialist"] != "Cardiologist"
+
+
+def test_no_paediatrician_without_a_child(client):
+    out = _until_advice(client, "pet mein dard hai aur ulti")
+    assert all(o["specialist"] != "Paediatrician" for o in out["card"]["outputs"])

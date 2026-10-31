@@ -1,4 +1,4 @@
-﻿"""HTTP entrypoint for the HMS NLP Router.  Run:  uvicorn api:app --port 5005
+"""HTTP entrypoint for the HMS NLP Router.  Run:  uvicorn api:app --port 5005
 
 Endpoints (built in hms_router/adapters/http/):
     POST /chat, /feedback; GET|DELETE /session/{id}   conversational triage (unchanged behaviour; scope "chat")

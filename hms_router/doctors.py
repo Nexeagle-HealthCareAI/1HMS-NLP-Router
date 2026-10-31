@@ -19,6 +19,8 @@ import threading
 import time
 from typing import Any
 
+from .search_spelling import CityIndex, city_index, name_index
+
 log = logging.getLogger("hms_router.doctors")
 
 PROTOCOL_VERSION = "2025-06-18"
@@ -34,21 +36,21 @@ _KEY_PATTERNS: list[tuple[str, str]] = [
     (r"breast", "breast-surgery"),
     (r"\bgi\b.*surg|surgical gastro", "gi-surgery"),
     (r"general surg", "general-surgery"),
-    (r"emergency", "emergency-medicine"),
+    (r"emergency|\bcasualty\b", "emergency-medicine"),
     (r"sports", "sports-medicine"),
-    (r"cardi", "cardiology"),
+    (r"cardi|\bheart\b", "cardiology"),
     (r"gastro", "gastroenterology"),
-    (r"dermat|\bskin\b", "dermatology"),
-    (r"orthop|\bbone\b", "orthopaedics"),
+    (r"dermat|\bskin\b|venereo", "dermatology"),
+    (r"\bortho|\bbones?\b", "orthopaedics"),            # "Ortho", "Orthopaedics", "Orthopaedic Surgeon (Bone)"
     (r"gyn|obstet", "gynaecology"),
-    (r"dent", "dentistry"),
-    (r"\bent\b|ear nose", "ent"),
-    (r"ophthal|\beye\b", "ophthalmology"),
+    (r"\bdent(al|ist|ists|istry)?\b", "dentistry"),      # never "accident" or "resident"
+    (r"\bent\b|\be n t\b|ear nose", "ent"),
+    (r"ophthal|\beyes?\b", "ophthalmology"),
     (r"neuro", "neurology"),
     (r"psychiat", "psychiatry"),
     (r"urolog", "urology"),
     (r"endocrin|diabet", "endocrinology"),
-    (r"pulmon|\blungs?\b", "pulmonology"),
+    (r"pulmon|\blungs?\b|\bchest\b|\btb\b|tubercul|respirat", "pulmonology"),
     (r"nephro|kidney", "nephrology"),
     (r"oncol|cancer", "oncology"),
     (r"rheumat", "rheumatology"),
@@ -58,7 +60,9 @@ _KEY_PATTERNS: list[tuple[str, str]] = [
     (r"patholog", "pathology"),
     (r"geriat", "geriatrics"),
     (r"p(a)?ediat|\bchild", "paediatrics"),
-    (r"general (physician|medicine)|^physician$|internal medicine", "general-medicine"),
+    (r"\bsurgery\b|\bsurgeons?\b", "general-surgery"),  # after every named surgery and "Orthopaedic Surgeon"
+    (r"general (physician|medicine)|^physicians?$|internal medicine|family medicine|^medicine$|medicine department|"
+     r"^general$|^opd$|general opd", "general-medicine"),
 ]
 
 
@@ -220,19 +224,26 @@ class DoctorDirectory:
         self.stats["lastError"] = f"{type(exc).__name__}: {exc}"[:300]
         log.warning("doctor lookup failed (%s): %s", what, self.stats["lastError"])
 
-    def _category_for(self, key: str) -> str | None:
+    def _categories_for(self, key: str) -> list[str]:
+        """Every 1HMS category that means this specialty. Categories are each hospital's own department names
+        ("Gynaecology", "Obs & Gynae", "Medicine" ...), so one specialty is often several categories; all are
+        searched, not only the first."""
         if self._clock() - self._categories_at > SPECIALTIES_TTL_S or not self._categories:
             data = self._call("list_specialties", {})
-            cats: dict[str, str] = {}
+            cats: dict[str, list[str]] = {}
             for s in data.get("specialties") or []:
                 if not s.get("doctorCount"):
                     continue
                 for label in [s.get("specialtyId"), s.get("name"), *(s.get("aliases") or [])]:
                     k = specialty_key(label)
-                    if k and k not in cats:
-                        cats[k] = s["specialtyId"]
+                    if k and s["specialtyId"] not in cats.setdefault(k, []):
+                        cats[k].append(s["specialtyId"])
             self._categories, self._categories_at = cats, self._clock()
-        return self._categories.get(key)
+        return list(self._categories.get(key) or [])
+
+    def _category_for(self, key: str) -> str | None:
+        found = self._categories_for(key)
+        return found[0] if found else None
 
     # ------------------------------------------------------------------ generic search (five ways to ask)
     def search(self, *, specialty_key: str | None = None, query: str | None = None, degree: str | None = None,
@@ -250,10 +261,17 @@ class DoctorDirectory:
             args: dict[str, Any] = {"limit": max(1, min(int(limit or self.limit), 10))}
             category = None
             if specialty_key:
-                category = self._category_for(specialty_key)
-                if category is None:
+                categories = self._categories_for(specialty_key)
+                if not categories:
                     return None
-                args["specialtyIds"] = [category]
+                category = categories[0]
+                args["specialtyIds"] = categories
+            if query or city:
+                names, cities = self.index()
+                if query and names:                  # "neha sarma" -> "neha sharma": 1HMS's name match sees a clean spelling
+                    query = name_index(tuple(names)).fix(query) or query
+                if city and cities:                  # 1HMS matches cities exactly: "kolkatta" / "calcutta" -> "Kolkata"
+                    city = cities.resolve(city) or city
             if query:
                 args["query"] = query
             if degree:
@@ -306,7 +324,7 @@ class DoctorDirectory:
         if query:
             args["query"] = query
         if city:
-            args["city"] = city
+            args["city"] = self.index()[1].resolve(city) or city
         if lat is not None and lng is not None:
             args.update(lat=lat, lng=lng)
         cache_key = "h:" + json.dumps(args, sort_keys=True)
@@ -355,6 +373,20 @@ class DoctorDirectory:
         except Exception as exc:
             self._failed("names", exc)
             return []
+
+    def fix_name(self, query: str | None) -> str | None:
+        """A doctor-name query with each word spelled as in the listed names ("neha sarma" -> "neha sharma")."""
+        if not query or not self.enabled:
+            return query
+        names = self.index()[0]
+        return (name_index(tuple(names)).fix(query) or query) if names else query
+
+    def index(self) -> tuple[list[str], CityIndex]:
+        """Every listed doctor's name and the cities they work in, for spelling-tolerant search (cached with names())."""
+        names = self.names(None)
+        hit = self._names.get("")
+        docs = hit[1] if hit else []
+        return names, city_index(tuple(sorted({(d.get("city") or "").strip() for d in docs if d.get("city")})))
 
     def get_doctor(self, doctor_id: str) -> dict | None:
         """The current public profile, or None when not listed any more. Raises DoctorLookupError."""

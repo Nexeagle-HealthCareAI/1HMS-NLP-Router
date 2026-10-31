@@ -1,15 +1,9 @@
-"""Unit tests for fixes made while joining the steps (script, spelling, safety net, retriever, output, keywords)."""
-import fakeredis
+"""Unit tests for fixes made while joining the steps (script, spelling, safety net)."""
 import pytest
 
-from hms_router import HMSRouterPipeline
-from hms_router.accumulator import SymptomAccumulator
-from hms_router.keywords import KeywordTagger
 from hms_router.lexicon import Lexicon
-from hms_router.output import OutputGenerator
 from hms_router.script import normalize_script
-from hms_router.severity import EMERGENCY, SeverityClassifier, emergency_check, load_extra_rules, EMERGENCY_RULES
-from hms_router.specialist_rag import SpecialistRetriever, load_corpus
+from hms_router.severity import SeverityClassifier, emergency_check, load_extra_rules, EMERGENCY_RULES
 from hms_router.spelling import SpellingCorrector
 
 
@@ -71,69 +65,3 @@ def test_word_order_and_english_variants():
 
 
 # ---------------------------------------------------------------- accumulator
-def test_accumulator_obeys_safety_net_flag_and_callable():
-    acc = SymptomAccumulator(fakeredis.FakeRedis(decode_responses=True))
-    s = acc.add("s1", {"symptoms": ["headache"], "language_mix": "hinglish"}, emergency=True)
-    assert s.ready and s.ready_reason == "emergency_safety_net" and s.next_question is None
-    seen = []
-    s = acc.add("s2", {"symptoms": ["cough"]}, emergency=lambda st: seen.append(st.symptoms) or False)
-    assert seen == [["cough"]] and not s.ready and s.next_question                  # callable got the merged state
-
-
-# ---------------------------------------------------------------- retriever (Step 8 hooks)
-def test_boost_is_bounded_and_cannot_create_a_match():
-    r = SpecialistRetriever(boost=lambda cid: 0.5)
-    out = r.route({"symptoms": ["stomach pain", "vomiting", "fever"]})
-    assert out.recommendations[0].specialist == "Gastroenterologist" and out.recommendations[0].confidence <= 1.0
-    out = r.route({"symptoms": ["unobtainium"]})                                    # nothing matches -> boost can't help
-    assert out.low_confidence and all(x.source == "fallback" for x in out.recommendations)
-
-
-def test_reindex_after_corpus_grows():
-    r = SpecialistRetriever()
-    from hms_router.specialist_rag import Cluster
-    r.reindex(r.corpus + [Cluster("RHE1", "Rheumatologist", ("joint pain", "swelling"), "Joint pain with swelling")])
-    out = r.route({"symptoms": ["joint pain", "swelling"]})
-    assert out.recommendations[0].specialist == "Rheumatologist"
-
-
-# ---------------------------------------------------------------- Step 7
-def _card(state, **kw):
-    clf, rag = SeverityClassifier(), SpecialistRetriever()
-    sev = clf.classify(state).to_dict()
-    return OutputGenerator().build(state, sev, rag.route(state, sev))
-
-
-def test_three_distinct_outputs_always():
-    for syms in (["stomach pain", "fever"], ["itching"], ["headache", "dizziness"], ["not-a-symptom"], []):
-        card = _card({"symptoms": syms})
-        assert card.kind == "recommendation" and len(card.outputs) == 3
-        assert len({o.specialist for o in card.outputs}) == 3, syms
-        assert [o.role for o in card.outputs] == ["PRIMARY", "SECONDARY", "ALTERNATIVE"]
-
-
-def test_alternative_is_always_gp_or_telemedicine():
-    for syms in (["stomach pain", "fever"], ["cough", "fever"], ["itching"]):
-        assert _card({"symptoms": syms}).outputs[2].specialist in ("General Physician", "Telemedicine consult", "OPD triage desk")
-
-
-def test_emergency_gets_response_card_not_three_outputs():
-    card = _card({"symptoms": ["chest pain"]})
-    assert card.kind == "emergency" and len(card.outputs) == 1 and card.outputs[0].specialist == "Emergency Medicine"
-    assert "108" in card.alert and "Cardiologist" in card.after_stabilisation
-
-
-def test_watch_for_has_no_duplicates_and_always_has_emergency_line():
-    card = _card({"symptoms": ["stomach pain", "vomiting", "fever"], "intensity": "moderate"})
-    assert len(card.watch_for) == len(set(card.watch_for)) and "108" in card.watch_for[-1]
-
-
-# ---------------------------------------------------------------- keywords
-def test_keyword_levels_follow_corpus_idf():
-    from hms_router.specialist_rag import Cluster
-    corpus = [Cluster(f"C{i}", f"S{i}", ("fever",) + (("dizziness",) if i == 0 else ()), "d") for i in range(10)]
-    tagger = KeywordTagger(corpus)
-    assert tagger.idf("dizziness") > tagger.idf("fever")                            # rarer = more discriminative
-    pipe = HMSRouterPipeline(fakeredis.FakeRedis(decode_responses=True))
-    tags = {t.canonical: t.level for t in tagger.tag(pipe.process("bahut bukhar aur chakkar").correction) if t.canonical}
-    assert tags["fever"] == "MEDIUM" and tags["dizziness"] == "HIGH" and tags["very"] == "MODIFIER"

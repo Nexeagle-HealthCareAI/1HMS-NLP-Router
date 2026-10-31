@@ -1,7 +1,7 @@
 """The red-flag rule file: one source of truth for every Safety Guard.
 
 hms_router/data/red_flags.csv holds (phrase, english, canonical, flag, origin). /route-symptom reads it
-today; /chat (via HMSRouterAgent(emergency_rules=...)) and the WhatsApp bot's app/safety.py should read
+and Vita's emergency check through it (the shared detector); the WhatsApp bot's app/safety.py should read
 the same file next, so a rule added once protects every channel.
 
 Starting point only - every row needs clinician review before patients rely on it.

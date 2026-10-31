@@ -281,8 +281,20 @@ def nothing_new(v: Voice) -> str:
              "क्या आप ऊपर दिए डॉक्टरों में से किसी को दिखाना चाहेंगे, या कोई और तकलीफ़ है?")
 
 
+def widened_note(v: Voice, city: str, specialist: str | None) -> str:
+    """Nobody in the patient's city matched: say so before the doctors found in other towns."""
+    town = (city or "").title()
+    kind = f" {specialist}" if specialist else ""
+    return v(f"I couldn't find{kind} doctors in {town} on Doctor Dekho, so here are some in other towns.",
+             f"{town} mein{kind} doctor Doctor Dekho par nahi mile, isliye dusre shahar ke doctor dikha rahi hoon.",
+             f"{town} में{kind} डॉक्टर Doctor Dekho पर नहीं मिले, इसलिए दूसरे शहर के डॉक्टर दिखा रही हूँ।")
+
+
 def carry_note(v: Voice, carry: dict) -> str:
     """'sabse sasta doctor' without a kind of doctor: say the filter is kept, then ask which kind."""
+    if carry.get("place") and not (carry.get("sort") or carry.get("availableToday")):
+        town = carry["place"].title()
+        return v(f"Okay, doctors in {town}.", f"Theek hai, {town} ke doctor.", f"ठीक है, {town} के डॉक्टर।")
     if carry.get("sort") == "fee":
         return v("Okay, I'll show the lowest fees first.", "Theek hai, kam fees wale pehle dikhaungi.",
                  "ठीक है, कम फ़ीस वाले पहले दिखाऊँगी।")

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Callable
 
 from rapidfuzz import process
-from rapidfuzz.distance import Levenshtein
+from rapidfuzz.distance import OSA, Levenshtein
 
 from .config import Settings
 from .lexicon import Lexicon
@@ -105,7 +105,7 @@ class SpellingCorrector:
 
         # 1) phonetic: same consonant skeleton, closest spelling wins; ties across words -> ambiguous
         cands = self._key_index.get(phonetic_key(word), [])
-        scored = sorted((Levenshtein.distance(word, c), c) for c in cands)
+        scored = sorted((OSA.distance(word, c), c) for c in cands)      # two letters swapped = one typo ("pian")
         scored = [x for x in scored if x[0] <= self.cfg.phonetic_max_distance]
         if scored and (len(scored) == 1 or scored[0][0] < scored[1][0]):
             return scored[0][1], "phonetic"
@@ -118,7 +118,7 @@ class SpellingCorrector:
         # 2) fuzzy: RapidFuzz edit distance <= 2, long words only, reject ambiguous ties
         if len(word) >= self.cfg.fuzzy_min_word_len:
             max_d = min(self.cfg.fuzzy_max_distance, 1 if len(word) <= 5 else 2)    # short words: 1 typo at most
-            hits = process.extract(word, self._fuzzy_list, scorer=Levenshtein.distance,
+            hits = process.extract(word, self._fuzzy_list, scorer=OSA.distance,
                                    score_cutoff=max_d, limit=2)
             if hits and (len(hits) == 1 or hits[0][1] < hits[1][1]):
                 return hits[0][0], "fuzzy"

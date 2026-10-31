@@ -1,27 +1,26 @@
-"""Vita doctor search inside /chat (Vita Chat requirements, Part 2, VITA-2 to VITA-13).
+"""Vita's tested steps: the code the LangGraph conversation (vita_graph/graph.py) calls.
 
-One message in, one reply out. Order of work, every turn:
+There is no second conversation engine here. The graph decides, on every message, which step (if any) answers:
 
-  1  select_doctor_id?      -> the doctor must be one shown in this session (else 422) -> doctor_selected
-  2  parse the ask          doctor_intent.parse: symptom / specialty / name / degree / distance / refine
-  3  SAFETY FIRST           any ask that would skip triage is checked with the shared emergency detector;
-                            an emergency goes to the agent (emergency card, never a doctor list) - VITA-9
-  4  pending location?      the previous turn asked "where are you?" -> lat/lng or "use my city" completes it
-  4b conversation moves     "talk to a person" -> handoff; "Dr X ka number do" -> never a private number;
-                            "bas dekh raha tha" / "hello" -> a short answer, no push to book
-  5  refine / more          "inme se kam fees wala", "aur doctor dikhao" -> last filters + the change
-  6  direct ask             specialty / name / degree / distance -> 1HMS search now, kind=doctor_list
-  7  otherwise              the triage agent (follow-up questions); on a confident recommendation the
-                            PRIMARY specialty's doctors are attached (SECONDARY, then General Physician
-                            as fallback, doctors.fallbackUsed=true)
+  step_self_harm      a person first, whatever was going on (Tele-MANAS 14416, 108)
+  step_tap            a doctor chosen from a list, the next page, the screen's filter chips
+  step_bangla         Bangla is recognised, not yet understood
+  step_emergency_care after an emergency: nearest places, sharing the number, "ambulance aa gayi"
+  step_visit          after booking: the way to the clinic, the day of the visit
+  step_booking        day, time, for whom, details, OTP, confirm
+  step_picks          answers to Vita's last question: location, which doctor / hospital, "kal milenge?"
+  step_safety         the shared emergency detector and the warning-sign questions, on every message
+  then the LLM agent  understands the message; its tools here are read_ask / plain_search (doctor search),
+                      choose, handoff, facts, emergency_reply; unavailable() when it cannot understand right now
 
 Doctors are exactly what 1HMS returned, in its order (VITA-12); only an explicit "kam fees" sorts them.
-1HMS failing never fails /chat: the reply says so and degraded contains "doctor_lookup" (VITA-10).
+1HMS failing never fails a reply: the reply says so and degraded contains "doctor_lookup" (VITA-10).
 Patient text is never sent to 1HMS: only the extracted filters are (NFR-2.6). Location is used for the
 search in hand and not stored.
 """
 from __future__ import annotations
 
+import copy
 import functools
 import json
 import logging
@@ -34,11 +33,11 @@ from typing import Any
 
 from .. import voice as V
 from ..booking_client import BookingError
-from ..accumulator import QUESTIONS as _AGENT_QUESTIONS     # the triage agent's own wording, mapped to voice keys
-from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, parse
-from ..doctors import (FALLBACK_SPECIALIST, SPECIALIST_TITLES, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory, DoctorLookupError,
-                       specialty_key)
-from ..safety.self_harm import mentions_self_harm
+from ..doctor_intent import DOCTOR_WORDS, DoctorAsk, availability_when, close_name_word, parse, search_text
+from ..doctors import (FALLBACK_SPECIALIST, SPECIALIST_TITLES, NEARBY_DEFAULT_KM, WIDE_RADIUS_KM, DoctorDirectory,
+                       DoctorLookupError)
+from ..safety.self_harm import REASON as _SELF_HARM, mentions_self_harm
+from ..search_spelling import name_tokens
 from ..severity import EMERGENCY, emergency_check
 from ..textnorm import intent_text, preprocess, tidy
 from ..voice import Voice
@@ -48,6 +47,7 @@ from .emergency_help import EmergencyHelp
 from .journey import _NO as _JOURNEY_NO, _YES as _JOURNEY_YES, JourneyHelp, wants as journey_wants
 from .visit_help import VisitHelp, wants as visit_wants
 
+SELF_HARM_SIGN = _SELF_HARM.lower()
 AFTER_EMERGENCY_S = 2 * 3600      # how long "ambulance aa gayi", "ab theek hoon" are read as about that emergency
 # what patients say after Vita told them to call 108
 _AFTER_EMERGENCY = (
@@ -96,7 +96,6 @@ def medical_terms(text: str) -> list[str]:
     return _vocab.terms_in(text)
 
 
-_QUESTION_KEYS = {text: key for key, text in _AGENT_QUESTIONS.items()}
 
 
 class SelectionError(ValueError):
@@ -123,8 +122,11 @@ def _fee(d: dict) -> float:
 
 
 class DoctorChat:
-    def __init__(self, agent, directory: DoctorDirectory, redis, *, terms=medical_terms, booking_client=None):
-        self.agent, self.directory, self.r, self.terms = agent, directory, redis, terms
+    def __init__(self, pipeline, directory: DoctorDirectory, redis, *, detector=None, terms=medical_terms,
+                 booking_client=None):
+        """pipeline: HMSRouterPipeline (sessions, language, spelling). detector: returns the shared emergency
+        detector (the route-symptom service's), read per message so a model rebuild is picked up."""
+        self.pipeline, self.directory, self.r, self.terms, self.detector = pipeline, directory, redis, terms, detector
         self.booking = BookingFlow(directory, booking_client)
         self.emergency = EmergencyHelp(booking_client)
         self.visit = VisitHelp(booking_client)
@@ -161,32 +163,6 @@ class DoctorChat:
                 "lastFilters": st.get("last"), "doctorsShown": len(st.get("shown") or {})}
 
     # ================================================================== entry
-    def handle(self, text: str, session_id: str | None, *, city: str | None = None, lat: float | None = None,
-               lng: float | None = None, hospital_id: str | None = None,
-               select_doctor_id: str | None = None, page: int = 1, new_search: bool = False,
-               ui_language: str | None = None, client_ip: str | None = None, patient_token: str | None = None,
-               verified_mobile: str | None = None, channel: str = "web", visit_appointment_id: str | None = None) -> dict:
-        """new_search: the screen removed a filter chip and re-sent the remaining filters as text; search
-        with exactly those, never merged into the last search."""
-        ctx = {"city": city, "lat": lat, "lng": lng, "hospital_id": hospital_id,
-               "located": lat is not None and lng is not None,
-               # booking only: the visitor's IP for 1HMS's per-visitor limits, the channel's signed-in patient
-               # token (no OTP needed), a number the channel already verified (WhatsApp)
-               "client_ip": client_ip, "patient_token": patient_token, "verified_mobile": verified_mobile,
-               "token_mobile": token_mobile(patient_token) if patient_token else None, "channel": channel,
-               # after booking: the visit the website says the patient is looking at
-               "visit_appointment_id": visit_appointment_id}
-        self._hint = ui_language
-        text = tidy(text, _known_words())          # "doc chaiye", "nhi pta", "bukharrr", "🤒" -> words the rules know
-        out = self._handle(text, session_id, ctx, select_doctor_id=select_doctor_id, page=page, new_search=new_search)
-        reminder = ctx.get("reminder")
-        if reminder and out and out.get("kind") != "emergency" and out.get("message"):
-            out["message"] = f"{reminder}\n\n{out['message']}"      # once, after an emergency: the number comes first
-        lead = ctx.get("lead")
-        if lead and out and out.get("kind") != "emergency" and out.get("message"):
-            out["message"] = f"{lead} {out['message']}"           # "Main dawai ki salah nahi de sakti." + the triage
-        self._remember_reply(out, ctx)
-        return out
 
     def _remember_reply(self, out: dict | None, ctx: dict) -> None:
         """What the next message may refer to: whether triage is waiting for an answer ("nahi" answers it), and the
@@ -207,158 +183,438 @@ class DoctorChat:
         if (est.get("triage_waiting"), est.get("last_reply")) != before:
             self._save(sid, est)
 
-    def _handle(self, text, session_id, ctx, *, select_doctor_id, page, new_search) -> dict:
-        if mentions_self_harm(text):                       # every turn, whatever Vita was in the middle of (booking,
-            st = self.load(session_id)                     # visit, journey, an earlier emergency): a person comes first
-            dropped = [k for k in ("booking", "pending", "which", "which_hospital", "warn", "last_advice") if st.pop(k, None)]
-            if session_id and dropped:
-                self._save(session_id, st)
-            return self._agent_turn(text, session_id, parse(text), ctx, emergency_checked=True)
-        if select_doctor_id:
-            return self._select(text, session_id, select_doctor_id, ctx)
 
-        if self.agent.pipeline.detector.detect(text).language == "bangla":
-            return self._bangla(text, session_id)
-        st = self.load(session_id)
-        if st.get("emergency"):                                                           # emergency takeover follow-ups
-            out = self._emergency_followup(text, session_id, st, ctx)
+    # ================================================================== safety
+    # ================================================================== steps (LangGraph nodes call these)
+    # Vita's conversation is the LangGraph graph (vita_graph/graph.py). The code below is not a second engine: each
+    # step does one tested job when the graph routes a message to it, and returns None when the message is not its
+    # business, so the graph moves on (in the order below, then to the LLM agent).
+    def context(self, kw: dict) -> dict:
+        lat, lng = kw.get("lat"), kw.get("lng")
+        tok = kw.get("patient_token")
+        self._hint = kw.get("ui_language")
+        return {"city": kw.get("city"), "lat": lat, "lng": lng, "hospital_id": kw.get("hospital_id"),
+                "located": lat is not None and lng is not None,
+                # booking only: the visitor's IP for 1HMS's per-visitor limits, the channel's signed-in patient
+                # token (no OTP needed), a number the channel already verified (WhatsApp)
+                "client_ip": kw.get("client_ip"), "patient_token": tok, "verified_mobile": kw.get("verified_mobile"),
+                "token_mobile": token_mobile(tok) if tok else None, "channel": kw.get("channel") or "web",
+                # after booking: the visit the website says the patient is looking at
+                "visit_appointment_id": kw.get("visit_appointment_id")}
+
+    @staticmethod
+    def tidy(text: str) -> str:
+        """"doc chaiye", "nhi pta", "bukharrr", "🤒" -> the words Vita's code knows (the LLM reads the original)."""
+        return tidy(text, _known_words())
+
+    def finish(self, out: dict | None, ctx: dict) -> dict | None:
+        """Every reply, whoever wrote it: the emergency number said once after an emergency comes first, a step's
+        lead line ("No warning signs, so ...") before the message, and what the next message may refer to."""
+        reminder = ctx.get("reminder")
+        if reminder and out and out.get("kind") != "emergency" and out.get("message"):
+            out["message"] = f"{reminder}\n\n{out['message']}"
+        lead = ctx.get("lead")
+        if lead and out and out.get("kind") != "emergency" and out.get("message"):
+            out["message"] = f"{lead} {out['message']}"
+        self._remember_reply(out, ctx)
+        return out
+
+    def step_self_harm(self, text, sid, ctx) -> dict | None:
+        """Every turn, whatever Vita was in the middle of (booking, visit, journey, an earlier emergency): a person
+        comes first."""
+        if not mentions_self_harm(text):
+            return None
+        st = self.load(sid)
+        if sid and [k for k in ("booking", "pending", "which", "which_hospital", "warn", "last_advice") if st.pop(k, None)]:
+            self._save(sid, st)
+        return self.emergency_reply(text, sid, ctx, [SELF_HARM_SIGN])
+
+    def step_tap(self, text, sid, ctx, kw) -> dict | None:
+        """A doctor chosen from a list, the next page, or the screen re-sending its remaining filters."""
+        if kw.get("select_doctor_id"):
+            return self._select(text, sid, kw["select_doctor_id"], ctx)
+        st = self.load(sid)
+        page = int(kw.get("page") or 1)
+        if page > 1 and st.get("last"):
+            return self._search_turn(text, sid, dict(st["last"]), ctx, st, page=page)
+        if kw.get("new_search"):                         # exactly the filters on screen, never merged into the last
+            ask = self.read_ask(text, sid)
+            if ask.direct or ask.place:
+                return self._search_turn(text, sid, _filters(ask), ctx, st)
+        return None
+
+    def step_bangla(self, text, sid) -> dict | None:
+        if self.pipeline.detector.detect(text).language == "bangla":
+            return self._bangla(text, sid)
+        return None
+
+    def step_emergency_care(self, text, sid, ctx) -> dict | None:
+        """Right after an emergency: the nearest places for a shared location, sharing the number, "ambulance aa
+        gayi", "ab theek hoon", "call nahi lag raha"."""
+        st = self.load(sid)
+        if st.get("emergency"):
+            out = self._emergency_followup(text, sid, st, ctx)
             if out is not None:
                 return out
-        if st.get("after_emergency"):                                                     # "ambulance aa gayi", "ab theek hoon"
-            out = self._after_emergency(text, session_id, st, ctx)
+        if st.get("after_emergency"):
+            return self._after_emergency(text, sid, self.load(sid), ctx)
+        return None
+
+    def step_visit(self, text, sid, ctx, *, asked: bool = False) -> dict | None:
+        """After booking: the way to the clinic (app only for now) and the day of the visit. asked: the agent read
+        the message as visit help, so a plain "where is the clinic?" is enough."""
+        st = self.load(sid)
+        if st.get("booking"):
+            return None
+        if self.journey.enabled and ctx.get("channel") != "whatsapp":
+            out = self._journey_turn(text, sid, st, ctx)
             if out is not None:
                 return out
-            st = self.load(session_id)
-        if self.journey.enabled and not st.get("booking") and ctx.get("channel") != "whatsapp":   # home to the clinic (app only for now)
-            out = self._journey_turn(text, session_id, st, ctx)
-            if out is not None:
-                return out
-            st = self.load(session_id)
-        if self.visit.enabled and not st.get("booking"):                                   # after booking (vision Phase 4)
-            out = self._visit_turn(text, session_id, st, ctx)
-            if out is not None:
-                return out
-        reshow = False
-        if st.get("booking"):                                                             # booking in progress
-            if self._emergency(text):                                                     # emergency still first
-                st.pop("booking", None)
-                self._save(session_id, st)
-                return self._agent_turn(text, session_id, parse(text), ctx, emergency_checked=True)
-            side = self._side_question(text, session_id, st, ctx)                         # "number kyun chahiye?" at the
-            if side is not None:                                                          # mobile step: answer, ask again
-                return side
-            mid = ctx["ask"] = parse(text, medical_terms=self.terms)                     # to notice a new ask mid-way
-            out = self._booking_turn(text, session_id, st, ctx)
-            ctx.pop("ask", None)
-            if out is not None:
-                return out
-            st = self.load(session_id)                                                    # booking ended: a new ask
-            if mid.more and st.get("last") and not (mid.specialty_key or mid.name_query or mid.degree):
-                reshow = True                      # "koi aur doctor dikhao" while booking: the list they chose from, again
+            st = self.load(sid)
+        if self.visit.enabled:
+            return self._visit_turn(text, sid, st, ctx)
+        return None
+
+    def step_booking(self, text, sid, ctx) -> dict | None:
+        """One message while booking (day, time, for whom, details, OTP, confirm). An emergency still comes first;
+        "number kyun chahiye?" gets its answer and the question again; anything else ends the booking -> None."""
+        st = self.load(sid)
+        if not st.get("booking"):
+            return None
+        if self._emergency(text):
+            st.pop("booking", None)
+            self._save(sid, st)
+            return None                                   # the safety step answers it
+        side = self._side_question(text, sid, st, ctx)
+        if side is not None:
+            return side
+        mid = ctx["ask"] = self.read_ask(text, sid)
+        out = self._booking_turn(text, sid, st, ctx)
+        ctx.pop("ask", None)
+        if out is not None:
+            return out
+        st = self.load(sid)
+        if mid.more and st.get("last") and not (mid.specialty_key or mid.name_query or mid.degree):
+            return self._search_turn(text, sid, dict(st["last"]), ctx, st, page=1)   # the list they chose from, again
+        return None
+
+    def step_picks(self, text, sid, ctx) -> dict | None:
+        """Answers to Vita's own last question: where are you (location), which of these doctors / hospitals, and
+        "kal milenge?" about the doctor just chosen."""
+        st = self.load(sid)
         norm = intent_text(text)
-        names = self.directory.names(ctx["city"]) if _wants_names(norm) else None
-        ask = parse(text, names=names, medical_terms=self.terms)
-        if (st.get("selected") and not ask.when and not ask.name_query and not ask.specialty_key
-                and not ask.symptomish and not ask.degree):
-            follow = availability_when(norm)                     # "kal milenge kya?" about the doctor just chosen
-            if follow:
+        if st.get("selected") and not st.get("booking"):
+            ask = self.read_ask(text, sid)
+            follow = availability_when(norm)
+            if follow and not (ask.when or ask.name_query or ask.specialty_key or ask.symptomish or ask.degree):
                 ask.when, ask.available_today, ask.refine = follow, False, False
-
+                return self._availability(text, sid, ask, st, ctx)
         pending = st.get("pending")
+        if pending:                                      # the previous turn asked "where are you?"
+            ask = self.read_ask(text, sid)
+            if not (ask.symptomish or ask.specialty_key or ask.name_query or ask.degree):
+                filters = dict(pending)
+                filters["locationAsked"] = True
+                return self._search_turn(text, sid, filters, ctx, st)
         which_id = self._which_pick(norm, st)
+        if which_id is not None:
+            return self._select(text, sid, which_id, ctx)
+        move = everyday.detect(norm, text)
+        prev = st.get("last_reply") or {}
+        prev_clarify = prev.get("clarify") or {}
+        if move == "yes" and prev_clarify.get("kind") == "book_offer":       # typed "haan" to "Kya main book karoon?"
+            doc_id = next((o["id"] for o in prev_clarify.get("options") or [] if o.get("id") not in ("no", None)), None)
+            if doc_id and doc_id in (st.get("shown") or {}):
+                return self._select(text, sid, doc_id, ctx)
+        if move == "pick":                                                   # "pehla wala", "2nd one"
+            ids, i = st.get("page_ids") or [], everyday.ordinal(norm)
+            if i is not None and i < len(ids):
+                return self._select(text, sid, ids[i], ctx)
+        if move == "what" and prev.get("message"):                          # "kya?" / "samjha nahi": the question again
+            ing, est, base, v = self._ingest(text, sid)
+            self._save(ing.session_id, est)
+            ctx["repeated"] = True
+            msg = f"{everyday.again(v)} {prev['message']}"
+            return self._reply(base, prev.get("kind") or FOLLOW_UP, msg, question=msg, clarify=prev.get("clarify"))
+        if move == "restart":                                                # "naya shuru karo": a clean start
+            ing, est, base, v = self._ingest(text, sid)
+            keep = {k: est[k] for k in ("language", "turn") if k in est}
+            est.clear()
+            est.update(keep)
+            self._save(ing.session_id, est)
+            try:
+                self.pipeline.sessions.clear_history(ing.session_id)
+            except Exception:
+                log.exception("history not reset on restart")
+            ctx["restarted"] = True
+            msg = everyday.reply(move, v)
+            return self._reply(base, INFO, msg, clarify={"kind": "ask_kind", "question": msg,
+                                                         "options": V.ask_kind_options(v)})
         hospital_pick = self._pick_option(norm, st.get("which_hospital"))
-        skips_triage = (ask.direct or ask.refine or bool(pending) or which_id is not None or ask.move is not None
-                        or ask.when is not None
-                        or hospital_pick is not None or page > 1 or _bare_doctor(norm, ask))
-        if skips_triage and self._emergency(text):                                       # step 3
-            if session_id and (pending or st.get("which") or st.get("which_hospital")):
-                st.pop("pending", None)
-                st.pop("which", None)
-                st.pop("which_hospital", None)
-                self._save(session_id, st)
-            return self._agent_turn(text, session_id, ask, ctx, emergency_checked=True)
-
-        if st.get("warn"):                                                                 # answer to the warning-sign question
-            out = self._warn_answer(text, session_id, st, ctx, norm)
-            if out is not None:
-                return out
-            st = self.load(session_id)
-        kind = everyday.warn_kind(norm)                                    # "sar pe chot lagi", "haath jal gaya", pregnant + sujan
-        if kind and (kind == "pregnancy" or (not ask.specialty_key and not ask.name_query)) \
-                and everyday.serious(kind, norm):
-            return self._warn_emergency(text, session_id, kind)    # "current lag ke jal gaya": no question, 108 now
-        if kind and (kind == "pregnancy" or (not ask.specialty_key and not ask.name_query)) \
-                and not self._red_flag(text):
-            # the warning-sign question first; only a red-flag RULE (or self-harm) skips it. The emergency model alone
-            # flagged "haath jal gaya garam tel se" (0.90) and sent a minor burn straight to 108.
-            return self._warn_ask(text, session_id, kind)
-
-        move = everyday.detect(norm, text)                                                 # "fees kitni hai", "tum kaun ho"
-        if move:
-            out = self._everyday(text, session_id, move, ask, st, ctx, norm, emergency_checked=skips_triage)
-            if out is not None:
-                return out
-            st = self.load(session_id)
-
-        if ask.move == "human":                                                            # conversation moves
-            return self._handoff(text, session_id, "asked")
-        if ask.move == "private_number":
-            return self._private_number(text, session_id, ask, st, ctx)
-        if ask.move in ("just_looking", "greeting") and not self._mid_triage(session_id):
-            return self._small_talk(text, session_id, ask.move)
-        if which_id is not None:                                                           # "salt lake wali"
-            return self._select(text, session_id, which_id, ctx)
-        if hospital_pick is not None and st.get("last"):                                   # "purnia wala"
+        if hospital_pick is not None and st.get("last"):
             opt = next(o for o in st["which_hospital"] if o["id"] == hospital_pick)
             st.pop("which_hospital", None)
             filters = dict(st["last"], hospitalId=opt["id"], hospitalName=opt.get("name"))
-            return self._search_turn(text, session_id, filters, ctx, st)
-        if ask.when:                                                                       # "Dr X available Sunday?"
-            return self._availability(text, session_id, ask, st, ctx)
+            return self._search_turn(text, sid, filters, ctx, st)
+        return None
 
-        if pending and not ask.symptomish and not (ask.specialty_key or ask.name_query or ask.degree):   # step 4
-            filters = dict(pending)
-            filters["locationAsked"] = True
-            return self._search_turn(text, session_id, filters, ctx, st)
+    def step_safety(self, text, sid, ctx) -> dict | None:
+        """The shared emergency detector on every message, and the warning-sign questions ("sar pe chot lagi",
+        "haath jal gaya", pregnant + swelling) before anyone is sent to 108."""
+        st = self.load(sid)
+        norm = intent_text(text)
+        if st.get("warn"):
+            out = self._warn_answer(text, sid, st, ctx, norm)
+            if out is not None:
+                return out
+        ask = self.read_ask(text, sid)
+        kind = everyday.warn_kind(norm)
+        about_doctor = ask.specialty_key or ask.name_query
+        if kind and (kind == "pregnancy" or not about_doctor) and everyday.serious(kind, norm):
+            return self._warn_emergency(text, sid, kind)        # "current lag ke jal gaya": no question, 108 now
+        if kind and (kind == "pregnancy" or not about_doctor) and not self._red_flag(text):
+            # the warning-sign question first; only a red-flag RULE (or self-harm) skips it. The emergency model alone
+            # flagged "haath jal gaya garam tel se" (0.90) and sent a minor burn straight to 108.
+            return self._warn_ask(text, sid, kind)
+        signs = self.emergency_signs(text)
+        if signs is not None:
+            return self.emergency_reply(text, sid, ctx, signs)
+        return None
 
-        last = None if new_search else st.get("last")
-        if last and (page > 1 or (ask.more and not (ask.specialty_key or ask.name_query or ask.degree))):  # step 5
-            nxt = page if page > 1 else 1 if reshow else int(st.get("page") or 1) + 1
-            return self._search_turn(text, session_id, dict(last), ctx, st, page=nxt)
-        if last and ask.refine and not self._said_symptom(text):                          # "kam fees wale pehle"
-            return self._search_turn(text, session_id, _merge(last, ask), ctx, st)
+    def step_privacy(self, text, sid, ctx) -> dict | None:
+        """"Dr Sharma ka number do": never a doctor's personal number; booking, or the hospital front desk from
+        1HMS. A rule, so it is code, not the LLM's choice."""
+        ask = self.read_ask(text, sid)
+        if ask.move != "private_number":
+            return None
+        return self._private_number(text, sid, ask, self.load(sid), ctx)
 
-        if not last and ask.refine and (ask.sort or ask.available_today) and not ask.direct \
-                and not self._said_symptom(text):                                                    # "sabse sasta doctor": keep it,
-            carry = {k: val for k, val in (("sort", ask.sort), ("availableToday", ask.available_today)) if val}
-            out = self._ask_kind(text, session_id, st)                                     # ask which kind of doctor
+    def _private_number(self, text, session_id, ask, st_in, ctx) -> dict:
+        """Never a doctor's personal number. Offer to book, or the hospital front desk from 1HMS."""
+        ing, st, base, hi = self._ingest(text, session_id)
+        doctor = None
+        sel = (st.get("selected") or {}).get("doctorId")
+        if sel and sel in (st.get("shown") or {}):
+            doctor = st["shown"][sel]
+        elif ask.name_query and self.directory.enabled:
+            try:
+                found = self.directory.search(query=ask.name_query, city=ctx["city"], limit=1)
+                doctor = (found or {}).get("doctors", [None])[0] if found and found["doctors"] else None
+            except DoctorLookupError:
+                doctor = None
+        if doctor:
+            self._remember(st, [doctor])
+        self._save(ing.session_id, st)
+        name = (doctor or {}).get("name")
+        hosp = (doctor or {}).get("hospital") or {}
+        desk = hosp.get("contact")                     # the hospital front desk, as 1HMS publishes it
+        if hi.code == "hi":
+            msg = ("मैं डॉक्टरों के निजी नंबर शेयर नहीं कर सकती। "
+                   + (f"मैं {name} के साथ अपॉइंटमेंट बुक कर सकती हूँ" if name else
+                      "मैं आपके लिए अपॉइंटमेंट बुक कर सकती हूँ"))
+            msg += f", या {hosp.get('name')} का फ्रंट डेस्क नंबर: {desk}।" if desk else "।"
+        elif hi:
+            msg = ("Main doctors ke personal number share nahi kar sakti. "
+                   + (f"Main {name} ke saath appointment book kar sakti hoon" if name else
+                      "Main aapke liye appointment book kar sakti hoon"))
+            msg += f", ya {hosp.get('name')} ka front desk number: {desk}." if desk else "."
+        else:
+            msg = ("I can't share doctors' personal numbers, but "
+                   + (f"I can book {name} for you" if name else "I can book an appointment for you"))
+            msg += f", or you can call {hosp.get('name')}'s front desk: {desk}." if desk else "."
+        out = self._reply(base, INFO, msg)
+        if doctor:
+            out["doctor"] = doctor                    # from 1HMS; the card offers Choose / Book
+        return out
+
+    # ---------------------------------------------------------------- the agent's tools that are plain code
+    def read_ask(self, text, sid=None) -> DoctorAsk:
+        """What a doctor search in this message asks for (doctor_intent.parse, spelling-tolerant), with every listed
+        doctor's name and city (cached 15 min)."""
+        memo = self.__dict__.setdefault("_asks", {})            # one reading per message (several steps ask)
+        if text in memo:
+            return copy.copy(memo[text])
+        known, cities = self.directory.index() if self.directory.enabled else ([], None)
+        norm = search_text(text, known_names=known, cities=cities, medical_terms=self.terms)
+        names = known if _wants_names(norm) else None
+        memo[text] = parse(text, names=names, medical_terms=self.terms, known_names=known, cities=cities)
+        return copy.copy(memo[text])
+
+    def plain_search(self, text, sid, ctx) -> dict | None:
+        """A message that is plainly a doctor search ("cardiologist", "dr neha sharma", "MD near me", "aur dikhao",
+        "kam fees wala", "Kishanganj ke doctor"), or a tap on one of Vita's own chips ("No, just checking", "Talk to
+        a person"): answered without the LLM. Used when the LLM is off or down; the search bar reads asks the same
+        way. None: not plainly one of these."""
+        st = self.load(sid)
+        ask = self.read_ask(text, sid)
+        last = st.get("last")
+        if ask.move == "human":
+            return self._handoff(text, sid, "asked")
+        if ask.move == "just_looking" and not ask.direct:
+            ing, est, base, v = self._ingest(text, sid)
+            self._save(ing.session_id, est)
+            return self._reply(base, INFO, v("No problem. I'm here whenever you need a doctor or have a question.",
+                                             "Koi baat nahi. Jab bhi doctor chahiye ya koi sawaal ho, main yahin hoon.",
+                                             "कोई बात नहीं। जब भी डॉक्टर चाहिए या कोई सवाल हो, मैं यहीं हूँ।"))
+        if ask.symptomish and not (ask.specialty_key or ask.name_query or ask.degree):
+            return None
+        if ask.when and ask.name_query:
+            return self._availability(text, sid, ask, st, ctx)
+        if last and ask.more and not (ask.specialty_key or ask.name_query or ask.degree):
+            return self._search_turn(text, sid, dict(last), ctx, st, page=int(st.get("page") or 1) + 1)
+        if last and ask.refine and not self._said_symptom(text):                   # "inme se kam fees wala"
+            return self._search_turn(text, sid, _merge(last, ask), ctx, st)
+        if not last and ask.refine and (ask.sort or ask.available_today or ask.place) and not ask.direct \
+                and not self._said_symptom(text):        # "sabse sasta doctor", "kishanganj ke doctor": kept for the
+            carry = {k: val for k, val in (("sort", ask.sort), ("availableToday", ask.available_today),   # next ask
+                                           ("place", ask.place)) if val}
+            out = self._ask_kind(text, sid, st)
             est = self.load(out["session_id"])
             est["carry"] = carry
             self._save(out["session_id"], est)
             ctx["lead"] = V.carry_note(Voice(out.get("language") or "english"), carry)
             return out
-        if ask.direct:                                                                     # step 6
+        if ask.direct:
             f = _filters(ask)
             carry = st.pop("carry", None) if st.get("carry") else None
-            for k, val in (carry or {}).items():                                           # "...skin" after "sabse sasta"
+            for k, val in (carry or {}).items():                                    # "...skin" after "sabse sasta"
                 if not f.get(k):
                     f[k] = val
                     f["modes"] = sorted(set(f.get("modes") or []) | {"today" if k == "availableToday" else k})
-            return self._search_turn(text, session_id, f, ctx, st)
-        if _bare_doctor(norm, ask):
-            return self._ask_kind(text, session_id, st)
-        return self._agent_turn(text, session_id, ask, ctx)                                 # step 7
+            return self._search_turn(text, sid, f, ctx, st)
+        if _bare_doctor(intent_text(text), ask):
+            return self._ask_kind(text, sid, st)
+        return None
 
-    # ================================================================== safety
+    def choose(self, text, sid, ctx, doctor_name: str | None = None) -> dict | None:
+        """The agent read "this one / book Dr Sen / Dr Sen kal milenge?": a doctor already shown is chosen, a day
+        question is answered, or booking goes on. None: nothing to choose yet."""
+        st = self.load(sid)
+        norm = intent_text(text)
+        which_id = self._which_pick(norm, st)
+        if which_id is None and doctor_name:
+            want = name_tokens(doctor_name)
+            hits = [i for i, d in (st.get("shown") or {}).items()
+                    if want and all(any(close_name_word(w, [t]) for t in name_tokens(d.get("name", ""))) for w in want)]
+            which_id = hits[0] if len(hits) == 1 else None
+        ask = self.read_ask(text, sid)
+        if ask.when and (ask.name_query or st.get("selected")):
+            if not ask.name_query:
+                ask.available_today = False
+            return self._availability(text, sid, ask, st, ctx)
+        if which_id is not None:
+            return self._select(text, sid, which_id, ctx)
+        sel = (st.get("selected") or {}).get("doctorId")
+        if sel and sel in (st.get("shown") or {}) and not st.get("booking"):
+            return self._select(text, sid, sel, ctx)          # "book karo" after choosing: booking starts again
+        if ask.name_query:
+            return self._search_turn(text, sid, _filters(ask), ctx, st)
+        return None
+
+    def handoff(self, text, sid, reason: str = "asked") -> dict:
+        return self._handoff(text, sid, reason)
+
+    def unavailable(self, text, sid, ctx) -> dict:
+        """When Vita cannot understand right now (the LLM is off or failing): say so, offer a person and the ways to
+        search. Emergencies never reach here: the safety step runs first on every message."""
+        ing, st, base, v = self._ingest(text, sid)
+        self._save(ing.session_id, st)
+        if self.read_ask(text, sid).move == "greeting":           # "hello", "namaste": a hello back, the ways to ask
+            if ing.language.strength != "strong":                 # "heyyy" does not say which language comes next
+                self.pipeline.sessions.set_context(ing.session_id, language="")
+                st.pop("language", None)
+                self._save(ing.session_id, st)
+            q = v("Hello! I'm Vita. How can I help you find a doctor?",
+                  "Namaste! Main Vita hoon. Aapko kis tarah ka doctor chahiye?",
+                  "नमस्ते! मैं Vita हूँ। आपको किस तरह का डॉक्टर चाहिए?")
+            return self._reply(base, FOLLOW_UP, q, question=q,
+                               clarify={"kind": "ask_kind", "question": q, "options": V.ask_kind_options(v)})
+        msg = v("Sorry, I couldn't follow that just now. Please try again in a minute, or I can connect you to our team. "
+                "In an emergency call 108.",
+                "Maaf kijiye, abhi main theek se samajh nahi paayi. Ek minute mein dobara likhiye, ya main aapko hamari "
+                "team se jod sakti hoon. Emergency ho to 108 par call karein.",
+                "माफ़ कीजिए, अभी मैं ठीक से समझ नहीं पाई। एक मिनट में दोबारा लिखिए, या मैं आपको हमारी टीम से जोड़ सकती "
+                "हूँ। इमरजेंसी हो तो 108 पर कॉल करें।")
+        options = [V.human_option(v)] + [o for o in V.ask_kind_options(v)][:2]
+        out = self._reply(base, FOLLOW_UP, msg, question=msg, clarify={"kind": "ask_kind", "question": msg,
+                                                                       "options": options})
+        out["degraded"] = ["understanding"]
+        return out
+
+    def facts(self, sid) -> dict:
+        """What the agent may tell the patient about the doctor in hand (fees, hospital), from 1HMS data only."""
+        st = self.load(sid)
+        d = (st.get("booking") or {}).get("doctor") or {}
+        sel = st.get("selected") or {}
+        shown = (st.get("shown") or {}).get(sel.get("doctorId") or "", {})
+        h = shown.get("hospital") or {}
+        out = {"doctor": d.get("name") or sel.get("name"), "fee": d.get("fee") or shown.get("consultFee"),
+               "hospital": h.get("name"), "city": h.get("city")}
+        return {k: v for k, v in out.items() if v}
+
+    # ---------------------------------------------------------------- emergencies
+    def emergency_signs(self, text: str) -> list[str] | None:
+        """The shared emergency detector on this message: None when it is not an emergency, else its red flags
+        ([] when the model flags it without a sign a patient can read). Fails safe: an error counts as an emergency."""
+        texts = [preprocess(text)]
+        try:
+            shared = self._shared(text, texts)
+            if shared is not None:
+                return [r.lower() for r in shared.reasons] if shared.flag else None
+            hits = [h["english"].lower() for h in emergency_check({}, texts) if h["flag"] == EMERGENCY]
+            return hits or None
+        except Exception:
+            log.exception("emergency check failed; treating the message as an emergency")
+            return []
+
+    def emergency_reply(self, text, sid, ctx, signs: list[str]) -> dict:
+        """Vita's emergency reply: the number first in the patient's language, Tele-MANAS for self-harm, the nearest
+        emergency-ready places when enabled (vision Phase 3). Never a doctor list."""
+        ing = self._ingest_only(text, sid)
+        voice = Voice(ing.language.language)
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": ing.language.language}
+        out = self._reply(base, "emergency", V.emergency(voice, signs))
+        out["card"] = {"kind": "emergency", "emergency_reasons": [s.capitalize() for s in signs],
+                       "outputs": [{"role": "EMERGENCY", "specialist": "Emergency Medicine", "confidence": 1.0}],
+                       "emergency_signs": [w for w in (V.symptom_words(voice, [x]) for x in signs) if w]}
+        self._emergency_done(ing.session_id, signs)
+        if self.emergency.enabled:
+            est = self.load(ing.session_id)
+            est.pop("booking", None)
+            self.emergency.attach(out, est, ctx, signs, text, voice)
+            self._save(ing.session_id, est)
+        return out
+
+    def _shared(self, raw_text: str, session_texts: list[str]):
+        """The route-symptom detector's verdict (rules + model, denial-aware). None when it is not loaded yet, so the
+        built-in phrase list answers instead."""
+        detector = self.detector() if self.detector else None
+        if detector is None:
+            return None
+        from ..domain.models import EmergencyAssessment, Query
+        candidates = [raw_text]
+        joined = " . ".join(t for t in session_texts if t)
+        if joined and joined != preprocess(raw_text):
+            candidates.append(joined)
+        flagged = [a for a in (detector.detect(Query(raw=t, normalized=preprocess(t))) for t in candidates) if a.flag]
+        if not flagged:
+            return EmergencyAssessment(flag=False)
+        reasons: list[str] = []
+        for a in flagged:
+            reasons += [r for r in a.reasons if r not in reasons]
+        return EmergencyAssessment(flag=True, reasons=reasons, source=flagged[0].source,
+                                   score=max(a.score for a in flagged))
+
+
     def _red_flag(self, text: str) -> bool:
         """Self-harm, or a red-flag RULE (not the emergency model alone). Fails safe: True when it cannot tell."""
         if mentions_self_harm(text):
             return True
         try:
-            shared = self.agent._shared_emergency(text, [preprocess(text)])
+            shared = self._shared(text, [preprocess(text)])
             if shared is not None:
                 return bool(shared.flag and "rules" in (shared.source or ""))
-            hits = emergency_check({}, [preprocess(text)], self.agent.classifier.rules)
+            hits = emergency_check({}, [preprocess(text)])
             return any(h["flag"] == EMERGENCY for h in hits)
         except Exception:
             log.exception("red-flag check failed")
@@ -367,112 +623,16 @@ class DoctorChat:
     def _emergency(self, text: str) -> bool:
         texts = [preprocess(text)]
         try:
-            shared = self.agent._shared_emergency(text, texts)
+            shared = self._shared(text, texts)
             if shared is not None:
                 return bool(shared.flag)
-            hits = emergency_check({}, texts, self.agent.classifier.rules)
+            hits = emergency_check({}, texts)
             return any(h["flag"] == EMERGENCY for h in hits)
         except Exception:                                  # cannot tell -> let the agent (and its safety net) decide
             log.exception("emergency pre-check failed; sending the message to the agent")
             return True
 
     # ================================================================== symptom path (agent)
-    def _agent_turn(self, text, session_id, ask: DoctorAsk, ctx, emergency_checked=False) -> dict:
-        reply = self.agent.handle(text, session_id, language_hint=getattr(self, "_hint", None))
-        out = reply.to_dict()
-        voice = Voice(out.get("language"))
-        card = out.get("card") or {}
-        state = out.get("state") or {}
-        if out.get("kind") == "follow_up":                     # the next triage question, said like a person
-            key = _QUESTION_KEYS.get(out.get("question") or out.get("message") or "")
-            q = V.triage_question(voice, key, list(state.get("symptoms") or []), first=key == "more")
-            if q:
-                out["message"] = out["question"] = q
-            sid = out.get("session_id")
-            ctx["triage_waiting"] = True
-            if key == "describe" and not state.get("symptoms") and sid:
-                est = self.load(sid)
-                if est.get("asked_describe"):                  # never the same question twice: say so, show the ways to ask
-                    q = V.not_understood(voice)
-                    out["message"] = out["question"] = q
-                    out["clarify"] = self._confused(est, {"kind": "ask_kind", "question": q,
-                                                          "options": V.ask_kind_options(voice)}, voice)
-                est["asked_describe"] = True
-                self._save(sid, est)
-            elif sid and state.get("symptoms"):
-                est = self.load(sid)
-                if est.pop("asked_describe", None):
-                    self._save(sid, est)
-            return out
-        if out.get("kind") == "emergency":                     # number first, in the patient's language
-            # the red flags themselves ("Chest pain" -> seene mein dard), not every symptom said in the conversation
-            signs = [r.lower() for r in card.get("emergency_reasons") or []] \
-                or [s for o in card.get("outputs") or [] for s in o.get("matched_symptoms") or []]
-            out["message"] = V.emergency(voice, signs)
-            self._emergency_done(out.get("session_id"), signs)
-            if out.get("card") is not None:                    # the signs in the patient's language, for the screen's banner
-                out["card"]["emergency_signs"] = [w for w in (V.symptom_words(voice, [x]) for x in signs) if w]
-            if self.emergency.enabled:                         # nearest emergency-ready places, alerted (vision Phase 3)
-                sid = out.get("session_id")
-                est = self.load(sid)
-                est.pop("booking", None)
-                self.emergency.attach(out, est, ctx, signs, text, voice)
-                if sid:
-                    self._save(sid, est)
-            return out
-        if out.get("kind") != "recommendation":
-            return out
-        sid = out.get("session_id")
-        heard = [sorted(state.get("symptoms") or []), state.get("duration"), state.get("intensity")]
-        if sid:                                    # nothing new since the last advice ("ambulance aa gayi", "acha"): don't repeat it
-            est = self.load(sid)
-            if est.get("last_advice") == heard:
-                q = V.nothing_new(voice)
-                out.update(kind=INFO, message=q, card=None,
-                           clarify={"kind": "ask_kind", "question": q, "options": V.ask_kind_options(voice)})
-                return out
-            est["last_advice"] = heard
-            self._save(sid, est)
-        outputs = card.get("outputs") or []
-        primary = next((o for o in outputs if o.get("role") == "PRIMARY"), None)
-        said = dict(symptoms=list(state.get("symptoms") or []), duration=state.get("duration"),
-                    severity=card.get("severity_level"), low_confidence=bool(card.get("low_confidence")))
-        if card.get("low_confidence") or primary is None:
-            out["message"] = V.recommendation(voice, **said, specialty_key=None, specialist=None, doctors=0,
-                                              fallback_used=False)
-            return out                                         # unsure: no doctor list
-        fallbacks = [o["specialist"] for o in outputs if o.get("role") == "SECONDARY" and o.get("specialist")]
-        fallbacks.append(FALLBACK_SPECIALIST)
-        out["message"] = V.recommendation(voice, **said, specialty_key=specialty_key(primary["specialist"]),
-                                          specialist=primary["specialist"], doctors=0, fallback_used=False)
-        t0 = time.perf_counter()
-        try:
-            found = self.directory.for_specialist(
-                primary["specialist"], city=ctx["city"], lat=ctx["lat"], lng=ctx["lng"], fallbacks=fallbacks,
-                hospital_id=ctx["hospital_id"], raise_errors=True)
-        except DoctorLookupError:
-            out["degraded"] = list(out.get("degraded") or []) + ["doctor_lookup"]
-            return out
-        ms = round((time.perf_counter() - t0) * 1000, 1)
-        if found is None:
-            return out
-        modes = ["symptom"] + (["distance"] if ctx["located"] else [])
-        filters = {"specialtyKey": specialty_key(found["specialist"]), "specialist": found["specialist"],
-                   "modes": modes}
-        out["doctors"] = self._block(found["doctors"], found["total"], modes, filters, ctx,
-                                     specialty_id=found["specialtyId"], specialist=found["specialist"],
-                                     fallback_used=found["fallbackUsed"], ms=ms)
-        out["message"] = V.recommendation(voice, **said, specialty_key=specialty_key(primary["specialist"]),
-                                          specialist=primary["specialist"], doctors=len(found["doctors"]),
-                                          fallback_used=bool(found["fallbackUsed"]))
-        sid = out["session_id"]
-        st = self.load(sid)
-        st["last"] = filters
-        st["language"], st["turn"] = out.get("language"), out.get("turn")
-        st.pop("which", None)
-        self._remember(st, found["doctors"])
-        self._save(sid, st)
-        return out
 
     def _bangla(self, text, session_id) -> dict:
         """Bangla is recognised, not yet understood: say so in Bangla, Hindi and English, with the emergency
@@ -512,12 +672,16 @@ class DoctorChat:
         except DoctorLookupError:
             return self._lookup_failed(sid, st, base, hi, filters)
 
+        if filters.get("query"):                     # "kunal ghose" -> "kunal ghosh", shown and searched as listed
+            filters = dict(filters, query=self.directory.fix_name(filters["query"]))
         used_city = bool(filters.get("near") and not ctx["located"] and not place_city)
         per = self.directory.limit
         fee_sort = filters.get("sort") == "fee"
         own_hospital = filters.get("hospitalId") or ctx["hospital_id"]
         args = dict(specialty_key=filters.get("specialtyKey"), query=filters.get("query"),
-                    degree=filters.get("degree"), city=None if filters.get("hospitalId") else city,
+                    degree=filters.get("degree"),
+                    # a doctor's name is searched in every city unless the patient named a place with it
+                    city=None if filters.get("hospitalId") or (filters.get("query") and not place_city) else city,
                     hospital_id=own_hospital, only_at_hospital=bool(filters.get("hospitalId")),
                     gender=filters.get("gender"), available_today=bool(filters.get("availableToday")),
                     # fees are sorted here, over the first 10; everything else pages with 1HMS's offset
@@ -532,9 +696,15 @@ class DoctorChat:
         if filters.get("sort") == "experience":
             args["sort"] = "experience"
 
-        fallback_used = False
+        fallback_used = widened = False
         try:
             found = self.directory.search(**args)
+            if (found is None or (not found["doctors"] and not found["total"])) and args.get("city") \
+                    and not ctx["located"] and page == 1:
+                wide = self.directory.search(**dict(args, city=None))     # nobody in that city: look in other towns
+                if wide and wide["doctors"]:
+                    found, widened = wide, True
+                    ctx["lead"] = V.widened_note(hi, args["city"], _spec_name(filters.get("specialtyKey")))
             if (found is None or (not found["doctors"] and not found["total"])) and filters.get("specialtyKey") \
                     and not filters.get("query") and not filters.get("hospitalId") and page == 1:
                 if filters["specialtyKey"] != "general-medicine":                   # nobody of that specialty
@@ -567,7 +737,7 @@ class DoctorChat:
                      "इस लिस्ट में और डॉक्टर नहीं हैं। Doctor Dekho पर सभी डॉक्टर देख सकते हैं, या फ़िल्टर बदलें।")
             return self._reply(base, DOCTOR_LIST, msg, clarify={"kind": "no_more", "question": msg, "options": []})
         items = items[:per]
-        filters = dict(filters, city=city) if place_city else filters
+        filters = dict(filters, city=city) if place_city and not widened else filters
         modes = list(filters.get("modes") or [])
         block = self._block(items, total, modes, filters, ctx, specialty_id=found["specialtyId"] if found else None,
                             specialist=_spec_name(filters.get("specialtyKey")) if not fallback_used else FALLBACK_SPECIALIST,
@@ -585,7 +755,7 @@ class DoctorChat:
             clarify = self._confused(st, clarify, hi)
         else:
             st["confused"] = 0
-            msg = self._list_message(items, total, filters, hi, used_city=used_city and bool(ctx["city"]),
+            msg = self._list_message(items, total, filters, hi, used_city=used_city and bool(ctx["city"]) and not widened,
                                      fallback_used=fallback_used, page=page)
             which = self._which_options(items, filters)
             if which:                                   # several doctors share the name: tell them apart
@@ -885,8 +1055,7 @@ class DoctorChat:
         if not sid:
             return
         try:
-            self.agent.accumulator.clear(sid)
-            self.agent.pipeline.sessions.clear_history(sid)
+            self.pipeline.sessions.clear_history(sid)
         except Exception:
             log.exception("triage not reset after an emergency")
         est = self.load(sid)
@@ -933,90 +1102,6 @@ class DoctorChat:
         return self._reply(base, INFO, V.after_emergency(v, what, signs), clarify=clarify)
 
     # ================================================================== everyday questions
-    def _everyday(self, text, session_id, move, ask, st, ctx, norm, emergency_checked) -> dict | None:
-        """Questions that are not a symptom or a search (everyday.py). None: let the usual flow answer."""
-        if ask.specialty_key or ask.degree or ask.when:             # "skin doctor ki fees" -> the list; "kal free hain?" -> days
-            return None
-        if ask.name_query and move != "what_is_dd":                 # "Dr Sharma ki fees" -> that doctor
-            return None
-        if move == "privacy" and ask.move == "private_number" and re.search(r"\b(doctor|dr|unka|unki|unke)\b", norm):
-            return None                                             # a doctor's number, not the patient's
-        if self._said_symptom(text):
-            if move in everyday.PREFIX_MOVES:                       # "bukhar hai, kaunsi dawai lu" -> say so, then triage
-                ctx["lead"] = everyday.reply(move, Voice(self._lang_of(text, session_id, st)))
-            return None
-        waiting = self._mid_triage(session_id)
-        if waiting and move in ("ack", "continue", "yes"):          # "accha", "aur?", "haan" answer the triage question
-            return None
-        if move == "ack" and st.get("last_advice"):                 # "achha" after advice: offer its doctors (agent turn)
-            return None
-        if not emergency_checked and move not in everyday.REPAIR_MOVES and self._emergency(text):
-            return self._agent_turn(text, session_id, ask, ctx, emergency_checked=True)
-
-        last = st.get("last")
-        prev_clarify = (st.get("last_reply") or {}).get("clarify") or {}
-        if move == "yes" and prev_clarify.get("kind") == "book_offer":       # typed "haan" to "Kya main book karoon?"
-            doc_id = next((o["id"] for o in prev_clarify.get("options") or [] if o.get("id") not in ("no", None)), None)
-            if doc_id and doc_id in (st.get("shown") or {}):
-                return self._select(text, session_id, doc_id, ctx)
-        if move == "continue":
-            if last:
-                return self._search_turn(text, session_id, dict(last), ctx, st, page=int(st.get("page") or 1) + 1)
-            return self._ask_kind(text, session_id, st)
-        if move == "pick":
-            ids, i = st.get("page_ids") or [], everyday.ordinal(norm)
-            if i is not None and i < len(ids):
-                return self._select(text, session_id, ids[i], ctx)
-        if move == "distance" and last:
-            f = dict(last, near=True)
-            f["modes"] = sorted(set(f.get("modes") or []) | {"distance"})
-            return self._search_turn(text, session_id, f, ctx, st)
-        if move == "timings" and (st.get("selected") or {}).get("doctorId"):
-            ask.when, ask.available_today, ask.refine = "next", False, False
-            return self._availability(text, session_id, ask, st, ctx)
-
-        ing, st, base, v = self._ingest(text, session_id)
-        if move == "what" and st.get("last_reply"):                 # "kya?" / "samjha nahi": the last question again
-            prev = st["last_reply"]
-            self._save(ing.session_id, st)
-            ctx["repeated"] = True
-            msg = f"{everyday.again(v)} {prev['message']}"
-            return self._reply(base, prev.get("kind") or FOLLOW_UP, msg, question=msg, clarify=prev.get("clarify"))
-        if move == "restart":
-            keep = {k: st[k] for k in ("language", "turn") if k in st}
-            st.clear()
-            st.update(keep)
-            try:
-                self.agent.accumulator.clear(ing.session_id)
-                self.agent.pipeline.sessions.clear_history(ing.session_id)
-            except Exception:
-                log.exception("triage not reset on restart")
-        fee = doctor = None
-        sel = (st.get("selected") or {}).get("doctorId")
-        if move == "fees" and sel and sel in (st.get("shown") or {}):
-            d = st["shown"][sel]
-            fee = d.get("discountedFee") if d.get("discountedFee") is not None else d.get("consultFee")
-            doctor = d.get("name")
-        try:
-            msg = everyday.reply(move, v, fee=fee, doctor=doctor)
-        except KeyError:
-            log.warning("no everyday reply for %s", move)
-            return None
-        if move == "distance":
-            self._save(ing.session_id, st)
-            return self._reply(base, FOLLOW_UP, msg, question=msg, clarify={"kind": "location", "question": msg, "options": []})
-        if move == "upset":
-            clarify = self._confused(st, {"kind": "ask_kind", "question": msg, "options": V.ask_kind_options(v)}, v)
-        elif move == "better" and last:
-            clarify = {"kind": "sort", "question": msg, "options": everyday.sort_options(v)}
-        elif move in ("ambulance", "goodnight", "praise"):
-            clarify = None
-        else:
-            clarify = {"kind": "ask_kind", "question": msg, "options": V.ask_kind_options(v)}
-        if move != "upset":
-            st.pop("confused", None)
-        self._save(ing.session_id, st)
-        return self._reply(base, INFO, msg, clarify=clarify)
 
     def _warn_ask(self, text, session_id, kind: str) -> dict:
         ing, st, base, v = self._ingest(text, session_id)
@@ -1083,14 +1168,14 @@ class DoctorChat:
         corrector = getattr(self, "_corrector", None)
         if corrector is None:
             from ..spelling import SpellingCorrector
-            corrector = self._corrector = SpellingCorrector(self.agent.pipeline.lex)     # no review-queue side effects
+            corrector = self._corrector = SpellingCorrector(self.pipeline.lex)     # no review-queue side effects
         try:
             return bool(corrector.correct(preprocess(text)).symptoms)
         except Exception:
             return False
 
     def _lang_of(self, text, session_id, st) -> str:
-        return st.get("language") or self.agent.pipeline.detector.detect(text).language or "english"
+        return st.get("language") or self.pipeline.detector.detect(text).language or "english"
 
     def _booking_turn(self, text, session_id, st, ctx) -> dict | None:
         """One message while booking. None: it was not about booking (a new ask), and booking has ended."""
@@ -1100,7 +1185,7 @@ class DoctorChat:
         if before and lang != before and self.booking._picked(st["booking"], text) is not None:
             # a tapped chip ("Tomorrow (Mon 26 Oct)", "Morning 09:00-13:00") is not the patient changing language
             lang = before
-            self.agent.pipeline.sessions.set_context(ing.session_id, language=before)
+            self.pipeline.sessions.set_context(ing.session_id, language=before)
         st["language"], st["turn"] = lang, ing.turn
         v = Voice(lang)
         res = self.booking.turn(st, text, v, ctx)
@@ -1131,7 +1216,7 @@ class DoctorChat:
 
     # ================================================================== conversation moves
     def _ingest_only(self, text, session_id):
-        return self.agent.pipeline.ingest(text, session_id, language_hint=getattr(self, "_hint", None))
+        return self.pipeline.ingest(text, session_id, language_hint=getattr(self, "_hint", None))
 
     def _ingest(self, text, session_id):
         ing = self._ingest_only(text, session_id)
@@ -1152,61 +1237,7 @@ class DoctorChat:
         out["handoff"] = {"reason": reason}
         return out
 
-    def _private_number(self, text, session_id, ask, st_in, ctx) -> dict:
-        """Never a doctor's personal number. Offer to book, or the hospital front desk from 1HMS."""
-        ing, st, base, hi = self._ingest(text, session_id)
-        doctor = None
-        sel = (st.get("selected") or {}).get("doctorId")
-        if sel and sel in (st.get("shown") or {}):
-            doctor = st["shown"][sel]
-        elif ask.name_query and self.directory.enabled:
-            try:
-                found = self.directory.search(query=ask.name_query, city=ctx["city"], limit=1)
-                doctor = (found or {}).get("doctors", [None])[0] if found and found["doctors"] else None
-            except DoctorLookupError:
-                doctor = None
-        if doctor:
-            self._remember(st, [doctor])
-        self._save(ing.session_id, st)
-        name = (doctor or {}).get("name")
-        hosp = (doctor or {}).get("hospital") or {}
-        desk = hosp.get("contact")                     # the hospital front desk, as 1HMS publishes it
-        if hi.code == "hi":
-            msg = ("मैं डॉक्टरों के निजी नंबर शेयर नहीं कर सकती। "
-                   + (f"मैं {name} के साथ अपॉइंटमेंट बुक कर सकती हूँ" if name else
-                      "मैं आपके लिए अपॉइंटमेंट बुक कर सकती हूँ"))
-            msg += f", या {hosp.get('name')} का फ्रंट डेस्क नंबर: {desk}।" if desk else "।"
-        elif hi:
-            msg = ("Main doctors ke personal number share nahi kar sakti. "
-                   + (f"Main {name} ke saath appointment book kar sakti hoon" if name else
-                      "Main aapke liye appointment book kar sakti hoon"))
-            msg += f", ya {hosp.get('name')} ka front desk number: {desk}." if desk else "."
-        else:
-            msg = ("I can't share doctors' personal numbers, but "
-                   + (f"I can book {name} for you" if name else "I can book an appointment for you"))
-            msg += f", or you can call {hosp.get('name')}'s front desk: {desk}." if desk else "."
-        out = self._reply(base, INFO, msg)
-        if doctor:
-            out["doctor"] = doctor                    # from 1HMS; the card offers Choose / Book
-        return out
 
-    def _small_talk(self, text, session_id, move: str) -> dict:
-        ing, st, base, hi = self._ingest(text, session_id)
-        if move == "greeting" and ing.language.strength != "strong":
-            # "heyyy", "hello" do not say which language the patient will use: the next message decides
-            self.agent.pipeline.sessions.set_context(ing.session_id, language="")
-            st.pop("language", None)
-        self._save(ing.session_id, st)
-        if move == "greeting":
-            q = hi("Hello! I'm Vita. How can I help you find a doctor?",
-                   "Namaste! Main Vita hoon. Aapko kis tarah ka doctor chahiye?",
-                   "नमस्ते! मैं Vita हूँ। आपको किस तरह का डॉक्टर चाहिए?")
-            return self._reply(base, FOLLOW_UP, q, question=q,
-                               clarify={"kind": "ask_kind", "question": q, "options": V.ask_kind_options(hi)})
-        msg = hi("No problem. I'm here whenever you need a doctor or have a question.",
-                 "Koi baat nahi. Jab bhi doctor chahiye ya koi sawaal ho, main yahin hoon.",
-                 "कोई बात नहीं। जब भी डॉक्टर चाहिए या कोई सवाल हो, मैं यहीं हूँ।")
-        return self._reply(base, INFO, msg)
 
     # ================================================================== helpers
     def _ask_kind(self, text, session_id, st) -> dict:
@@ -1299,11 +1330,6 @@ class DoctorChat:
         hits = [o["id"] for o in options if words & set(o.get("keys") or [])]
         return hits[0] if len(hits) == 1 else None
 
-    def _mid_triage(self, session_id: str | None) -> bool:
-        """The triage agent asked a question and is waiting: a short "nahi" / "ok" is its answer."""
-        if not session_id:
-            return False
-        return bool(self.load(session_id).get("triage_waiting"))
 
     @staticmethod
     def _confused(st: dict, clarify: dict | None, voice: Voice | None = None) -> dict | None:
@@ -1394,9 +1420,12 @@ class DoctorChat:
 
 # ---------------------------------------------------------------------------------------------- pure helpers
 def _wants_names(norm: str) -> bool:
-    """Fetch the name index only when the message might name a doctor without 'dr'."""
+    """Fetch the name index (cached 15 min) only when the message might name a doctor without 'dr': a meeting cue
+    ("anita sen se milna hai"), or a short message that could be just a name ("neha sharma", "anita sen ji")."""
     from ..doctor_intent import _NAME_CUE
-    return bool(_NAME_CUE.search(norm))
+    words = norm.split()
+    # "ghosh doctor", "sharma dr": a surname with the doctor word is a name too
+    return bool(_NAME_CUE.search(norm)) or (1 <= len(words) <= 4 and not all(w in DOCTOR_WORDS for w in words))
 
 
 def _bare_doctor(norm: str, ask: DoctorAsk) -> bool:

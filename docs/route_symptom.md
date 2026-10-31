@@ -1,7 +1,7 @@
 # /route-symptom — developer guide
 
 Stateless specialty routing: one symptom text in, ranked specialties with confidences, an emergency
-flag, and a decision (`answer` / `clarify` / `abstain`) out. Built beside `/chat`, which is unchanged
+flag, and a decision (`answer` / `clarify` / `abstain`) out. Vita (`/v2/agent/chat`) chooses its specialists with it
 (pinned by `tests/test_chat_contract.py`). Triage support only, never a diagnosis.
 
 ## Layout (dependencies point inward)
@@ -13,10 +13,11 @@ hms_router/
   rag/             corpus, TextEncoder, ExampleRetriever (sentence RAG), ClassifierScorer,
                    EvidenceVoteScorer, WeightedFusion, ModelBundle (train/save/load), MedicalVocabulary
   reasoning/       Verifier, Explainer, ClarifyingQuestions, NoReasoner, LlmReasoner (port only)
-  application/     RouteSymptomService (use case), ChatService (wraps HMSRouterAgent), container
+  application/     RouteSymptomService (use case), Vita's steps (doctor_chat.py), search_intent, container
   adapters/        http/ (FastAPI routers, auth, rate limits, problem+json), llm/ (LangChain providers,
                    timeout + circuit breaker, redaction), settings.py (env)
-  orchestration/   LangGraph triage graph + tools (optional; not served over HTTP yet)
+  vita_graph/      Vita on LangGraph (/v2/agent/chat; its LLM agent when VITA_LLM_PROVIDER is set)
+  route_bridge.py  Vita's conversations -> this engine
   textnorm.py      shared normalization (Devanagari -> Roman, "kam nahi" persistence fix, stopwords)
 ```
 
@@ -28,7 +29,7 @@ composition root (`application/container.py`) is the only place that picks concr
 1. **Normalize** – `textnorm.preprocess`.
 2. **Safety, always first** – explicitly denied spans are removed first ("saans lene mein koi dikkat
    nahi", "I don't have chest pain"; `safety/denial.py`), then red-flag phrases on the text plus canonical
-   symptoms from /chat's spelling + NER stages, OR the emergency classifier at ≥ 0.6. Detectors can only
+   symptoms from the spelling + NER stages, OR the emergency classifier at ≥ 0.6. Detectors can only
    add urgency. Bare "nahi" is never a denial ("saans nahi aa raha" stays an emergency).
 3. **Retrieve + score** – 25 nearest labelled sentences (evidence) voted by similarity², fused 50/50
    with the classifier's probabilities. `ageGroup: adult` removes paediatrics.
@@ -105,4 +106,4 @@ Thresholds were chosen on set 1 and held-out data only.
 - "call me back later" gets a clarify ("back" is a body word). "behosh nahi hua bas chakkar" still raises
   a flag from the emergency classifier, which does not read negation (over-triage, the safe direction).
 - Denials are pattern-based (problem noun + nahi; don't/never + have/get). Other phrasings still flag.
-- `/chat` still uses its own cluster retriever and safety rules; moving it onto these services is phase 6.
+- The old `/chat` agent was removed on 2026-10-31; Vita and the search bar use these services.

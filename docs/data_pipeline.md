@@ -4,20 +4,31 @@ Not part of the deployed API image (excluded from the Docker build) and not
 one of the three runtime layers — this is an ops/batch component that
 produces the artifacts `api/` and `nlp_brain/` consume.
 
-## `retrain_pipeline.py` — the active pipeline
+## How retraining runs now (2026-10-30)
 
-What `.github/workflows/retrain.yml` runs nightly (and on CMS's "Retrain
-now" button): fetches the current CMS-editable training set + production
+`.github/workflows/retrain.yml` (nightly at 03:00 IST, the CMS Symptom Router page's "Retrain now" button, or by
+hand from Actions) does **not** run `retrain_pipeline.py`. It SSHes into each VM and asks the running router to
+rebuild itself (`POST /admin/rebuild`, `hms_router/application/retraining.py`): pull CMS-approved examples,
+retrain the route-symptom model, score it on `validation_set.csv`, promote only if not worse, and report the
+verdict (`scripts/rebuild_and_wait.py` waits for it). The CMS AI Agents tab's Rebuild button calls the same
+endpoint. Secret: `NLP_ROUTER_ADMIN_KEY` (router key with the admin scope).
+
+`retrain_pipeline.py` below is the older, offline pipeline (it trained `nlp_brain`, which has been removed, and
+used CMS routes that need a user session). Keep it for its dry-run mode and its merge/feedback logic only.
+
+## `retrain_pipeline.py` — the older offline pipeline
+
+What `.github/workflows/retrain.yml` used to run: fetches the current CMS-editable training set + production
 feedback, merges and dedupes them, trains a candidate model via
 `nlp_brain`, evaluates it against the frozen `validation_set.csv`, and only
 **promotes** (overwrites `Hinglish_Symptoms_V28.csv` + `model_meta.json` +
 `symptom_specialist_classifier.joblib`) if it doesn't regress against the
 currently-deployed model's recorded metrics. A push to `develop` from this
-workflow re-triggers `deploy-nlp.yml`, so promotion = a normal redeploy.
+workflow re-triggered the deploy workflow (now `deploy-router.yml`), so promotion = a normal redeploy.
 
 ### Two run modes
 ```bash
-# Live -- what retrain.yml actually uses
+# Live -- what the old retrain.yml used
 python retrain_pipeline.py --cmsapi-url "$CMSAPI_BASE_URL" --service-key "$CMSAPI_SERVICE_KEY"
 
 # Dry-run -- for local development, or reproducing a specific past run

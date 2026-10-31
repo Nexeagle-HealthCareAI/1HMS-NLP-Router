@@ -1321,3 +1321,46 @@ dant,teeth,body_part,hi
 gaanth,lump,symptom,hi
 ganth,lump,symptom,hi
 gaant,lump,symptom,hi
+breathing,breathing,body_part,en
+breathing problem,breathlessness,symptom,en
+breathing problems,breathlessness,symptom,en
+breathing difficulty,breathlessness,symptom,en
+breathing trouble,breathlessness,symptom,en
+breathing issue,breathlessness,symptom,en
+trouble breathing,breathlessness,symptom,en
+problem in breathing,breathlessness,symptom,en
+shortness of breath,breathlessness,symptom,en
+tooth,tooth,body_part,en
+teeth,tooth,body_part,en
+tooth ache,toothache,symptom,en
+tooth pain,toothache,symptom,en
+teeth pain,toothache,symptom,en
+teeth ache,toothache,symptom,en
+eye,eye,body_part,en
+eyes,eye,body_part,en
+redness,redness,symptom,en
+eye redness,red eye,symptom,en
+red eye,red eye,symptom,en
+red eyes,red eye,symptom,en
+redness in eye,red eye,symptom,en
+redness in eyes,red eye,symptom,en
+eyes red,red eye,symptom,en
+eye red,red eye,symptom,en
+ankh lal,red eye,symptom,hi
+coughing,cough,symptom,en
+coughing blood,coughing up blood,symptom,en
+coughing up blood,coughing up blood,symptom,en
+cough with blood,coughing up blood,symptom,en
+blood in cough,coughing up blood,symptom,en
+blood in sputum,coughing up blood,symptom,en
+khoon ki khansi,khansi mein khoon aa raha hai,symptom,hi
+khansi me khoon,khansi mein khoon aa raha hai,symptom,hi
+ache,ache,everyday,en
+back ache,back pain,symptom,en
+backache,back pain,symptom,en
+stomach ache,stomach pain,symptom,en
+stomachache,stomach pain,symptom,en
+body ache,body ache,symptom,en
+bodyache,body ache,symptom,en
+joint ache,joint pain,symptom,en
+head ache,headache,symptom,en

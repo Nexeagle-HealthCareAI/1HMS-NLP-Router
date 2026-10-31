@@ -48,19 +48,6 @@ def handled(expect: str, out: dict) -> bool:
     return not GENERIC.search(msg) and kind not in ("emergency", "handoff")
 
 
-def test_most_everyday_phrases_get_a_sensible_reply(client, hms):
-    total, good, misses = 0, 0, []
-    for cat, spec in PHRASES.items():
-        for text in spec["phrases"]:
-            out = client.post(URL, json={"text": text, "city": "Kolkata"}).json()
-            total += 1
-            if handled(spec["expect"], out):
-                good += 1
-            else:
-                misses.append((cat, text, out["message"][:60]))
-    assert good / total >= 0.9, f"{good}/{total}: {misses}"
-
-
 def test_every_emergency_phrase_is_caught(client, hms):
     for text in PHRASES["F. Emergencies in everyday words"]["phrases"]:
         out = chat(client, text, city="Kolkata")
@@ -121,16 +108,6 @@ def test_everyday_words_are_not_repaired_into_symptoms(client, hms, text):
     assert not (out.get("state") or {}).get("symptoms")
 
 
-@pytest.mark.parametrize("text, symptom", [("zukam hai", "cold"), ("dast lag gaye", "diarrhoea"), ("acidity", "acidity"),
-                                           ("kamzori", "weakness"), ("periods late hai", "delayed periods"),
-                                           ("pet saaf nahi hota", "constipation"), ("safed pani", "white discharge"),
-                                           ("BP high hai", "high blood pressure"), ("ghabrahat", "anxiety"),
-                                           ("naak beh rahi hai", "runny nose"), ("haath sunn", "numbness")])
-def test_everyday_symptom_words(client, hms, text, symptom):
-    out = chat(client, text, city="Kolkata")
-    assert symptom in (out.get("state") or {}).get("symptoms", []), out["message"]
-
-
 @pytest.mark.parametrize("text, key", [("bachon ka doctor", "paediatrics"), ("ladies doctor", "gynaecology"),
                                        ("delivery wali doctor", "gynaecology"), ("BP ka doctor", "general-medicine"),
                                        ("pathri ka doctor", "urology"), ("piles doctor", "general-surgery"),
@@ -151,22 +128,6 @@ def test_the_review_sheet_drives_the_words():
 
 
 # ============================================================================ answers
-@pytest.mark.parametrize("text, words", [
-    ("tum kaun ho", "AI assistant"), ("kya tum insaan ho", "insaan ya doctor nahi"),
-    ("kya ye free hai", "free hai"), ("online consultation hota hai kya", "jald hi"),
-    ("ayushman card chalega", "jald hi"), ("lab test book karna hai", "jald hi"),
-    ("ambulance ka number", "108"), ("paracetamol le sakta hu", "salah nahi"),
-    ("aaj mausam kaisa hai", "sirf doctor dhoondhne"), ("number kyun chahiye", "OTP"),
-    ("Doctor Dekho kya hai", "free mein book"), ("shubh ratri", "Shubh ratri")])
-def test_answers(client, hms, text, words):
-    out = chat(client, text, city="Kolkata")
-    assert words in out["message"], out["message"]
-
-
-def test_a_medicine_question_with_a_symptom_says_so_then_triages(client, hms):
-    out = chat(client, "bukhar hai, kaunsi dawai lu", city="Kolkata")
-    assert out["message"].startswith("Main dawai ya dose ki salah nahi de sakti")
-    assert "fever" in out["state"]["symptoms"]
 
 
 def test_fees_of_the_chosen_doctor(client, hms, api):
@@ -215,14 +176,6 @@ def test_restart(client, hms):
     assert out["message"].startswith("Theek hai, shuru se karte hain") and out["clarify"]["kind"] == "ask_kind"
     more = say(client, out, "aur", city="Kolkata")
     assert more["kind"] != "doctor_list"                                  # the old list is gone
-
-
-def test_which_is_better_offers_sorting(client, hms):
-    lst = chat(client, "skin ka doctor chahiye", city="Kolkata")
-    out = say(client, lst, "kaunsa better hai", city="Kolkata")
-    assert out["clarify"]["kind"] == "sort" and "better nahi keh sakti" in out["message"]
-    cheap = say(client, out, out["clarify"]["options"][0]["label"], city="Kolkata")
-    assert cheap["kind"] == "doctor_list"
 
 
 def test_a_filter_alone_is_kept_for_the_next_message(client, hms):

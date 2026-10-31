@@ -1,6 +1,6 @@
 """RAG layer for /route-symptom: retrieve labelled example sentences, score specialties, fuse.
 
-Separate from the cluster retriever /chat uses (specialist_rag.SpecialistRetriever), which is untouched.
+The only specialty engine: /v1/route-symptom, Vita and /chat all decide through it (route_bridge.py).
 """
 from .classifier_scorer import ClassifierScorer, EmergencyModelScore
 from .corpus import LabelledExample, load_examples

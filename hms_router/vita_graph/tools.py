@@ -1,7 +1,7 @@
-"""The tools Vita's LLM can call. Each one runs Vita's existing, tested code; the LLM only decides which and with
-what. Tools that answer the patient themselves (vita_flow, raise_emergency, a location question, an empty list)
-end the turn with their own reviewed wording ("final"); the others return facts for the LLM to talk about and
-leave their screen parts (doctor list, specialist card) in turn.ui."""
+"""What the graph's agent nodes call (graph.py). Each tool runs Vita's tested code (application/doctor_chat.py, the
+steps). Tools that answer the patient themselves (emergency, a location question, an empty list, choosing a doctor)
+set `final` with their own reviewed wording; the others return facts for the LLM to talk about and leave their screen parts (doctor list, specialist
+card) in `ui`, which the LLM's checked reply is placed on top of (compose)."""
 from __future__ import annotations
 
 import json
@@ -10,64 +10,27 @@ import time
 
 from .. import voice as V
 from ..application.doctor_chat import DOCTOR_LIST, FOLLOW_UP, DoctorChat
-from ..doctor_intent import parse
 from ..doctors import FALLBACK_SPECIALIST, DoctorLookupError, specialty_key
 from ..domain.models import Query
 from ..route_bridge import age_group_of, to_routing
+from ..safety.denial import strip_denials
 from ..textnorm import preprocess
 from ..voice import Voice
 
 log = logging.getLogger("hms_router.vita_tools")
 
 
-def _fn(name, description, properties, required=()):
-    return {"type": "function", "function": {"name": name, "description": description, "parameters": {
-        "type": "object", "properties": properties, "required": list(required), "additionalProperties": False}}}
-
-
-TOOLS = [
-    _fn("assess_symptoms", "Choose the right kind of doctor for the patient's symptoms and show bookable doctors. "
-        "Also checks for emergencies.", {
-            "symptoms": {"type": "string", "description": "The complaint in plain English, e.g. 'fever for 3 days, "
-                                                          "body ache'. Include duration if known."},
-            "age_group": {"type": "string", "enum": ["child", "adult", "unknown"],
-                          "description": "child = under 14, only if the patient said so"},
-            "pregnant": {"type": "boolean", "description": "true only if the patient said she is pregnant"}},
-        ["symptoms"]),
-    _fn("find_doctors", "Search bookable doctors by specialty, name, degree, hospital, place or distance.", {
-        "specialty": {"type": "string", "description": "e.g. Dermatologist, Gynaecologist, Dentist, Paediatrician, "
-                                                       "General Physician"},
-        "doctor_name": {"type": "string"}, "degree": {"type": "string", "description": "MBBS, MD, MS, DM, BDS ..."},
-        "hospital": {"type": "string", "description": "hospital or clinic name the patient said"},
-        "place": {"type": "string", "description": "a city or area named by the patient"},
-        "near_me": {"type": "boolean"}, "gender": {"type": "string", "enum": ["female", "male"]},
-        "available_today": {"type": "boolean"}, "sort": {"type": "string", "enum": ["fee", "experience"]},
-        "more": {"type": "boolean", "description": "the next page of the last list"}}),
-    _fn("vita_flow", "Hand this message to Vita's booking and visit system: choosing a doctor, booking, OTP, a "
-        "doctor's availability on a day, directions, 'I have reached', check-in, token status, talking to a person, "
-        "a doctor's number. It answers the patient itself.", {
-            "message": {"type": "string", "description": "The patient's message, rephrased simply if needed"}},
-        ["message"]),
-    _fn("raise_emergency", "The patient may be in danger. Tells them to call 108/112 now and lists the nearest "
-        "emergency places. Use whenever in doubt.", {
-            "signs": {"type": "array", "items": {"type": "string"},
-                      "description": "danger signs in plain English, e.g. ['chest pain', 'sweating']"}},
-        ["signs"]),
-    _fn("reply", "Send your message to the patient and end the turn.", {
-        "message": {"type": "string", "description": "1-3 short sentences in the patient's language"},
-        "options": {"type": "array", "items": {"type": "string"}, "maxItems": 3,
-                    "description": "optional quick-reply buttons, max 20 characters each"}},
-        ["message"]),
-]
-TOOL_NAMES = {t["function"]["name"] for t in TOOLS}
-
-
 class Turn:
-    """Everything one message needs: the rules engine, the request, and what the tools produced."""
+    """Everything one message needs: Vita's steps, the request, and what the tools produced.
+    text: the message tidied for the code steps ("doc chaiye" -> "doctor chahiye"); raw: as the patient wrote it,
+    for the LLM."""
 
-    def __init__(self, flow: DoctorChat, text: str, session_id: str | None, kw: dict, ctx: dict, route_service, llm):
-        self.flow, self.text, self.session_id, self.kw, self.ctx = flow, text, session_id, kw, ctx
-        self.route_service, self.llm = route_service, llm
+    def __init__(self, flow: DoctorChat, text: str, session_id: str | None, kw: dict, ctx: dict, rt):
+        self.flow = self.steps = flow
+        self.raw, self.text = text, flow.tidy(text)
+        self.session_id, self.kw, self.ctx, self.rt = session_id, kw, ctx, rt
+        self.route_service = rt.route_service if rt is not None else None
+        self.identity = ctx.get("verified_mobile") or ctx.get("token_mobile")    # a patient the channel identified
         self.ui: dict | None = None            # a tool's screen parts (doctors, card), message to be written by the LLM
         self.final: dict | None = None         # a complete reply (from a tool, or a checked LLM reply)
         self.draft: dict | None = None         # the LLM's reply {"message", "options"}
@@ -84,6 +47,13 @@ class Turn:
         flow._ingest_only = once
         flow._hint = kw.get("ui_language")
 
+    def fallback(self) -> dict:
+        """When the LLM agent cannot answer (off, failing, or its reply was blocked): a plain doctor search when the
+        message is plainly one, else "please try again, or talk to our team". The safety step has already run."""
+        steps = self.flow
+        return steps.plain_search(self.text, self.session_id, self.ctx) or \
+            steps.unavailable(self.text, self.session_id, self.ctx)
+
     @property
     def sid(self) -> str | None:
         return self._ing.session_id if self._ing is not None else self.session_id
@@ -97,7 +67,6 @@ class Turn:
 
     # ------------------------------------------------------------------------------------------------- tools
     def run(self, name: str, args: dict) -> str:
-        self.tools_used.append(name)
         fn = getattr(self, "t_" + name, None)
         if fn is None:
             return json.dumps({"error": f"unknown tool {name}"})
@@ -110,16 +79,13 @@ class Turn:
         self.draft = {"message": (message or "").strip(), "options": [o for o in (options or []) if o][:3]}
         return "sent"
 
-    def t_vita_flow(self, message: str = "") -> str:
-        self.final = self.flow.handle(message or self.text, self.session_id, **self.kw)
-        return json.dumps({"answered": True})
-
     def t_raise_emergency(self, signs: list[str] | None = None) -> str:
         self.final = self.emergency([s.lower() for s in (signs or []) if s] or ["emergency signs"])
         return json.dumps({"answered": True})
 
     def t_find_doctors(self, specialty=None, doctor_name=None, degree=None, hospital=None, place=None, near_me=False,
                        gender=None, available_today=False, sort=None, more=False) -> str:
+        self.tools_used.append("find_doctors")
         flow, sid = self.flow, self.session_id
         st = flow.load(sid)
         page = 1
@@ -127,8 +93,8 @@ class Turn:
             filters, page = dict(st["last"]), int(st.get("page") or 1) + 1
         else:
             key = specialty_key(specialty) if specialty else None
-            if specialty and not key:                                   # "skin doctor" in words: let the parser try
-                key = parse(specialty).specialty_key
+            if specialty and not key:                 # "skin doctor", "cardiolgist" in words: the spelling-tolerant reader
+                key = flow.read_ask(specialty).specialty_key
             modes = [m for m, on in (("specialty", key), ("name", doctor_name), ("degree", degree),
                                      ("distance", near_me), ("gender", gender), ("today", available_today),
                                      ("hospital", hospital), ("place", place), (sort or "", sort)) if on]
@@ -136,7 +102,14 @@ class Turn:
                        "near": bool(near_me), "radiusKm": None, "sort": sort, "gender": gender,
                        "availableToday": bool(available_today), "hospitalQuery": hospital, "place": place,
                        "modes": modes}
-            if not any(filters[k] for k in ("specialtyKey", "query", "degree", "near", "gender", "hospitalQuery", "place")):
+            last = st.get("last")
+            if last and not any(filters[k] for k in ("specialtyKey", "query", "degree", "hospitalQuery")):
+                # "kam fees wala", "lady doctor", "paas wale", "Patna mein": the same search, narrowed
+                change = {k: v for k, v in filters.items() if v and k != "modes"}
+                filters = dict(last, **change)
+                filters["modes"] = sorted(set(last.get("modes") or []) | set(modes))
+            elif not any(filters[k] for k in ("specialtyKey", "query", "degree", "near", "gender", "hospitalQuery",
+                                               "place")):
                 return json.dumps({"error": "say what kind of doctor, a name, a hospital or a place"})
         out = flow._search_turn(self.text, sid, filters, self.ctx, st, page=page)
         items = list((out.get("doctors") or {}).get("items") or [])
@@ -144,23 +117,30 @@ class Turn:
         if out.get("kind") != DOCTOR_LIST or not items or (out.get("clarify") or {}).get("kind") == "which_doctor":
             self.final = out                       # a location question, nothing found, or "which one?": as written
             return json.dumps({"answered": True, "message": out.get("message")})
+        lead = self.ctx.pop("lead", None)                 # "none in Purnia, these are in other towns"
+        if lead:
+            out["message"] = f"{lead} {out.get('message') or ''}".strip()
         self.ui = out
         return json.dumps({"doctors": [_brief(d) for d in items], "total": out["doctors"].get("total"),
+                           "note_for_patient": lead,
                            "has_more": out["doctors"].get("hasMore"),
                            "note": "The list is on screen with a Choose button. Say one short line about it."})
 
     def t_assess_symptoms(self, symptoms: str = "", age_group: str | None = None, pregnant: bool = False) -> str:
+        self.tools_used.append("assess_symptoms")
         flow, svc = self.flow, self.route_service() if self.route_service else None
-        if svc is None:                                     # engine not ready: Vita's rules triage answers
-            return self.t_vita_flow(self.text)
+        if svc is None:                                     # the specialty engine is loading: a GP is a safe first step
+            return json.dumps({"confident": False, "advice": "Suggest a General Physician first; they can refer on."})
         said = f"{symptoms}{', pregnant' if pregnant else ''}"
         query = f"{said} . {self.text}"
         em = svc.detector.detect(Query(raw=query, normalized=preprocess(query)))
         if em.flag:                                         # the LLM's reading can only add urgency
-            self.final = self.emergency([r.lower() for r in em.reasons] or ["emergency signs"])
+            self.final = self.emergency([r.lower() for r in em.reasons])
             return json.dumps({"answered": True, "emergency": True})
         age = age_group if age_group in ("child", "adult") else age_group_of(self.text)
-        decision = svc.route(said if said.strip() else self.text, top_k=5, age_group=age)
+        # its reading + their words, minus anything denied ("chest pain nahi hai, bas khansi" is about the cough)
+        chosen = strip_denials(preprocess(query if said.strip() else self.text))[0] or preprocess(self.text)
+        decision = svc.route(chosen, top_k=5, age_group=age)
         routing = to_routing(decision, [symptoms], said, age)
         recs = routing.recommendations
         ing = self.ingest()
@@ -217,21 +197,9 @@ class Turn:
     # ------------------------------------------------------------------------------------------------- helpers
     def emergency(self, signs: list[str]) -> dict:
         """Vita's own emergency reply: the number first, Tele-MANAS for self-harm, nearest places when enabled."""
-        flow = self.flow
-        ing = self.ingest()
-        voice = Voice(ing.language.language)
-        base = {"session_id": ing.session_id, "turn": ing.turn, "language": ing.language.language}
-        out = flow._reply(base, "emergency", V.emergency(voice, signs))
-        out["card"] = {"kind": "emergency", "emergency_reasons": signs,
-                       "outputs": [{"role": "EMERGENCY", "specialist": "Emergency Medicine", "confidence": 1.0}],
-                       "emergency_signs": [w for w in (V.symptom_words(voice, [x]) for x in signs) if w]}
-        flow._emergency_done(ing.session_id, signs)
-        if flow.emergency.enabled:
-            est = flow.load(ing.session_id)
-            est.pop("booking", None)
-            flow.emergency.attach(out, est, self.ctx, signs, self.text, voice)
-            flow._save(ing.session_id, est)
-        return out
+        self.tools_used.append("emergency")
+        self.ingest()
+        return self.flow.emergency_reply(self.text, self.session_id, self.ctx, signs)
 
     def compose(self) -> dict | None:
         """The checked LLM reply on top of the tool's screen parts (or a plain message)."""

@@ -25,6 +25,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from .doctors import specialty_key
+from .search_spelling import CityIndex, NameIndex, WordIndex, name_index
 from .textnorm import intent_text, preprocess
 
 # ----------------------------------------------------------------------------- vocabulary
@@ -44,7 +45,11 @@ _SPECIALIST_NOUN = re.compile(
     r"endocrinologists?|diabetologists?|pulmonologists?|chest specialists?|nephrologists?|oncologists?|"
     r"rheumatologists?|physiotherapists?|physio|p(?:a)?ediatricians?|child specialists?|geriatricians?|"
     r"general physicians?|physicians?|general surgeons?|surgeons?|plastic surgeons?|vascular surgeons?|"
-    r"cardiothoracic surgeons?|eye specialists?|skin specialists?)\b")
+    r"cardiothoracic surgeons?|eye specialists?|skin specialists?|"
+    # the specialty itself, as people also write it: "cardiology doctor", "DM cardiology", "dermatology"
+    r"cardiology|dermatology|neurology|gastroenterology|orthopa?edics|gyn(?:a)?ecology|obstetrics|ophthalmology|"
+    r"urology|nephrology|oncology|pulmonology|psychiatry|endocrinology|diabetology|rheumatology|p(?:a)?ediatrics|"
+    r"physiotherapy|dentistry|general medicine|general surgery)\b")
 
 # Words that name a specialty only next to a doctor word: "dil ka doctor", "skin doctor", "pet ka doctor".
 # Alone they are symptoms ("pet dard", "skin pe daane") and go to triage.
@@ -90,7 +95,12 @@ def _load_everyday_specialties(path: Path = EVERYDAY_SPECIALTY_WORDS) -> dict[st
 for _w, _k in _load_everyday_specialties().items():
     _ALIASES.setdefault(_w, _k)
 
-_DEGREE = re.compile(r"\b(m\.?b\.?b\.?s|m\.?d|m\.?s|d\.?m|m\.?ch|d\.?n\.?b|b\.?d\.?s|m\.?d\.?s|d\.?g\.?o|d\.?c\.?h)\b")
+# "md", "m.d", and "m d" (what "M.D." becomes once punctuation is removed); letters only, so "m s" is a degree only
+# as a whole spaced token run
+_DEGREE = re.compile(r"\b(m[. ]?b[. ]?b[. ]?s|m[. ]?d[. ]?s|m[. ]?ch|d[. ]?n[. ]?b|b[. ]?d[. ]?s|d[. ]?g[. ]?o|d[. ]?c[. ]?h|"
+                     r"m[. ]?d|m[. ]?s|d[. ]?m)\b")
+# a patient naming several degrees means the most specific one ("MBBS, MD" -> MD; "MD DM" -> DM)
+_DEGREE_RANK = {"DM": 4, "MCh": 4, "MD": 3, "MS": 3, "MDS": 3, "DNB": 3, "DGO": 2, "DCH": 2, "MBBS": 1, "BDS": 1}
 _DEGREE_CANON = {"mbbs": "MBBS", "md": "MD", "ms": "MS", "dm": "DM", "mch": "MCh", "dnb": "DNB", "bds": "BDS",
                  "mds": "MDS", "dgo": "DGO", "dch": "DCH"}
 
@@ -175,6 +185,9 @@ _NAME_STOP = DOCTOR_WORDS | _LINKS | {
     "milegi", "milenge", "sabse", "kaunsa", "konsa", "kaun", "achcha", "acchha", "badhiya", "badiya", "bdiya",
     "accha", "achha", "acha", "koi", "bhi", "ek", "mujhe", "hame", "hume", "humein", "hamein", "nearest", "nazdeek",
     "nazdik", "pass", "lao", "please", "help", "madad", "chahiye", "chaahiye", "chahiyee", "doctors", "doctr", "dctr",
+    # answers to Vita's questions, never a name
+    "nahi", "nahin", "nai", "haan", "han", "ha", "yes", "no", "nope", "ok", "okay", "theek", "thik", "sahi", "galat",
+    "bilkul", "zaroor", "jarur", "shayad", "pata", "malum", "maloom", "din", "dino", "hafte", "mahine", "saal",
 }
 _NAME_STOP_SQUEEZED = {re.sub(r"(.)\1+", r"\1", w) for w in _NAME_STOP}
 # Everyday words the health vocabulary also contains; they never make a message "about symptoms"
@@ -182,6 +195,136 @@ _FILLER = {"available", "availability", "aaj", "today", "kal", "kab", "milenge",
            "mahila", "female", "male", "baithte", "milna", "milni", "chahiye", "chaahiye", "paas", "andar", "liye", "wala", "wali", "wale", "koi", "kuch",
            "dikhana", "appointment", "batao", "near", "nearby", "fees", "fee", "kam", "sasta", "experience",
            "experienced", "senior", "list", "area", "sheher", "city", "hospital", "clinic", "book", "booking"}
+
+
+# ----------------------------------------------------------------------------- typing mistakes in search words
+# Every specialty word a patient may type, singular and plural. A misspelling of one of these ("cardiolgist",
+# "gynacologist", "pediatrision") is read as the word; see search_spelling.WordIndex for how close is close enough.
+_SPECIALTY_FORMS = """
+cardiologist cardiology cardio dermatologist dermatology derma orthopaedic orthopedic orthopaedics orthopedics
+orthopedician orthopaedician orthopedist ortho gynaecologist gynecologist gynaecology gynecology gynae gyne
+obstetrician obstetrics dentist dentistry ophthalmologist ophthalmology neurologist neurology neuro neurosurgeon
+psychiatrist psychiatry urologist urology gastroenterologist gastroenterology gastro endocrinologist endocrinology
+diabetologist diabetology pulmonologist pulmonology nephrologist nephrology oncologist oncology rheumatologist
+rheumatology physiotherapist physiotherapy physio paediatrician pediatrician paediatrics pediatrics geriatrician
+physician surgeon
+""".split()
+_PLURAL_OK = {"cardiologist", "dermatologist", "orthopedist", "gynaecologist", "gynecologist", "obstetrician", "dentist",
+              "ophthalmologist", "neurologist", "neurosurgeon", "psychiatrist", "urologist", "gastroenterologist",
+              "endocrinologist", "diabetologist", "pulmonologist", "nephrologist", "oncologist", "rheumatologist",
+              "physiotherapist", "paediatrician", "pediatrician", "geriatrician", "physician", "surgeon"}
+
+
+def _form_meaning(word: str) -> str:
+    if word in ("surgeon", "surgeons"):
+        return "general-surgery"
+    if word in ("physician", "physicians"):
+        return "general-medicine"
+    return _find_specialty(word)[0] or word
+
+
+_LONG_WORDS: dict[str, str] = {}          # filled below, once _find_specialty exists
+_SHORT_WORDS: dict[str, str] = {}
+_DOCTOR_FORMS = WordIndex({"doctor": "doctor", "doctors": "doctor", "specialist": "doctor", "specialists": "doctor"})
+_DOCTOR_SHORT = {"doc": "doctor", "docs": "doctors", "drr": "dr", "dctr": "doctor", "dktr": "doctor", "doctr": "doctor",
+                 "docter": "doctor", "doctorr": "doctor"}
+_MBBS = re.compile(r"^m+b+s+$")
+# Ordinary words that are close to a search word and must never become one ("done" is not "bone", "here" not "heart")
+_PLAIN = {"done", "dont", "gone", "tone", "zone", "none", "cone", "lone", "hard", "heard", "hearts", "chess", "cheat",
+          "river", "lover", "liver", "dyes", "byes", "skip", "skit", "kin", "kidnap", "cheap", "child", "chill", "kids",
+          "bane", "bond", "band", "test", "best", "rest", "nest", "west", "past", "post", "most", "must", "just",
+          "ear", "eat", "eye", "dear", "near", "hear", "year", "here", "there", "where", "wear", "bear", "fear",
+          "mental", "rental", "dental", "medical", "medicine", "general", "family", "nerve", "nerves", "never",
+          "sugar", "super", "lung", "lungs", "long", "brain", "train", "rain", "pain", "chest", "skin", "bone",
+          "bones", "heart", "kidney", "stomach", "teeth", "tooth", "baby", "nose", "throat", "joint", "joints",
+          "women", "woman", "elderly", "cancer", "thyroid", "hormone", "diabetes", "doctor", "doctors", "dekho",
+          "dekha", "dekhe", "dekhna", "dikha", "dawa", "dawai", "dard", "dost", "dono", "dosa", "doctrine", "physical",
+          "donor", "dollar", "doctorate", "director", "detail", "details", "special", "specially", "specific",
+          "surgery", "surgical", "operation",
+          # real specialties Vita has no word for: never "corrected" into a neighbour (radiologist is not cardiologist)
+          "radiologist", "radiology", "pathologist", "pathology", "hematologist", "haematologist", "hematology",
+          "haematology", "immunologist", "allergist", "sexologist", "audiologist", "cosmetologist", "trichologist",
+          "podiatrist", "chiropractor", "homeopath", "homoeopath", "homeopathy", "ayurvedic", "dietician", "dietitian",
+          "nutritionist", "psychologist", "counsellor", "counselor", "optometrist", "orthodontist", "periodontist",
+          "endodontist", "prosthodontist", "neonatologist", "anaesthetist", "anesthetist", "anesthesiologist",
+          "venereologist", "andrologist", "hepatologist", "proctologist", "virologist", "embryologist",
+          "histopathologist", "physiologist", "pharmacologist", "sonologist", "intensivist", "neonatology"}
+_INDEX: dict[str, WordIndex] = {}
+
+
+def _indexes() -> tuple[WordIndex, WordIndex]:
+    if not _INDEX:
+        for w in _SPECIALTY_FORMS:
+            meaning = _form_meaning(w)
+            target = _LONG_WORDS if len(w) >= 7 else _SHORT_WORDS
+            target[w] = meaning
+            if w in _PLURAL_OK:
+                target[w + "s"] = meaning
+        for w, k in _ALIASES.items():
+            if len(w) >= 4 and " " not in w:
+                _SHORT_WORDS.setdefault(w, k)
+        _INDEX["long"], _INDEX["short"] = WordIndex(_LONG_WORDS), WordIndex(_SHORT_WORDS)
+    return _INDEX["long"], _INDEX["short"]
+
+
+def _known_word(w: str) -> bool:
+    return (w in _PLAIN or w in _ALIASES or w in DOCTOR_WORDS or w in _NAME_STOP or w in _LINKS or w in _SHORT_FILLER
+            or w in _FILLER or w in _TIME_WORDS or w in _WEEKDAYS or w in _HOSPITAL_STOP or w in _NOT_PLACE
+            or w in _FEMALE_WORDS or w in _DEGREE_CANON)
+
+
+def fix_search_words(norm: str, keep: Iterable[str] = (), medical_words: Iterable[str] | None = None) -> str:
+    """Repair typing mistakes in the words a doctor search reads: the doctor word ("doktor", "doctr"), specialty
+    words ("cardiolgist", "skn doctor", "haddi ka doktor") and MBBS ("mbs", "mbbbs"). `keep`: words never changed
+    (listed doctors' and cities' names). medical_words: exact symptom vocabulary, also never changed.
+    Short words ("skn", "bone", "heart") are repaired only when the message asks for a doctor, so a typo in a
+    symptom is left for the symptom spell-checker."""
+    if not norm:
+        return norm
+    long_ix, short_ix = _indexes()
+    keep = set(keep)
+    medical = medical_words if medical_words is not None else ()
+    words = norm.split()
+    out = list(words)
+    for i, w in enumerate(words):                         # 1) the doctor word itself
+        if w in _DOCTOR_SHORT:
+            out[i] = _DOCTOR_SHORT[w]
+        elif w not in DOCTOR_WORDS and w not in keep and w not in _PLAIN and 5 <= len(w) <= 12 and w[0] in "ds" \
+                and w not in medical:
+            hit = _DOCTOR_FORMS.closest(w, max_typos=2 if len(w) >= 6 else 1)
+            if hit and hit[0] == w[0]:
+                out[i] = hit
+    asks_doctor = any(w in DOCTOR_WORDS for w in out) or any(w in long_ix for w in out)
+    for i, w in enumerate(out):                           # 2) specialty words and MBBS
+        if w in keep or w.isdigit() or w in DOCTOR_WORDS or w in long_ix or w in short_ix:
+            continue
+        if _MBBS.match(w) and w != "mbbs":
+            out[i] = "mbbs"
+            continue
+        if len(w) < 3 or _known_word(w) or w in medical:
+            continue
+        hit = long_ix.closest(w) if len(w) >= 6 else None
+        if hit is None and asks_doctor:
+            if len(w) == 3:                               # "skn doctor": one letter left out of a short word
+                cands = [s for s in short_ix.meanings if len(s) == 4 and _subsequence(w, s)]
+                hit = cands[0] if len({short_ix.meanings[c] for c in cands}) == 1 else None
+            else:
+                hit = short_ix.closest(w, max_typos=1) or (long_ix.closest(w) if len(w) >= 5 else None)
+        if hit:
+            out[i] = hit
+    return " ".join(out)
+
+
+def _subsequence(short: str, long: str) -> bool:
+    it = iter(long)
+    return short[0] == long[0] and all(ch in it for ch in short)
+
+
+def close_name_word(w: str, tokens: list[str]) -> bool:
+    """A word of a listed doctor's name, allowing typing mistakes and sound-alike spellings ("ghose" / "ghosh")."""
+    if difflib.get_close_matches(w, tokens, n=1, cutoff=0.84):
+        return True
+    return len(w) >= 4 and name_index(tuple(tokens)).word(w) is not None
 
 
 @dataclass
@@ -268,11 +411,15 @@ def _find_specialty(text: str) -> tuple[str | None, str | None, set[str]]:
 
 
 def _find_degree(text: str) -> tuple[str | None, set[str]]:
-    m = _DEGREE.search(text)
-    if not m:
+    found = []
+    for m in _DEGREE.finditer(text):
+        canon = _DEGREE_CANON.get(re.sub(r"[. ]", "", m.group(1)))
+        if canon:
+            found.append((canon, m.group(1)))
+    if not found:
         return None, set()
-    raw = m.group(1).replace(".", "")
-    return _DEGREE_CANON.get(raw), {m.group(1)}
+    best = max(found, key=lambda f: _DEGREE_RANK.get(f[0], 0))
+    return best[0], {w for _, raw in found for w in raw.replace(".", " ").split()}
 
 
 def _squeeze(w: str) -> str:
@@ -290,27 +437,59 @@ def _find_name(text: str, names: Iterable[str] | None, exclude: set[str] = froze
     for i, w in enumerate(words):
         if w in ("dr", "doctor", "daktar", "docter"):
             span = []
-            for nxt in words[i + 1:i + 3]:
+            for nxt in words[i + 1:i + 5]:
+                if len(nxt) == 1 and not span:
+                    continue                                # an initial: "dr s roy", "dr. a. k. sen"
                 if _is_stop(nxt) or nxt in _ALIASES or len(nxt) < 3 or _SPECIALIST_NOUN.fullmatch(nxt):
                     break
                 span.append(nxt)
+                if len(span) == 2:
+                    break
             if span:
                 return " ".join(span), set(span)
-    # 2) a listed doctor's name with a meeting cue: "anita sen se milna hai"
+    # 2) a listed doctor's name with a meeting cue ("anita sen se milna hai"), or the name alone ("neha sharma",
+    #    "anita sen ji"): every word left is a name word of one listed doctor
+    if names and not _NAME_CUE.search(text):
+        rest = [w for w in words if not _is_stop(w) and w not in ("ji", "please", "plz", "sir", "madam")]
+        initials = [w for w in rest if len(w) == 1]                  # "s roy", "a k sen": initials, then the surname
+        rest = [w for w in rest if len(w) > 1]
+        if 1 <= len(rest) <= 3 and len(initials) <= 2 and not any(w in _ALIASES for w in rest):
+            for n in names:
+                toks = [t for t in preprocess(n).split() if len(t) >= 2 and t not in DOCTOR_WORDS]
+                if toks and all(close_name_word(w, toks) for w in rest) and \
+                        (len(rest) >= 2 or len(rest[0]) >= 4 or (initials and rest[0] in toks)):
+                    return " ".join(rest), set(rest) | set(initials)
     if names and _NAME_CUE.search(text):
-        name_tokens = {t for n in names for t in preprocess(n).split() if len(t) >= 3 and t not in DOCTOR_WORDS}
-        hits = [w for w in words if len(w) >= 3 and not _is_stop(w) and w not in _ALIASES
-                and difflib.get_close_matches(w, name_tokens, n=1, cutoff=0.84)]
+        index = name_index(tuple(names))
+        hits = [w for w in words if len(w) >= 3 and not _is_stop(w) and w not in _ALIASES and index.word(w)]
         if hits:
             return " ".join(hits[:3]), set(hits)
     return None, set()
 
 
+def search_text(text: str, *, known_names: Iterable[str] | None = None, cities: CityIndex | None = None,
+                medical_terms: Callable[[str], list[str]] | None = None) -> str:
+    """intent_text() with typing mistakes in search words repaired (fix_search_words). Listed doctors' and cities'
+    names are never changed."""
+    keep: set[str] = set()
+    if known_names:
+        keep |= set(name_index(tuple(known_names)).tokens.meanings)
+    if cities:
+        keep |= {w for k in cities.canon for w in k.split()}
+    medical_words = getattr(getattr(medical_terms, "__self__", None), "words", None)
+    return fix_search_words(intent_text(text), keep, medical_words)
+
+
 def parse(text: str, *, names: Iterable[str] | None = None,
-          medical_terms: Callable[[str], list[str]] | None = None) -> DoctorAsk:
+          medical_terms: Callable[[str], list[str]] | None = None,
+          known_names: Iterable[str] | None = None, cities: CityIndex | None = None) -> DoctorAsk:
     """names: listed doctors' names (DoctorDirectory.names()), used only for asks without "dr".
-    medical_terms: MedicalVocabulary.terms_in, to tell a symptom description from a plain request."""
-    norm = intent_text(text)          # Hindi script -> the casual Hinglish these rules read
+    medical_terms: MedicalVocabulary.terms_in, to tell a symptom description from a plain request.
+    known_names / cities: every listed doctor's name and city (DoctorDirectory.index()): their words are never
+    "corrected", and a city named anywhere in a doctor ask ("skin doctor kolkata", "cardiologist kolkatta") is
+    the place to search."""
+    # Hindi script -> the casual Hinglish these rules read; typing mistakes in search words repaired
+    norm = search_text(text, known_names=known_names or names, cities=cities, medical_terms=medical_terms)
     ask = DoctorAsk()
     consumed: set[str] = set()
 
@@ -319,9 +498,14 @@ def parse(text: str, *, names: Iterable[str] | None = None,
     ask.degree, used = _find_degree(norm)
     consumed |= used
     ask.place = _find_place(norm, medical_terms)
+    place_words = set(ask.place.split()) if ask.place else set()
+    if cities:
+        if ask.place:
+            ask.place = (cities.resolve(ask.place) or ask.place).lower()       # "kolkatta", "calcutta" -> "kolkata"
+        else:
+            ask.place, place_words = _city_in(norm, cities, consumed, known_names or names)
     if ask.place and not (ask.specialty_key or ask.name_query or ask.degree or ask.hospital_query):
         ask.refine = True                        # "Patna mein dikhao": the same search, somewhere else
-    place_words = set(ask.place.split()) if ask.place else set()
     ask.name_query, used = _find_name(norm, names, exclude=place_words)
     consumed |= used | place_words
 
@@ -404,6 +588,14 @@ def _find_place(norm: str, medical_terms) -> str | None:
     lead = _leading_place(words, norm, medical_terms)      # Hindi order: "kolkata mein skin doctor"
     if lead:
         return lead
+    m = _PLACE_DOCTORS.match(norm)                         # "kishanganj ke doctor", "purnia wale doctors"
+    if m:
+        cand = m.group(1).split()
+        if not (any(len(w) < 4 for w in cand) or set(cand) & (_NOT_PLACE | DOCTOR_WORDS | _NAME_STOP | set(_ALIASES) |
+                                                                _TIME_WORDS)
+                or _SPECIALIST_NOUN.search(m.group(1)) or _GENDER_WORD.search(m.group(1))
+                or (medical_terms and [t for t in medical_terms(m.group(1)) if t not in _FILLER])):
+            return m.group(1)
     only = _PLACE_ONLY.match(norm)                         # "patna mein dikhao", "nahi, kolkata me": the same search elsewhere
     if only:
         cand = only.group(1).split()
@@ -431,6 +623,28 @@ def _find_place(norm: str, medical_terms) -> str | None:
     return None
 
 
+def _city_in(norm: str, cities: CityIndex, consumed: set[str], names: Iterable[str] | None) -> tuple[str | None, set[str]]:
+    """A listed city named anywhere in a doctor ask, typed as people type it: "skin doctor kolkata",
+    "cardiologist kolkatta", "calcutta ka cardiologist". Never a word of the ask itself or of a doctor's name."""
+    words = norm.split()
+    if not (set(words) & DOCTOR_WORDS or _SPECIALIST_NOUN.search(norm) or consumed):
+        return None, set()
+    name_words = set(name_index(tuple(names)).tokens.meanings) if names else set()
+    for size in (2, 1):
+        for i in range(len(words) - size + 1):
+            cand = words[i:i + size]
+            if set(cand) & consumed or any(_known_word(w) or w in DOCTOR_WORDS for w in cand):
+                continue
+            text = " ".join(cand)
+            exact = text in cities.canon
+            if not exact and (any(len(w) < 4 for w in cand) or set(cand) & name_words):
+                continue
+            hit = cities.resolve(text)
+            if hit:
+                return hit.lower(), set(cand)
+    return None, set()
+
+
 _LEAD_PLACE_END = {"mein", "me", "ke"}
 # "subah mein", "agle hafte mein" say when, not where
 _TIME_WORDS = {"subah", "sawere", "savere", "sham", "shaam", "dopahar", "raat", "morning", "evening", "afternoon", "night",
@@ -438,6 +652,8 @@ _TIME_WORDS = {"subah", "sawere", "savere", "sham", "shaam", "dopahar", "raat", 
                "this", "today", "tomorrow", "parso", "parson", "ghante", "ghanta", "minute", "monday", "tuesday",
                "wednesday", "thursday", "friday", "saturday", "sunday", "somvar", "mangalvar", "budhvar", "guruvar",
                "shukravar", "shanivar", "ravivar", "itvaar", "time", "samay", "waqt", "date", "tarikh"}
+_PLACE_DOCTORS = re.compile(r"^(?:(?:mujhe|hume|koi|achha|acha|accha)\s+)*([a-z]+(?: [a-z]+)?) (?:ke|ka|ki|wale|wala|waale|"
+                            r"vale) (?:doctor|doctors|daktar|dr)(?: (?:chahiye|chaiye|dikhao|batao|bataiye|hain|hai))*$")
 _PLACE_ONLY = re.compile(r"^(?:(?:nahi|nahin|aur|ab|to|toh|phir|actually|ok|acha|accha)\s+)*([a-z]+(?: [a-z]+)?) (?:mein|me|main)"
                          r"(?: (?:bhi|dikhao|batao|dekho|chahiye|dikhaiye|bataiye|please))*$")
 

@@ -1,0 +1,91 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# RETRAIN — rebuild the /route-symptom model with CMS-approved examples
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# Triggered by:
+#   - the CMS Symptom Router page's "Retrain now" button (NexeagleCMSAPI SymptomRouterService.TriggerRetrainAsync
+#     sends workflow_dispatch for retrain.yml on ref develop with no inputs -> target "both");
+#   - nightly at 03:00 IST;
+#   - by hand from the Actions tab (choose dev, prod or both).
+#
+# It does not train in GitHub. It asks each running router to run its own learning-loop rebuild
+# (POST /admin/rebuild, hms_router/application/retraining.py): pull CMS-approved examples, retrain, score on the
+# held-out validation set, and promote ONLY if the new model is not worse - then waits for the verdict
+# (GET /admin/rebuild). The CMS "AI Agents" tab's Rebuild button calls the same endpoint directly.
+#
+# It reaches each router over SSH (the same secrets deploy-router.yml uses) and runs scripts/rebuild_and_wait.py
+# inside the container, so the router's port does not have to be open to GitHub.
+#
+# Secrets:
+#   NLP_ROUTER_ADMIN_KEY    raw router API key with the admin scope (the same value as NexeagleCMSAPI's
+#                           NLP_ROUTER_API_KEY; its hash must be in HMS_API_KEYS). Unset works only where auth is off.
+#   DEV_SSH_HOST / DEV_SSH_USER / DEV_SSH_PASSWORD    Dev VM
+#   PROD_SSH_HOST / PROD_SSH_USER / PROD_SSH_KEY_B64  Prod VM
+# The CMS side needs GitHub:RetrainWorkflowToken (a PAT with actions:write on this repo).
+
+name: Retrain route model
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which router to rebuild
+        type: choice
+        options: [both, dev, prod]
+        default: both
+  schedule:
+    - cron: "30 21 * * *"          # 21:30 UTC = 03:00 IST
+
+permissions:
+  contents: read
+
+concurrency:
+  group: retrain-route-model
+  cancel-in-progress: false
+
+jobs:
+  dev:
+    name: Rebuild on Dev
+    if: github.event_name == 'schedule' || inputs.target == '' || inputs.target == 'both' || inputs.target == 'dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild inside nlp-router-dev and wait
+        env:
+          SSHPASS: ${{ secrets.DEV_SSH_PASSWORD }}
+          KEY: ${{ secrets.NLP_ROUTER_ADMIN_KEY }}
+          HOST: ${{ secrets.DEV_SSH_HOST }}
+          USER_: ${{ secrets.DEV_SSH_USER }}
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          { printf '%s\n' "$KEY"; cat scripts/rebuild_and_wait.py; } | \
+            sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$USER_@$HOST" \
+            'docker exec -i nlp-router-dev python -u -c "import sys; KEY=sys.stdin.readline().strip(); exec(sys.stdin.read())"' \
+            | tee rebuild.log
+          echo '### Dev rebuild' >> "$GITHUB_STEP_SUMMARY"
+          grep '^RESULT:' rebuild.log >> "$GITHUB_STEP_SUMMARY" || true
+
+  prod:
+    name: Rebuild on Prod
+    if: github.event_name == 'schedule' || inputs.target == '' || inputs.target == 'both' || inputs.target == 'prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild inside nlp-router-prod and wait
+        env:
+          KEY: ${{ secrets.NLP_ROUTER_ADMIN_KEY }}
+          HOST: ${{ secrets.PROD_SSH_HOST }}
+          USER_: ${{ secrets.PROD_SSH_USER }}
+          KEY_B64: ${{ secrets.PROD_SSH_KEY_B64 }}
+        run: |
+          umask 077
+          echo "$KEY_B64" | base64 -d > /tmp/deploy_key
+          { printf '%s\n' "$KEY"; cat scripts/rebuild_and_wait.py; } | \
+            ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$USER_@$HOST" \
+            'docker exec -i nlp-router-prod python -u -c "import sys; KEY=sys.stdin.readline().strip(); exec(sys.stdin.read())"' \
+            | tee rebuild.log
+          rm -f /tmp/deploy_key
+          echo '### Prod rebuild' >> "$GITHUB_STEP_SUMMARY"
+          grep '^RESULT:' rebuild.log >> "$GITHUB_STEP_SUMMARY" || true

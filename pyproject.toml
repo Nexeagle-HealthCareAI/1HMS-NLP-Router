@@ -22,7 +22,6 @@ dependencies = [
 dev = ["pytest", "fakeredis"]
 fasttext = ["fasttext-wheel>=0.9.2; python_version < '3.12'"]
 bert = ["transformers", "sentence-transformers"]
-chroma = ["chromadb>=0.5.0"]
 
 [tool.setuptools]
 py-modules = ["api"]

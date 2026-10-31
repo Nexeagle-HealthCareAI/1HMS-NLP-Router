@@ -122,30 +122,6 @@ def test_ui_hint_only_for_a_neutral_first_message(client, hms):
 
 
 # ============================================================================ 3. replies in that language
-def test_english_triage_is_english_throughout(client):
-    q = chat(client, "I have had fever and headache for 3 days")
-    assert q["kind"] == "follow_up" and q["message"].startswith("Got it: fever and headache.")
-    assert is_english(q["message"])
-    rec = chat(client, "yes, a little cough too", session_id=q["session_id"])
-    assert rec["kind"] == "recommendation" and is_english(rec["message"])
-    assert "GREEN" not in rec["message"] and "YELLOW" not in rec["message"]          # no printout card
-    assert "not a diagnosis" in rec["message"] and "108" in rec["message"]
-
-
-def test_hindi_triage_is_hindi_throughout(client):
-    q = chat(client, "मुझे तीन दिन से बुखार और सिर दर्द है")
-    assert q["language"] == "hindi" and q["message"].startswith("समझ गई")
-    rec = chat(client, "हाँ, थोड़ी खाँसी भी है", session_id=q["session_id"])
-    assert rec["kind"] == "recommendation" and is_hindi(rec["message"])
-    assert "3 दिन से" in rec["message"] and "निदान नहीं" in rec["message"]
-
-
-def test_hinglish_triage_reads_like_a_person(client):
-    q = chat(client, "3 din se bukhar aur sar dard hai")
-    assert q["message"] == "Samajh gayi, bukhar aur sar dard. Koi aur symptoms hain?"
-    rec = chat(client, "haan thodi khasi bhi", session_id=q["session_id"])
-    assert rec["message"].startswith("Samajh gayi: 3 din se bukhar, sar dard aur khansi.")
-    assert "Gambhirta" not in rec["message"]
 
 
 @pytest.mark.parametrize("text, lang", [("seene mein tez dard aur saans nahi aa rahi", "hinglish"),

@@ -1,10 +1,10 @@
 # Vita: `POST /v2/agent/chat`
 
 Vita Chat requirements, Part 2 (VITA-1 to VITA-13), and the Phase 1 rules of the NLP Router Agentic AI
-vision ("How Vita talks"). Vita is its own endpoint; **`/chat` is unchanged** (it still adds the older
-`doctors` block on a confident recommendation while lookups are on). Code: `hms_router/doctor_intent.py` (what kind of ask),
-`hms_router/doctors.py` (`DoctorDirectory`, the only way to 1HMS), `hms_router/application/doctor_chat.py`
-(the turn logic). Tests: `tests/test_vita_doctor_chat.py`.
+vision ("How Vita talks"). The old `/chat` agent is gone (2026-10-31); `POST /chat` is now an alias of Vita. Code:
+`hms_router/doctor_intent.py` (what kind of ask), `hms_router/doctors.py` (`DoctorDirectory`, the only way to 1HMS),
+`hms_router/application/doctor_chat.py` (Vita's code steps), `hms_router/vita_graph/` (the conversation). Tests:
+`tests/test_vita_doctor_chat.py`, `tests/test_vita_graph.py`.
 
 ## Turn it on
 
@@ -17,40 +17,19 @@ vision ("How Vita talks"). Vita is its own endpoint; **`/chat` is unchanged** (i
 
 Unset = Vita still talks and triages, but every doctor search answers with `degraded: ["doctor_lookup"]`.
 
-## Engine: LangGraph + an LLM agent (2026-10-30)
+## Engine
 
-`POST /v2/agent/chat` runs `hms_router/vita_graph` (same request and reply contract; replies carry `engine`).
-
-```
-START -> guard_in --(danger / a step in progress / a tap)--> rules (DoctorChat) --------> finish -> END
-                  \-> agent (Groq, tools bound) <-> tools -> finish (checker) -> END
-```
-
-- **guard_in is code, not a model.** Self-harm (`safety/self_harm.py`) and the shared emergency detector run on
-  every message first. Booking (OTP), an emergency and its follow-ups, "where are you?", "which doctor?", the
-  warning-sign question, rules triage waiting for an answer, directions / check-in / token, Bangla, doctor taps
-  and paging stay with the reviewed rules engine.
-- **Tools** (`vita_graph/tools.py`), each running Vita's existing code: `assess_symptoms` (the LLM's plain-English
-  reading -> shared emergency detector -> route-symptom -> doctors), `find_doctors` (specialty, name, degree,
-  hospital, place, near me, lady/male, today, fee/experience, more), `vita_flow` (booking, availability, visit,
-  handoff: answered by the rules engine), `raise_emergency`, `reply` (message + up to 3 tap options).
-  The LLM can only add urgency.
-- **Checker** (`vita_graph/checker.py`) on every LLM-written message: medicine names or doses, a diagnosis,
-  phone numbers, links, "booked" claims, doctors not returned by a tool, over 700 characters. A blocked reply never
-  reaches the patient: the tool's own wording is used, or the rules engine answers.
-- **Fallbacks:** no `VITA_LLM_PROVIDER`, an error, or 3 failures in a row (60 s breaker) -> the rules engine.
-- **Memory:** the last 12 lines of the conversation (both engines) in Redis `vita:llm:{session}` for 30 min;
-  booking turns stored as "[booking details]". Patient text is redacted (phones, emails, "my name is") before
-  it is sent to the model.
-- **Settings:** `VITA_LLM_PROVIDER=groq` + `GROQ_API_KEY`, `VITA_LLM_MODEL` (default `openai/gpt-oss-120b`),
-  `VITA_LLM_TIMEOUT` (default 6 s per call; at most 4 model calls per message). Dev deploy turns it on when the
-  `GROQ_API_KEY` repository secret exists; Prod stays off until `PROD_VITA_LLM_PROVIDER=groq`.
-- **Tests:** `tests/test_vita_graph.py` (scripted model, no key needed).
+The whole conversation runs on one LangGraph graph: code steps first (self-harm, taps, after an emergency, the visit,
+booking/OTP, answers to Vita's own questions, emergencies and warning signs, private numbers), then the LLM agent
+(understanding, triage, search, replies): see [vita_graph.md](vita_graph.md). Since 2026-10-31 there is no rules
+engine behind it. Without `VITA_LLM_PROVIDER`, with the control switch `off`, or while Groq fails, the code steps still
+run, plain doctor searches still work, and anything else gets "please try again, or talk to our team" (the sections
+below on symptom triage wording describe what the agent now does with the LLM).
 
 ## Request
 
 ```json
-POST /v2/agent/chat          (same API keys and rate limit as /chat)
+POST /v2/agent/chat          (API key with the chat scope)
 {
   "text": "skin ka doctor chahiye",
   "session_id": "…",              // from the previous reply; omit on the first message
@@ -88,8 +67,28 @@ Combinations work in one turn ("MD cardiologist near Salt Lake"). Refinements re
 "inme se koi paas wala?", "kam fees wala", "sabse experienced". A bare "doctor chahiye" gets
 `clarify.kind = "ask_kind"` with the five options.
 
+### Typing mistakes (2026-10-30)
+
+Every kind of search survives the way patients type (`hms_router/search_spelling.py`, `doctor_intent.fix_search_words`):
+
+| What | Typed | Read as |
+|---|---|---|
+| specialty words | "cardiolgist", "gynacologist", "pediatrision", "opthalmologist", "dnb dermatolgy" | the specialty |
+| doctor word, short words next to it | "doktor", "doctr", "specilist", "skn doctor", "hart ka doctor", "nak kan gala doctor" | doctor / skin / heart / ENT |
+| degree | "mbs", "mbbbs", "M.B.B.S" | MBBS |
+| names (spelling and sound) | "neha sarma", "kunal ghose", "chaterji", "S. Roy" | the listed spelling, sent to 1HMS and shown in the reply |
+| cities, old names, anywhere in the ask | "skin doctor kolkata", "cardiologist kolkatta", "calcutta", "siligudi", "purnea" | the city as 1HMS spells it (1HMS city match is exact) |
+| symptoms | "chest pian", "hedache", "stomuch pain", "tooth ache", "eye redness", "coughing blood" | the symptom; red-flag phrases accept one swapped pair of letters |
+
+How close is close enough: no typo under 4 letters, 1 up to 6, 2 up to 12, 3 above; two letters swapped count as one;
+sound-alike names need the same first letter and a consonant skeleton of 3+ letters. Two equally close words with
+different meanings are not guessed. Listed doctors' names and cities are never "corrected" (a Dr Hart stays Hart), and
+real specialties Vita has no word for (radiologist, psychologist ...) are left as typed. Short words ("bone", "skn")
+are repaired only when the message asks for a doctor, so symptom typos stay with the symptom spell-checker. The name and
+city lists come from `list_doctor_names` (cached 15 min, `DoctorDirectory.index()`).
+
 Body words alone ("pet mein dard", "kaan mein dard") are symptoms and go to triage; "pet ka doctor" is a
-specialty ask. Triage asks **at most two** follow-up questions before showing something (`/chat` keeps 3).
+specialty ask. Triage asks **at most two** follow-up questions before showing something.
 
 ## Booking (vision Phase 2)
 
@@ -222,7 +221,6 @@ Hindi) or Hindi (Devanagari). `language` on every reply says which.
   the patient's language and keep one English line as a backup.
 - The triage result is said like a person ("Samajh gaya: 3 din se bukhar aur khansi. Iske liye General
   Physician ko dikhana sahi rahega…"), not the printed card; `card` still carries the full detail.
-- `/chat` keeps its own wording; only its language detection improved.
 
 ## How Vita talks (conversation moves)
 

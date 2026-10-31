@@ -5,24 +5,23 @@ editing another endpoint's code.
 """
 from __future__ import annotations
 
-import dataclasses
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ...agent import HMSRouterAgent
-from ...application.chat import ChatService
 from ...application.container import build_route_symptom_service
 from ...application.retraining import Retrainer
 from ...booking_client import build_public_client
+from ...config import Settings
 from ...doctors import build_directory
+from ...pipeline import HMSRouterPipeline
 from ...rag.model_bundle import MODEL_PATH, ModelBundle
 from ...telemetry import build_recorder
 from ..llm.factory import build_llm_completion
 from ..settings import ServiceSettings
-from . import admin_routes, agent_routes, chat_routes, errors, health_routes, route_routes
+from . import admin_routes, agent_routes, errors, health_routes, route_routes
 from .security import ApiKeyAuth, Guard, RateLimiter, RequestContextMiddleware
 
 log = logging.getLogger("hms_router.api")
@@ -52,23 +51,24 @@ class _LazyLimiter:
 
 
 def _build_vita_runtime(settings: ServiceSettings, app):
-    """Vita's LangGraph agent (hms_router/vita_graph). No VITA_LLM_PROVIDER, or langgraph missing -> None and Vita
-    answers with its rules engine as before."""
-    if not settings.vita_llm_provider:
-        log.info("Vita LLM agent OFF (VITA_LLM_PROVIDER not set): Vita runs on its rules engine")
-        return None
-    try:
-        from ...vita_graph import build_vita_graph, build_vita_llm
-        from ...vita_graph.engine import VitaRuntime
-        llm = build_vita_llm(settings.vita_llm_provider, settings.vita_llm_model, settings.vita_llm_timeout)
-        if llm is None:
-            return None
-        rt = VitaRuntime(llm, build_vita_graph(), route_service=lambda: getattr(app.state, "route", None))
-        log.info("Vita LLM agent ON (%s %s)", settings.vita_llm_provider, settings.vita_llm_model or "default model")
-        return rt
-    except Exception:
-        log.exception("Vita LLM agent could not start; Vita runs on its rules engine")
-        return None
+    """Vita's LangGraph runtime (hms_router/vita_graph): the graph, its checkpointer, the learning stores and the
+    control switch. Always built; the LLM agent answers only with an LLM (VITA_LLM_PROVIDER). Without one, the graph's
+    code steps and its fallback answer."""
+    from ...vita_graph.engine import VitaRuntime
+    from ...vita_graph.llm import build_vita_llm
+    llm = None
+    if settings.vita_llm_provider:
+        try:
+            llm = build_vita_llm(settings.vita_llm_provider, settings.vita_llm_model, settings.vita_llm_timeout)
+        except Exception:
+            log.exception("Vita's LLM could not start; Vita answers with its code steps and fallback")
+    rt = VitaRuntime(llm, app.state.redis, route_service=lambda: getattr(app.state, "route", None))
+    app.state.vita_llm = {"provider": settings.vita_llm_provider if rt.has_llm else None,
+                          "model": (settings.vita_llm_model or "openai/gpt-oss-120b") if rt.has_llm else None}
+    log.info("Vita LangGraph agent %s", f"ON ({settings.vita_llm_provider})" if rt.has_llm
+             else "WITHOUT an LLM (no VITA_LLM_PROVIDER): code steps and the fallback only")
+    return rt
+
 
 def create_app(settings: ServiceSettings | None = None) -> FastAPI:
     settings = settings or ServiceSettings.from_env()
@@ -79,21 +79,10 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
         app.state.redis = _build_redis(settings)
         app.state.limiter = RateLimiter(app.state.redis, {"route": settings.rate_limit_route,
                                                           "chat": settings.rate_limit_chat})
-        # /chat uses the same emergency detector as /v1/route-symptom (read on every message, so a model
-        # rebuild that replaces app.state.route is picked up); until the route service is ready, /chat
-        # falls back to its built-in safety net.
-        app.state.chat = ChatService(HMSRouterAgent(
-            app.state.redis,
-            emergency_detector=lambda: getattr(getattr(app.state, "route", None), "detector", None)))
-        log.info("HMSRouterAgent ready")
-        # Vita (/v2/agent/chat): the same triage agent and models, but at most two follow-up questions
-        # before showing something (vision: "never more than two questions before showing something useful")
-        base = app.state.chat.agent
-        app.state.vita_agent = HMSRouterAgent(
-            app.state.redis, settings=dataclasses.replace(base.cfg, followup_max_turns=2), lexicon=base.pipeline.lex,
-            retriever=base.retriever, classifier=base.classifier, emergency_detector=base.emergency_detector,
-            # Vita's specialist comes from the /v1/route-symptom engine (route_bridge.py); /chat is unchanged
-            route_service=lambda: getattr(app.state, "route", None))
+        # Vita's sessions, language and spelling; its emergency check uses the same detector and its specialist the
+        # same engine as /v1/route-symptom (read on every message, so a model rebuild is picked up)
+        app.state.vita_pipeline = HMSRouterPipeline(app.state.redis, settings=Settings())
+        app.state.emergency_detector = lambda: getattr(getattr(app.state, "route", None), "detector", None)
         app.state.telemetry = build_recorder(settings.cms_api_url, settings.cms_service_key, settings.telemetry_hash_key)
         app.state.telemetry.start()
         app.state.doctors = build_directory(settings.doctors_mcp_url, settings.doctors_mcp_key,
@@ -146,8 +135,10 @@ def create_app(settings: ServiceSettings | None = None) -> FastAPI:
     auth = ApiKeyAuth(settings)
     limiter = _LazyLimiter(app)
     app.include_router(health_routes.build_router())
-    app.include_router(chat_routes.build_router(Guard(auth, limiter, "chat")))
-    app.include_router(agent_routes.build_router(Guard(auth, limiter, "chat")))
+    # the search bar's key has the "route" scope (it is a one-shot reading like /route-symptom, no conversation)
+    app.include_router(agent_routes.build_router(Guard(auth, limiter, "chat"), Guard(auth, limiter, "admin"),
+                                                 Guard(auth, limiter, "route")))
+    app.include_router(agent_routes.build_legacy_router(Guard(auth, limiter, "chat")))     # /chat -> Vita (deprecated)
     app.include_router(route_routes.build_router(Guard(auth, limiter, "route")))
     app.include_router(admin_routes.build_router(Guard(auth, limiter, "admin")))
     app.state.settings = settings
