@@ -109,7 +109,9 @@ SHORT_FORMS = {
     "kkrh": "kya kar rahe ho", "kkrhe": "kya kar rahe ho", "kkr": "kya kar rahe ho", "hru": "how are you",
     "wbu": "and you", "hbu": "and you", "gm": "good morning", "wassup": "whats up", "wasup": "whats up",
     "sup": "whats up", "whatsup": "whats up", "hlo": "hello", "hlw": "hello", "helo": "hello", "hii": "hi",
-    "rha": "raha", "rhi": "rahi", "rhe": "rahe", "kch": "kuch", "kuchh": "kuch",
+    "rha": "raha", "rhi": "rahi", "rhe": "rahe", "kch": "kuch", "kuchh": "kuch", "tc": "take care", "gud": "good",
+    "nite": "night", "mrng": "morning", "mng": "morning", "bbye": "bye bye", "byee": "bye", "sry": "sorry",
+    "srry": "sorry", "w8": "wait", "bta": "batao", "btw": "by the way", "ofc": "of course",
     # question words, verbs
     "ky": "kya", "kyaa": "kya", "kyu": "kyun", "kb": "kab", "kaha": "kahan", "kitna": "kitna",
     "kru": "karu", "kroon": "karu", "kro": "karo", "kr": "kar", "krna": "karna", "krni": "karni", "krein": "karein",

@@ -51,7 +51,41 @@ SELF_HARM_SIGN = _SELF_HARM.lower()
 # the words of a plain "no / nothing else" answer (see emergency_signs)
 _ANSWER_WORDS = {"nahi", "nahin", "nai", "na", "no", "nope", "aur", "kuch", "koi", "bhi", "hai", "hain", "bas", "itna",
                  "hi", "ji", "nothing", "else", "thats", "that", "s", "it", "all", "theek", "thik", "ok", "okay", "haan",
-                 "han", "yes", "aage", "abhi", "toh", "to", "sab", "sirf", "else", "more"}
+                 "han", "yes", "aage", "abhi", "toh", "to", "sab", "sirf", "else", "more",
+                 # "abhi nahi chahiye", "zarurat nahi", "no thanks, later" (the model scored "abhi nahi chahiye" 0.72)
+                 "chahiye", "chaiye", "zarurat", "zaroorat", "need", "dont", "don", "t", "do", "baad", "mein", "later",
+                 "please", "thanks", "thank", "you", "rehne", "dijiye", "not", "now", "maybe", "filhal"}
+_LANG_NAMES = r"(hindi|hindee|हिंदी|हिन्दी|english|angrezi|angreji|inglish|bangla|bengali|bangali)"
+_LANG_ASK = re.compile(
+    r"^(please |plz |pls |kya |can (you|u) |could (you|u) )?" + _LANG_NAMES +
+    r" ?(mein|me|mai|main|में|te|e|please|plz|pls)? ?(baat karo|baat kariye|baat karein|baat kijiye|bolo|boliye|bolein"
+    r"|likho|likhiye|likhein|batao|bataiye|samjhao|reply|reply karo|jawab do|chalega|please|plz|pls|only|me baat karo"
+    r"|bol sakti ho|bol sakte ho|aati hai|aati hai kya|बात करो|बोलो|बात कीजिए)?( please| plz| pls| na| ji)?$"
+    r"|^(speak|talk|reply|answer|write|chat)( to me| with me)? in " + _LANG_NAMES + r"( please| plz)?$"
+    r"|^(can|could|do) (you|u) (speak|talk|understand) " + _LANG_NAMES + r"$"
+    r"|^" + _LANG_NAMES + r" (please|plz|pls)$")
+_LANG_OF = {"hindi": "hindi", "hindee": "hindi", "हिंदी": "hindi", "हिन्दी": "hindi", "english": "english",
+            "angrezi": "english", "angreji": "english", "inglish": "english", "bangla": "bangla", "bengali": "bangla",
+            "bangali": "bangla"}
+
+
+def _language_request(norm: str) -> str | None:
+    """"hindi mein baat karo" -> "hindi"; "english please" -> "english". None for anything else, including a doctor
+    who speaks a language ("english speaking doctor")."""
+    norm = (norm or "").strip().rstrip("?!. ")
+    if not norm or re.search(r"\b(doctor|dr|daktar|specialist)\b", norm):
+        return None
+    m = _LANG_ASK.match(norm)
+    if not m:
+        return None
+    word = next(w for w in re.findall(r"[\w\u0900-\u097F]+", norm) if w in _LANG_OF)
+    return _LANG_OF[word]
+
+
+# words that may be a cry for help: a model-only flag on a message with any of these always stands
+_CRY_FOR_HELP = {"help", "bachao", "bachaao", "bacha", "jaldi", "urgent", "emergency", "ambulance", "hospital", "serious",
+                 "mar", "marna", "mara", "marne", "maut", "die", "dying", "dead", "khatam", "please", "plz", "sos",
+                 "aao", "aaiye", "bulao", "call", "phone", "108", "112"}
 AFTER_EMERGENCY_S = 2 * 3600      # how long "ambulance aa gayi", "ab theek hoon" are read as about that emergency
 # what patients say after Vita told them to call 108
 _AFTER_EMERGENCY = (
@@ -247,6 +281,30 @@ class DoctorChat:
                 return self._search_turn(text, sid, _filters(ask), ctx, st)
         return None
 
+    def step_language(self, text, sid) -> dict | None:
+        """"hindi mein baat karo", "english please", "bangla bolo": the patient chooses Vita's language. Kept for the
+        whole conversation (session context language_pref) whatever language later messages are typed in. A doctor
+        who speaks a language ("english bolne wale doctor") is a search, not this."""
+        want = _language_request(intent_text(self.tidy(text)))
+        if want is None:
+            return None
+        if want == "bangla":
+            return self._bangla(text, sid)
+        if want == "hindi" and not re.search(r"[\u0900-\u097F]", text):
+            want = "hinglish"                                         # asked in Roman letters: Roman Hindi back
+        ing = self._ingest_only(text, sid)
+        self.pipeline.sessions.set_context(ing.session_id, language=want, language_pref=want)
+        st = self.load(ing.session_id)
+        st["language"], st["turn"] = want, ing.turn
+        self._save(ing.session_id, st)
+        v = Voice(want)
+        msg = v("Sure, I'll talk in English. What's bothering you, or which doctor do you need?",
+                "Theek hai, ab main Hindi mein baat karungi. Aapko kya takleef hai, ya kaunsa doctor chahiye?",
+                "ठीक है, अब मैं हिंदी में बात करूँगी। आपको क्या तकलीफ़ है, या कौन-सा डॉक्टर चाहिए?")
+        base = {"session_id": ing.session_id, "turn": ing.turn, "language": want}
+        return self._reply(base, FOLLOW_UP, msg, question=msg,
+                           clarify={"kind": "ask_kind", "question": msg, "options": V.ask_kind_options(v)})
+
     def step_bangla(self, text, sid) -> dict | None:
         if self.pipeline.detector.detect(text).language == "bangla":
             return self._bangla(text, sid)
@@ -383,7 +441,17 @@ class DoctorChat:
         signs = self.emergency_signs(text)
         if signs is not None:
             return self.emergency_reply(text, sid, ctx, signs)
+        if everyday.detect(intent_text(self.tidy(text)), text) == "distress":
+            return self._distress(text, sid)                       # "bachao", "please help": 108, then what happened
         return None
+
+    def _distress(self, text, sid) -> dict:
+        """A cry for help with nothing else said: the emergency number first, then what happened. Not the full
+        emergency takeover (no sign was named), so the next message is read normally."""
+        ing, st, base, v = self._ingest(text, sid)
+        self._save(ing.session_id, st)
+        msg = everyday.reply("distress", v)
+        return self._reply(base, FOLLOW_UP, msg, question=msg)
 
     def step_privacy(self, text, sid, ctx) -> dict | None:
         """"Dr Sharma ka number do": never a doctor's personal number; booking, or the hospital front desk from
@@ -518,6 +586,28 @@ class DoctorChat:
     def handoff(self, text, sid, reason: str = "asked") -> dict:
         return self._handoff(text, sid, reason)
 
+    def social(self, text, sid, *, moves=None) -> dict | None:
+        """Everyday talk that needs no model ("thanks", "tata", "ruko", "sorry", "mera naam Rahul hai", "test", "tum
+        kaun ho"): the ready-made answer in the patient's language. None when the message also carries a symptom or a
+        doctor ask, or is not one of these."""
+        norm = intent_text(self.tidy(text))
+        move = everyday.detect(norm, text)
+        if move not in (moves or everyday.NO_MODEL_MOVES) or self._said_symptom(text):
+            return None
+        ask = self.read_ask(text, sid)
+        if move != "personal" and (ask.specialty_key or ask.name_query or ask.degree):
+            return None
+        words = set(norm.split())
+        if move == "about" and words & {"doctor", "doctors", "dr", "daktar"} and not words & {"tum", "aap", "ap", "tu",
+                                                                                               "you", "u"}:
+            return None                                       # "english bolne wale doctor": a search, not about Vita
+        ing, st, base, v = self._ingest(text, sid)
+        self._save(ing.session_id, st)
+        msg = everyday.reply(move, v, name=everyday.said_name(norm) if move == "name" else None)
+        options = ([V.human_option(v)] if move == "upset" else []) + V.ask_kind_options(v)   # upset: a person first
+        kind = FOLLOW_UP if move in ("name", "sorry", "test") else INFO
+        return self._reply(base, kind, msg, clarify={"kind": "ask_kind", "question": msg, "options": options})
+
     def unavailable(self, text, sid, ctx) -> dict:
         """When Vita cannot understand right now (the LLM is off or failing): say so, offer a person and the ways to
         search. Emergencies never reach here: the safety step runs first on every message."""
@@ -525,7 +615,7 @@ class DoctorChat:
         self._save(ing.session_id, st)
         ask = self.read_ask(text, sid)
         move = everyday.detect(intent_text(self.tidy(text)), text)
-        if ask.move == "greeting" and move not in ("howareyou", "chitchat"):                                # "hello", "namaste": a hello back, the ways to ask
+        if ask.move == "greeting" and move not in everyday.SOCIAL_MOVES:   # "hello", "namaste": a hello back
             if ing.language.strength != "strong":                 # "heyyy" does not say which language comes next
                 self.pipeline.sessions.set_context(ing.session_id, language="")
                 st.pop("language", None)
@@ -535,10 +625,9 @@ class DoctorChat:
                   "नमस्ते! मैं Vita हूँ। आपको किस तरह का डॉक्टर चाहिए?")
             return self._reply(base, FOLLOW_UP, q, question=q,
                                clarify={"kind": "ask_kind", "question": q, "options": V.ask_kind_options(v)})
-        if move in everyday.NO_MODEL_MOVES and not self._said_symptom(text):   # "kkrh", "fees kitni", "thanks"
-            msg = everyday.reply(move, v)
-            options = ([V.human_option(v)] if move == "upset" else []) + V.ask_kind_options(v)   # upset: a person first
-            return self._reply(base, INFO, msg, clarify={"kind": "ask_kind", "question": msg, "options": options})
+        out = self.social(text, ing.session_id)                   # "kkrh", "fees kitni", "thanks"
+        if out is not None:
+            return out
         if not (ask.symptomish or self._said_symptom(text)):     # not medical and not understood: show how to ask
             msg = v("Sorry, I didn't get that. Tell me what's bothering you (like 'fever for 2 days') or which doctor "
                     "you need (like 'skin doctor').",
@@ -580,9 +669,10 @@ class DoctorChat:
             shared = self._shared(text, texts)
             if shared is not None:
                 if shared.flag and not shared.reasons and shared.source == "model" \
-                        and set(re.findall(r"[a-z]+", texts[0])) <= _ANSWER_WORDS:
-                    # the model alone, no sign, on a reply made only of "no / nothing else" words ("nahi, aur kuch
-                    # nahi" scored 0.73): an answer, not an emergency. Any other word, or any rule, still counts.
+                        and self._only_everyday(texts[0]):
+                    # the model alone, no sign, on a message made only of everyday words ("nahi, aur kuch nahi" 0.73,
+                    # "abhi nahi chahiye" 0.72, "ruko ek minute" 0.62): talk, not an emergency. A word that could be a
+                    # cry for help, any other word, or any rule still counts.
                     return None
                 return [r.lower() for r in shared.reasons] if shared.flag else None
             hits = [h["english"].lower() for h in emergency_check({}, texts) if h["flag"] == EMERGENCY]
@@ -590,6 +680,17 @@ class DoctorChat:
         except Exception:
             log.exception("emergency check failed; treating the message as an emergency")
             return []
+
+    def _only_everyday(self, norm: str) -> bool:
+        words = set(re.findall(r"[a-z]+", norm))
+        if not words or words & _CRY_FOR_HELP:
+            return False
+        known = self.__dict__.get("_everyday_words")
+        if known is None:
+            known = self._everyday_words = _ANSWER_WORDS | {e.variant for e in self.pipeline.lex.entries
+                                                            if e.category in ("everyday", "particle", "function", "number")
+                                                            and " " not in e.variant}
+        return words <= known
 
     def emergency_reply(self, text, sid, ctx, signs: list[str]) -> dict:
         """Vita's emergency reply: the number first in the patient's language, Tele-MANAS for self-harm, the nearest

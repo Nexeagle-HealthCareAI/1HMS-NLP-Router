@@ -8,6 +8,7 @@ import json
 import logging
 import time
 
+from ..application import everyday
 from .. import voice as V
 from ..application.doctor_chat import DOCTOR_LIST, FOLLOW_UP, DoctorChat
 from ..doctors import FALLBACK_SPECIALIST, DoctorLookupError, specialty_key
@@ -51,7 +52,8 @@ class Turn:
         """When the LLM agent cannot answer (off, failing, or its reply was blocked): a plain doctor search when the
         message is plainly one, else "please try again, or talk to our team". The safety step has already run."""
         steps = self.flow
-        return steps.plain_search(self.text, self.session_id, self.ctx) or \
+        return steps.social(self.text, self.session_id, moves=everyday.SOCIAL_MOVES) or \
+            steps.plain_search(self.text, self.session_id, self.ctx) or \
             steps.unavailable(self.text, self.session_id, self.ctx)
 
     @property

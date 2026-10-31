@@ -50,8 +50,11 @@ class HMSRouterPipeline:
 
         sid, is_new = self.sessions.open(session_id)             # active session? append : init new (TTL 30 min)
         heard = self.detector.detect(text)                       # this message: script, then word scores
-        previous = None if is_new else self.sessions.context(sid).get("language")
+        ctx = {} if is_new else self.sessions.context(sid)
+        previous = ctx.get("language")
         lang = resolve(heard, previous, language_hint)           # the conversation's language after it
+        if ctx.get("language_pref"):                              # the patient asked for this language
+            lang = LanguageResult(ctx["language_pref"], heard.script, "preference", heard.strength)
         normalized = normalize_script(text)                      # Devanagari -> lowercase Roman
         turn = self.sessions.append(sid, {"raw": text, "normalized": normalized, "language": heard.language})
         self.sessions.set_context(sid, language=lang.language, script=lang.script)

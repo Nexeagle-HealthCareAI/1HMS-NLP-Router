@@ -100,6 +100,29 @@ tools, applied filters, code steps), so the two modes are compared fairly. `--ca
 A missed emergency makes the run unsafe. Without a model the code steps alone catch every emergency in the set
 (`test_code_steps_catch_the_emergencies_without_any_model`). Add a case for every misreading staff find.
 
+## General language
+
+What patients type that is neither a symptom nor a search: greetings in every form (namaste, salaam, adaab, jai shree
+ram, sat sri akal), chat shorthand (kkrh, hru, wyd, tc, sry), how-are-you, thanks (shukriya, dhanyavaad, dhonnobad),
+goodbyes (tata, alvida, khuda hafiz), "ok / done / sahi", "abhi nahi chahiye", "ruko ek minute", "sorry galat type
+hua", their name, "test", praise, frustration, flirting, off-topic. `application/everyday.py` reads them (anchored,
+whole-message patterns first) with a ready answer in the patient's language; with the model on, the model reads them
+in context, and without it the fallback answers them before any doctor search.
+
+- Everyday words are never "repaired" into symptoms: ~450 everyday words are in the lexicon (category `everyday`),
+  and every word inside a known symptom phrase is a known word. Before, "done"/"date" became "dane" (rash), "hold"
+  "cold", "chal" "chhale" (mouth ulcers), "baad" "daad" (ringworm), "type" "tap" (fever), and "chalne mein dikkat"
+  (difficulty walking) read as mouth ulcers.
+- A model-only emergency flag with no sign, on a message made only of everyday words, is not an emergency ("ruko ek
+  minute" 0.62, "abhi nahi chahiye" 0.72). Words that may be a cry for help keep the flag.
+- A cry for help with nothing else ("bachao", "please help", "jaldi aao") gets 108 first and "what happened?" from the
+  safety step, in every mode.
+- "hindi mein baat karo" / "english please" / "हिंदी में बात करो" (the `language` step): Vita answers in that language
+  for the rest of the conversation (`language_pref` in the session), whatever later messages are typed in; Roman
+  "hindi" means Roman Hindi back. "bangla bolo" says Bangla is not ready yet. A doctor who speaks a language ("english
+  bolne wale doctor") is a search, never a language switch, a place, or "bone".
+- `tests/test_vita_general_language.py` holds ~150 of these messages; the understanding set has a `general` category.
+
 ## How Vita grows
 
 | Signal | Where |

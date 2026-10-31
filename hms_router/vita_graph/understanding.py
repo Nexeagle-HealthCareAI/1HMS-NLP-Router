@@ -144,7 +144,8 @@ def score_turn(expect: dict, r: dict, last_list: list[dict]) -> dict[str, bool]:
     if "today" in expect:
         s["today"] = r["today"] == expect["today"]
     if "place" in expect:
-        s["place"] = bool(r.get("place")) and _any(expect["place"], str(r["place"]).lower())
+        s["place"] = (bool(r.get("place")) and _any(expect["place"], str(r["place"]).lower())) if expect["place"] \
+            else not r.get("place")                                  # None: no place was named
     if "specialty" in expect:
         want = expect["specialty"]
         s["specialty"] = r.get("specialty") in (want if isinstance(want, (set, list, tuple)) else {want})

@@ -21,11 +21,41 @@ _Q = r"(kya|kitni|kitna|kitne|kaise|kab|kahan|kyun|kyu|kaun|how|what|when|where|
 
 # order matters: the first that matches wins
 MOVES: list[tuple[str, re.Pattern]] = [
+    # ---- a cry for help with nothing else said (answered by the safety step in every mode)
+    ("distress", re.compile(r"^(please |plz |koi )?(bachao|bachaao|bacha lo|bachalo|help me|help karo|please help|help please"
+                            r"|helpp+|sos|madad karo|madad chahiye jaldi|jaldi madad|jaldi aao|jaldi aaiye|jaldi bulao"
+                            r"|koi hai bachao|emergency hai|urgent hai|jaldi karo)( (please|plz|jaldi|koi|bhai|ji))*$")),
+    # ---- social talk: the whole message is one of these (anchored), so a doctor or symptom ask never lands here
+    ("thanks", re.compile(r"^(ok |okay |accha |achha )?(thanks?|thank (you|u)|thanku|thnks|ty|shukriya|shukria|dhanyavaa?d"
+                          r"|dhanyawaa?d|dhonnobad|dhanyabad|meherbani|shukran|jazakallah\w*|bahut shukriya|bahut dhanyavaad)"
+                          r"( (ji|vita|dear|bhai|bhaiya|didi|madam|mam|sir|yaar|so much|a lot|again))*$")),
+    ("bye", re.compile(r"^(ok |okay |chalo |accha |achha |theek hai )?(bye|bye bye|byee+|tata|ta ta|alvida|khuda hafiz"
+                       r"|allah hafiz|see (you|u|ya)|see you later|phir milte( hain)?|fir milte( hain)?|baad mein baat (karte|karenge)"
+                       r"( hain)?|take care|good ?bye|chalta hu|chalta hoon|chalti hu|chalti hoon)( (ji|vita|dear|bhai|bhaiya|didi|madam|mam|sir|yaar|so much|a lot|again))*$")),
+    ("later", re.compile(r"^(abhi )?(nahi|nhi|no) ?(abhi|abhi nahi|chahiye|zarurat|zaroorat)?( nahi)?( chahiye| hai)?$"
+                         r"|^(abhi nahi chahiye|zarurat nahi|zaroorat nahi|koi zarurat nahi|nahi chahiye|kal dekhte hain"
+                         r"|baad mein dekhte hain|baad mein|later|rehne do|rehne dijiye|bas itna hi|bas itna hi tha|bas"
+                         r"|no thanks|not now|maybe later|kuch nahi|kuch nai|nothing|kuch nahi bas aise hi|bas aise hi|aise hi"
+                         r"|timepass|bas timepass|just checking|just browsing)$")),
+    ("wait", re.compile(r"^(ruko|ruko zara|zara ruko|thoda ruko|ek minute|ek min|ek second|ek sec|1 min|1 minute|2 min"
+                        r"|do minute|one minute|one sec|wait|wait please|please wait|hold on|abhi aata hu|abhi aata hoon"
+                        r"|abhi aati hu|abhi aati hoon|busy hu|busy hoon|thodi der mein)( (ji|yaar|please|na))*$")),
+    ("sorry", re.compile(r"^(sorry|sry|oops|galti se|galti se likha|galti ho gayi|galat type (hua|ho gaya)|sorry galat type"
+                         r"( hua| ho gaya)?|maaf karna|maaf kijiye|maaf kijiyega|my bad|mistake)( (ji|yaar|sorry))*$")),
+    ("name", re.compile(r"^(mera naam|my name is|my name s|naam) (?P<name>[a-z]+( (?!hai$|h$|he$)[a-z]+)?)( hai| h| he)?$"
+                        r"|^main (?P<name2>[a-z]+) bol (raha|rahi) (hoon|hu|hun)$|^(this is|i am|i m) (?P<name3>[a-z]+) (here|speaking)$")),
+    ("test", re.compile(r"^(test|testing|test test|test message|check|checking|hello hello|hello hello hello|koi hai|koi hai kya"
+                        r"|anyone there|is anyone there|kya ye kaam karta hai|kya ye chal raha hai|ye kaam kar raha hai|working"
+                        r"|is this working|are you there|aap ho|tum ho|online ho)$")),
+    ("personal", re.compile(r"\b(i love you|love you|shaadi karogi|shadi karogi|marry me|date pe chalo\w*|date par chalo\w*"
+                            r"|cute ho|sundar ho|beautiful ho|hot ho|gf banogi|girlfriend banogi|kiss|send pic|photo bhejo"
+                            r"|pic bhejo|tumhari photo|single ho|tumhari age|kitne saal ki ho)\b")),
     ("what_is_dd", re.compile(r"\bdoctor ?dekho\b.*\b(kya|kaun|what|kaisa|kaise)\b|\bwhat is doctor ?dekho\b")),
     ("about", re.compile(
         r"\b(tum|aap|tu|ap)\s+(kaun|kon)\b|\bwho (are|r) (you|u)\b|\bwhat are you\b"
         r"|\b(your|tumhara|tumhaara|aapka|apka|tera)\s+(naam|name)\b|^(name|naam)\??$"
         r"|\b(insaan|insan|human|robot|bot|machine|real person|ai)\s+(ho|hai|hain|ho kya|hai kya)\b"
+        r"|\b(ladki|ladka|male|female|aurat|mard) ho\b|\b(boy|girl|man|woman) (ho|hai)\b|\bare (you|u) (a )?(boy|girl|man|woman)\b"
         r"|\bare (you|u) (a |an )?(bot|human|robot|ai|real|doctor|person)\b|\b(bot|robot) ho\b"
         r"|\b(tum|aap) (doctor|bot|robot|insaan|ai) (ho|hain|hai)\b"
         r"|\b(kya kar sakti|kya kar sakte|kya kya kar|what can (you|u) do|kaise use|how (do i|to) use|how does (this|it) work"
@@ -62,21 +92,28 @@ MOVES: list[tuple[str, re.Pattern]] = [
     ("privacy", re.compile(r"\b(number|naam|details|data|otp|address)\b.{0,15}\b(kyun|kyu|why|zaroori|zaruri|safe|kisko|kise"
                            r"|kaun dekh|share hoga|share hogi)\b|\b(kyun|kyu|why)\b.{0,12}\b(number|naam|otp|details)\b"
                            r"|\bmera data\b|\bprivacy\b")),
-    ("howareyou", re.compile(r"^((aap|tum|ap) )?(kaise|kaisi|kese) (ho|hain|hai|h)\b|^how (are|r) (you|u)\b|^kya haal\b|^kaisa hai\b")),
-    ("chitchat", re.compile(r"\bkya (kar|kr) (rahe|rahi|raha) (ho|hai|hain|h)\b|\bkya chal raha\b|\bwhats up\b"
+    ("howareyou", re.compile(r"^((aap|tum|ap) )?(kaise|kaisi|kese|kaisa) (ho|hain|hai|h)\b|^how (are|r) (you|u)\b|^kya haal\b"
+                             r"|^kaisa hai\b|^kaisa chal raha\b|^sab (theek|thik|badhiya|badiya|accha|achha|changa)( hai)?\b"
+                             r"|^((aap|tum) )?(theek|thik) (ho|hain)\b|^kemon (acho|achen|aachen)\b|^how(s| is) it going\b"
+                             r"|^how (you|u) doing\b|^aap sunao\b")),
+    ("chitchat", re.compile(r"\bkya (kar|kr) (rahe|rahi|raha) (ho|hai|hain|h)\b|\bkya chal raha\b|\bwhats up\b|^wyd$"
+                            r"|^(tum|aap) kahan (ho|hain)$|^kahan (ho|hain)$|^(aur|or) (batao|bta|btao|sunao|bataiye)$"
                             r"|\bwhat (are|r) (you|u) doing\b|\bkya ho raha\b|^(and you|aur aap|aur tum|tum batao|aap batao)$"
                             r"|^(good morning|good evening|good afternoon|suprabhat)\b")),
     ("goodnight", re.compile(r"^(good night|shubh ratri|shubhratri|sweet dreams)\b")),
-    ("praise", re.compile(r"\b(thank you so much|thanks a lot|bahut (accha|achha|acha|badhiya|badiya|sahi)|great|awesome|nice|"
+    ("praise", re.compile(r"^(wah|waah|wow|superb|zabardast|mast|kamaal|kamal|badhiya|badiya|excellent|love it|perfect)( (hai|ji|yaar))*$|"
+                          r"\b(thank you so much|thanks a lot|bahut (accha|achha|acha|badhiya|badiya|sahi)|great|awesome|nice|"
                           r"good job|well done|(tum|aap|you) (bahut )?(acchi|achhi|achi|smart|great|nice|helpful)|love you"
                           r"|pyaar|shabash)\b")),
-    ("upset", re.compile(r"\b(bekaar|bekar|pagal|bewakoof|bevkoof|stupid|useless|bakwas|bkwas|faltu|idiot|dumb|worst|ghatiya"
+    ("upset", re.compile(r"\b(dimag kharab|dimaag kharab|pareshan mat|time waste|time kharab|irritate|bekaar|bekar|pagal|bewakoof|bevkoof|stupid|useless|bakwas|bkwas|faltu|idiot|dumb|worst|ghatiya"
                          r"|samajh nahi aata (tumhe|aapko)|kuch nahi samajh\w*|kuch samajh nahi aata)\b")),
     ("offtopic", re.compile(r"\b(mausam|weather|cricket|score|match|news|khabar|recipe|khana banana|movie|film|song|gaana"
-                            r"|joke|jokes|chutkula|homework|naukri|job|loan|shayari|bore|game|ipl|politics|neta|share market"
+                            r"|joke|jokes|chutkula|homework|naukri|job|loan|shayari|bore|game|ipl|politics|neta|share market|gana sunao|gaana sunao"
+                            r"|khana khaya|khana khaogi|khana khaoge|kya khaya"
                             r"|stock|bitcoin|gf|girlfriend|boyfriend|shaadi)\b")),
     ("what", re.compile(r"^(kya|kya kaha|kya bola|kya matlab|samjha nahi|samjhi nahi|samajh nahi aaya|nahi samjha|nahi samjhi"
-                        r"|matlab|matlab kya|what|what do you mean|huh|phir se bolo|dobara bolo|repeat|pardon)$")),
+                        r"|matlab|matlab kya|what|what do you mean|huh|phir se bolo|dobara bolo|repeat|repeat karo|repeat please|fir se batao"
+                        r"|phir se batao|dobara batao|pardon)$")),
     ("yes", re.compile(r"^(haan|haa|ha|han|yes|yeah|ji haan|haanji|haan ji|ji ha)$")),
     ("continue", re.compile(r"^(aur|fir|phir|aage|next|aur batao|then|or|aur kuch)$")),
     ("pick", re.compile(r"^(pehla|pahla|pehle|first|1st|doosra|dusra|doosre|dusre|second|2nd|teesra|tisra|teesre|third|3rd)"
@@ -87,14 +124,18 @@ MOVES: list[tuple[str, re.Pattern]] = [
                           r"|badhiya)\b|\bbetter kaun\b|\bkisko (dikhau|dikhaun|choose|chunu)\b")),
     ("distance", re.compile(r"\b(kitna door|kitni door|kitne door|how far|kitni doori|distance)\b")),
     ("ack", re.compile(r"^(accha|achha|acha|achchha|accha ji|hmm|hm|ohh?|oh ok|sahi hai|ok ji|theek hai ji|ji|ji ok|samajh ga(?:ya)"
-                       r"|samajh gayi|got it|alright|cool|nahi pata|pata nahi|malum nahi|maloom nahi|idk|dont know|don t know)$")),
+                       r"|samajh gayi|got it|alright|cool|nahi pata|pata nahi|malum nahi|maloom nahi|idk|dont know|don t know|done|sahi|sahi hai"
+                       r"|haan theek|haan theek hai|achha ji|acha ji|achchha ji|ok ok|okay okay|fine|thik hai ji)$")),
 ]
 # Moves that may lead a reply and let the symptom flow go on ("bukhar hai, kaunsi dawai lu?" -> no medicine advice,
 # then triage on the fever).
 PREFIX_MOVES = {"medicine", "serious"}
 # Answers that need no model: the fallback (LLM off or down) can still give them. Medicine / "is it serious" / "what
 # should I do" usually come with a symptom, which needs the model, so they are not here.
-NO_MODEL_MOVES = {"about", "what_is_dd", "fees", "free", "coming_soon", "online", "appointments", "reports", "timings",
+# Social talk answered before any doctor search when the model is off (the model reads these itself when it is on).
+SOCIAL_MOVES = {"thanks", "bye", "later", "wait", "sorry", "name", "test", "personal", "howareyou", "chitchat",
+                "goodnight", "praise", "upset", "about"}
+NO_MODEL_MOVES = {"thanks", "bye", "later", "wait", "sorry", "name", "test", "personal", "about", "what_is_dd", "fees", "free", "coming_soon", "online", "appointments", "reports", "timings",
                   "insurance", "ambulance", "blood_vaccine", "privacy", "howareyou", "chitchat", "goodnight", "praise",
                   "upset", "offtopic", "what", "ack", "better", "distance"}
 # Repair words: they only mean something in context and never beat a doctor or symptom ask.
@@ -114,12 +155,21 @@ def detect(norm: str, raw: str = "") -> str | None:
     return None
 
 
+def said_name(norm: str) -> str | None:
+    """"mera naam rahul hai" -> "Rahul" (only to greet them; never stored)."""
+    m = dict(MOVES)["name"].search((norm or "").strip().rstrip("?!. "))
+    if not m:
+        return None
+    n = m.group("name") or m.group("name2") or m.group("name3") or ""
+    return n.title() or None
+
+
 def ordinal(norm: str) -> int | None:
     first = (norm or "").strip().split()[:1]
     return _ORDINAL.get(first[0]) if first else None
 
 
-def reply(move: str, v: Voice, *, fee: object = None, doctor: str | None = None) -> str:
+def reply(move: str, v: Voice, *, fee: object = None, doctor: str | None = None, name: str | None = None) -> str:
     """The answer, in the patient's language. Booking, lists and buttons are added by the caller."""
     if move == "about":
         return v("I'm Vita, Doctor Dekho's AI assistant. I'm not a person or a doctor. I listen to what's bothering you, "
@@ -233,6 +283,45 @@ def reply(move: str, v: Voice, *, fee: object = None, doctor: str | None = None)
         return v("I'm well, thank you! How can I help you today?",
                  "Main theek hoon, shukriya! Aap batayein, kya madad karun?",
                  "मैं ठीक हूँ, शुक्रिया! आप बताइए, क्या मदद करूँ?")
+    if move == "distress":
+        return v(f"If this is an emergency, call {EMERGENCY_NUMBER} (ambulance) now. What has happened? Tell me in a few "
+                 "words.",
+                 f"Agar emergency hai to abhi {EMERGENCY_NUMBER} (ambulance) par call karein. Kya hua hai? Thode shabdon "
+                 "mein batayein.",
+                 f"अगर इमरजेंसी है तो अभी {EMERGENCY_NUMBER} (एम्बुलेंस) पर कॉल करें। क्या हुआ है? थोड़े शब्दों में बताइए।")
+    if move == "thanks":
+        return v("You're welcome! Write any time you need a doctor.",
+                 "Aapka swagat hai! Doctor ki zaroorat ho to kabhi bhi likhiye.",
+                 "आपका स्वागत है! डॉक्टर की ज़रूरत हो तो कभी भी लिखिए।")
+    if move == "bye":
+        return v("Take care! Write any time you need a doctor.",
+                 "Apna dhyan rakhiye! Doctor ki zaroorat ho to kabhi bhi likhiye.",
+                 "अपना ध्यान रखिए! डॉक्टर की ज़रूरत हो तो कभी भी लिखिए।")
+    if move == "later":
+        return v("No problem. I'm here whenever you need a doctor or have a question.",
+                 "Koi baat nahi. Jab bhi doctor chahiye ya koi sawaal ho, main yahin hoon.",
+                 "कोई बात नहीं। जब भी डॉक्टर चाहिए या कोई सवाल हो, मैं यहीं हूँ।")
+    if move == "wait":
+        return v("Sure, take your time. I'm here.",
+                 "Ji, aaram se. Main yahin hoon.",
+                 "जी, आराम से। मैं यहीं हूँ।")
+    if move == "sorry":
+        return v("No problem! Tell me what's bothering you, or which doctor you need.",
+                 "Koi baat nahi! Apni takleef batayein, ya kis tarah ka doctor chahiye.",
+                 "कोई बात नहीं! अपनी तकलीफ़ बताइए, या किस तरह का डॉक्टर चाहिए।")
+    if move == "name":
+        who = f", {name}" if name else ""
+        return v(f"Nice to meet you{who}! Tell me what's bothering you, or which doctor you need.",
+                 f"Aapse milkar accha laga{who}! Apni takleef batayein, ya kis tarah ka doctor chahiye.",
+                 f"आपसे मिलकर अच्छा लगा{who}! अपनी तकलीफ़ बताइए, या किस तरह का डॉक्टर चाहिए।")
+    if move == "test":
+        return v("Yes, I'm here and working. Tell me what's bothering you, or which doctor you need.",
+                 "Ji, main yahin hoon aur kaam kar rahi hoon. Apni takleef batayein, ya kis tarah ka doctor chahiye.",
+                 "जी, मैं यहीं हूँ और काम कर रही हूँ। अपनी तकलीफ़ बताइए, या किस तरह का डॉक्टर चाहिए।")
+    if move == "personal":
+        return v("I'm Vita, an AI assistant for your health. Let's keep to that: do you need a doctor?",
+                 "Main Vita hoon, aapki sehat ke liye AI assistant. Isi mein madad kar sakti hoon: kya kisi doctor ki zaroorat hai?",
+                 "मैं Vita हूँ, आपकी सेहत के लिए AI सहायक। इसी में मदद कर सकती हूँ: क्या किसी डॉक्टर की ज़रूरत है?")
     if move == "chitchat":
         return v("I'm here to help you find a doctor. Is something bothering you, or do you need a doctor?",
                  "Main yahin hoon, aapki madad ke liye. Koi takleef hai, ya kisi doctor ki zaroorat hai?",

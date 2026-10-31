@@ -1,7 +1,7 @@
 """Vita as one LangGraph graph: the whole conversation, one run per patient message, state saved per session
 (thread_id = Vita session id) by the Redis checkpointer. There is no other conversation engine.
 
-    START -> self_harm -> tap -> bangla -> emergency_care -> visit -> booking -> picks -> safety -> privacy ─┐
+    START -> self_harm -> tap -> bangla -> language -> emergency_care -> visit -> booking -> picks -> safety -> privacy ─┐
               (each step answers what is its business, or passes the message on)               │   any answer
                                                                                                  │   -> remember
              gate ─(no LLM, switch off, breaker open)─> fallback ───────────────────────────────┤
@@ -90,6 +90,7 @@ def build_vita_graph(checkpointer=None):
         ("self_harm", lambda t: t.steps.step_self_harm(t.text, t.session_id, t.ctx)),
         ("tap", lambda t: t.steps.step_tap(t.text, t.session_id, t.ctx, t.kw)),
         ("bangla", lambda t: t.steps.step_bangla(t.text, t.session_id)),
+        ("language", lambda t: t.steps.step_language(t.text, t.session_id)),
         ("emergency_care", lambda t: t.steps.step_emergency_care(t.text, t.session_id, t.ctx)),
         ("visit", lambda t: t.steps.step_visit(t.text, t.session_id, t.ctx)),
         ("booking", lambda t: t.steps.step_booking(t.text, t.session_id, t.ctx)),
@@ -150,6 +151,9 @@ def build_vita_graph(checkpointer=None):
             patient["pregnant"] = True
         if u.get("language"):
             patient["language"] = u["language"]
+        pref = turn.flow.pipeline.sessions.context(turn.sid).get("language_pref") if turn.sid else None
+        if pref:                                                     # "hindi mein baat karo" earlier: keep to it
+            patient["language"] = pref
         if (u.get("symptoms_en") or "").strip():
             if triage.get("routed") and u.get("intent") == "symptoms" and u["symptoms_en"] != triage.get("symptoms_en"):
                 triage = {}                                          # a new complaint after advice: start again
