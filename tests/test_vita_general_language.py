@@ -134,3 +134,19 @@ def test_a_cry_for_help_gets_the_number_and_a_question_even_without_the_model(cl
 
 def test_plain_help_is_still_how_to_use_vita(client):
     assert "108" not in chat(client, "help")["message"]
+
+
+def test_language_choice_follows_the_number_into_a_new_conversation(client):
+    """WhatsApp starts a new conversation after 30 minutes; "hindi mein baat karo" must still hold for that number."""
+    from hms_router.vita_graph.engine import VitaEngine
+    from hms_router.application.doctor_chat import DoctorChat
+    a = client.app.state
+
+    def engine():
+        return VitaEngine(DoctorChat(a.vita_pipeline, a.doctors, a.redis, detector=a.emergency_detector),
+                          a.vita_runtime)
+    engine().handle("hindi mein baat karo", None, verified_mobile="9000000001", channel="whatsapp")
+    later = engine().handle("I need a skin doctor", None, verified_mobile="9000000001", channel="whatsapp")
+    assert later["language"] == "hinglish"
+    other = engine().handle("I need a skin doctor", None, verified_mobile="9000000002", channel="whatsapp")
+    assert other["language"] == "english"

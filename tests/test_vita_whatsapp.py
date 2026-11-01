@@ -75,6 +75,10 @@ SCENARIOS = [
     ("सीने में तेज़ दर्द और साँस नहीं आ रही", {}),
     ("severe chest pain and I can't breathe", {}),
     ("আমার জ্বর হয়েছে", {}),                                           # Bangla
+    # general language and the newer replies (31 Oct 2026)
+    ("kkrh", {}), ("tata", {}), ("ruko ek minute", {}), ("sorry galat type hua", {}), ("mera naam Rahul hai", {}),
+    ("test", {}), ("i love you", {}), ("bachao", {}), ("hindi mein baat karo", {}), ("english please", {}),
+    ("bangla bolo", {}), ("fees kitni hai", {}), ("sawal mat poocho, bas doctor batao", {}), ("asdfgh", {}),
 ]
 
 
@@ -207,6 +211,13 @@ def test_selected_doctor_is_text_for_the_bot_to_take_over(client, hms):
     picked = tap(client, lst, ids(lst)[0])
     assert [m["type"] for m in picked["whatsapp"]] == ["text"]
     assert picked["doctor"]["doctorId"] == picked["selectedDoctorId"]           # booking starts from this
+    assert picked["handover"] == {"to": "booking", "doctorId": picked["selectedDoctorId"]}
+    assert "Book a slot" not in picked["message"]                              # no such button on WhatsApp
+
+
+def test_a_goodbye_has_nothing_to_tap(client, hms):
+    for text in ("tata", "thank you", "ruko"):
+        assert [m["type"] for m in wa(client, text)["whatsapp"]] == ["text"], text
 
 
 # ============================================================================ 4. extreme content

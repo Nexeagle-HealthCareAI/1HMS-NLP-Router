@@ -161,11 +161,26 @@ class VitaEngine:
         return {k: v for k, v in (snap.values or {}).items() if k in ("messages", "patient", "triage", "stage")} \
             if snap else None
 
+    def _carry_language_choice(self, sid: str, ctx: dict) -> None:
+        """A known patient who asked for a language ("hindi mein baat karo") gets it in every new conversation too
+        (WhatsApp starts a new one after 30 minutes)."""
+        who = ctx.get("verified_mobile") or ctx.get("token_mobile")
+        if not who:
+            return
+        try:
+            pref = (self.runtime.memory.load(who) or {}).get("language_pref")
+            if pref:
+                self.steps.pipeline.sessions.set_context(sid, language=pref, language_pref=pref)
+        except Exception:
+            log.exception("language choice not carried over")
+
     # ---------------------------------------------------------------- entry
     def handle(self, text: str, session_id: str | None, **kw) -> dict:
         rt, steps = self.runtime, self.steps
-        sid, _ = steps.pipeline.sessions.open(session_id)             # the graph's thread id
+        sid, is_new = steps.pipeline.sessions.open(session_id)        # the graph's thread id
         ctx = steps.context(kw)
+        if is_new:
+            self._carry_language_choice(sid, ctx)
         turn = Turn(steps, text, sid, kw, ctx, rt)
         try:
             res = rt.graph.invoke(dict(TURN_RESET), {"configurable": {"thread_id": sid, "turn": turn},

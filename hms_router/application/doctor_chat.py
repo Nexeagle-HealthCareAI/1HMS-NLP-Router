@@ -606,6 +606,8 @@ class DoctorChat:
         msg = everyday.reply(move, v, name=everyday.said_name(norm) if move == "name" else None)
         options = ([V.human_option(v)] if move == "upset" else []) + V.ask_kind_options(v)   # upset: a person first
         kind = FOLLOW_UP if move in ("name", "sorry", "test") else INFO
+        if move in ("thanks", "bye", "later", "wait", "goodnight"):    # a goodbye or "ruko" needs no menu
+            return self._reply(base, kind, msg)
         return self._reply(base, kind, msg, clarify={"kind": "ask_kind", "question": msg, "options": options})
 
     def unavailable(self, text, sid, ctx) -> dict:
@@ -1035,9 +1037,14 @@ class DoctorChat:
         name = doctor.get("name") or "the doctor"
         hosp = (doctor.get("hospital") or {}).get("name")
         where = f" ({hosp})" if hosp else ""
-        msg = hi(f"You chose {name}{where}. Tap 'Book a slot' to pick a time.",
-                 f"Aapne {name}{where} ko chuna hai. Samay chunne ke liye 'Book a slot' dabayein.",
-                 f"आपने {name}{where} को चुना है। समय चुनने के लिए 'Book a slot' दबाएँ।")
+        if ctx.get("channel") == "whatsapp":         # no 'Book a slot' button on WhatsApp: the bot's booking takes over
+            msg = hi(f"You chose {name}{where}. Let's book your appointment now.",
+                     f"Aapne {name}{where} ko chuna hai. Chaliye, appointment book karte hain.",
+                     f"आपने {name}{where} को चुना है। चलिए, अपॉइंटमेंट बुक करते हैं।")
+        else:
+            msg = hi(f"You chose {name}{where}. Tap 'Book a slot' to pick a time.",
+                     f"Aapne {name}{where} ko chuna hai. Samay chunne ke liye 'Book a slot' dabayein.",
+                     f"आपने {name}{where} को चुना है। समय चुनने के लिए 'Book a slot' दबाएँ।")
         clarify = None
         if self.booking.enabled and not degraded:                     # Vita books it (vision Phase 2)
             started = self.booking.start(st, doctor, hi, ctx)
@@ -1050,6 +1057,8 @@ class DoctorChat:
         out = self._reply(base, DOCTOR_SELECTED, msg, question=msg if clarify else None, clarify=clarify, degraded=degraded)
         out["doctor"] = doctor
         out["selectedDoctorId"] = doctor_id
+        if not st.get("booking"):                    # Vita is not booking it: the channel's own booking takes over
+            out["handover"] = {"to": "booking", "doctorId": doctor_id}
         return out
 
     def _visit_turn(self, text, session_id, st, ctx) -> dict | None:

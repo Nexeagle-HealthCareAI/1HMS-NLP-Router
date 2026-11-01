@@ -321,7 +321,8 @@ def build_vita_graph(checkpointer=None):
             turn.rt.memory.update(turn.identity, consent=bool(turn.kw.get("remember")),
                                   language=out.get("language"), city=turn.ctx.get("city"), who=patient.get("who"),
                                   specialties=[s for s in specialties if s], doctors=doctors,
-                                  style={k: v for k, v in (state.get("style") or {}).items() if v})
+                                  style={k: v for k, v in (state.get("style") or {}).items() if v},
+                                  language_pref=turn.language_pref())
         turn.rt.traces.record(out.get("session_id") or turn.session_id, {
             "patient": said, "kind": out.get("kind"), "engine": out.get("engine"), "language": out.get("language"),
             "route": state.get("route"), "why": state.get("why"), "decision": state.get("decision"),
