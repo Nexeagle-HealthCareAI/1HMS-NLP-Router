@@ -365,6 +365,11 @@ class DoctorChat:
         "kal milenge?" about the doctor just chosen."""
         st = self.load(sid)
         norm = intent_text(text)
+        if (st.get("name_miss") or (st.get("last") or {}).get("query")) and _similar_name_ask(norm):
+            # "similar naam se dhundo" / "spelling galat hai" after a name search: names that look or sound alike
+            out = self.similar_names_turn(text, sid, ctx)
+            if out is not None:
+                return out
         if st.get("selected") and not st.get("booking"):
             ask = self.read_ask(text, sid)
             follow = availability_when(norm)
@@ -821,7 +826,7 @@ class DoctorChat:
         if filters.get("sort") == "experience":
             args["sort"] = "experience"
 
-        fallback_used = widened = False
+        fallback_used = widened = suggested = False
         try:
             found = self.directory.search(**args)
             if (found is None or (not found["doctors"] and not found["total"])) and args.get("city") \
@@ -836,6 +841,14 @@ class DoctorChat:
                     gp = self.directory.search(**dict(args, specialty_key="general-medicine"))
                     if gp and gp["doctors"]:
                         found, fallback_used = gp, True
+            if (found is None or not found["doctors"]) and filters.get("query") and page == 1:
+                # "avinsahh": nobody by that spelling; the listed names that look or sound like it ("Dr. Avinash ...")
+                st["name_miss"] = filters["query"]
+                alike = self._alike_doctors(filters["query"], args, loose=bool(filters.get("loose")))
+                if alike:
+                    found, suggested = {"doctors": alike, "total": len(alike), "specialtyId": None}, True
+            elif filters.get("query"):
+                st.pop("name_miss", None)
         except DoctorLookupError:
             return self._lookup_failed(sid, st, base, hi, filters)
         ms = round((time.perf_counter() - t0) * 1000, 1)
@@ -878,6 +891,13 @@ class DoctorChat:
         if not items:
             msg, clarify = self._empty_message(filters, hi)
             clarify = self._confused(st, clarify, hi)
+        elif suggested:
+            st["confused"] = 0
+            v = hi if isinstance(hi, Voice) else Voice(lang)
+            q = filters["query"]
+            msg = v(f"I couldn't find a doctor named '{q}' exactly. Did you mean one of these? Tap Choose to pick one.",
+                    f"'{q}' naam se exact doctor nahi mile. Kya aap inmein se kisi ko dhoondh rahe the? 'Choose' dabakar chunein.",
+                    f"'{q}' नाम से ठीक-ठीक डॉक्टर नहीं मिले। क्या आप इनमें से किसी को ढूँढ रहे थे? 'Choose' दबाकर चुनें।")
         else:
             st["confused"] = 0
             msg = self._list_message(items, total, filters, hi, used_city=used_city and bool(ctx["city"]) and not widened,
@@ -893,6 +913,41 @@ class DoctorChat:
         self._save(sid, st)
         out = self._reply(base, DOCTOR_LIST, msg, question=clarify["question"] if clarify else None, clarify=clarify)
         out["doctors"] = block
+        return out
+
+    def _alike_doctors(self, query: str, args: dict, *, loose: bool = False) -> list[dict]:
+        """Doctors whose listed names look or sound like `query`, searched by their exact listed names (any city)."""
+        names = self.directory.similar(query, threshold=0.5 if loose else 0.6, limit=5 if loose else 3)
+        out, seen = [], set()
+        wanted = set(names)
+        for name in names:
+            found = self.directory.search(**dict(args, query=name, city=None, offset=0, specialty_key=None))
+            for d in (found or {}).get("doctors") or []:
+                if d.get("name") in wanted and d.get("doctorId") not in seen:
+                    seen.add(d.get("doctorId"))
+                    out.append(d)
+        return out[: self.directory.limit]
+
+    def similar_names_turn(self, text, session_id, ctx) -> dict | None:
+        """ "similar name se dhundo", "spelling galat hai", "milte julte naam": after a name that found nobody, the
+        listed names that look or sound like it (looser than the first try). None when no name search missed."""
+        st = self.load(session_id) if session_id else {}
+        missed = st.get("name_miss") or ((st.get("last") or {}).get("query") if st.get("last") else None)
+        if not missed or not _similar_name_ask(intent_text(text)):
+            return None
+        filters = {"query": missed, "loose": True, "modes": ["name"]}
+        out = self._search_turn(text, session_id, filters, ctx, st)
+        if not (out.get("doctors") or {}).get("items"):
+            v = Voice(out.get("language"))
+            msg = v(f"I couldn't find any doctor with a name like '{missed}'. Tell me the doctor's full name or "
+                    "hospital, or I can find one by specialty.",
+                    f"'{missed}' jaisa naam kisi doctor ka nahi mila. Doctor ka poora naam ya hospital batayein, "
+                    "ya main specialty se dhoondh sakti hoon.",
+                    f"'{missed}' जैसा नाम किसी डॉक्टर का नहीं मिला। डॉक्टर का पूरा नाम या अस्पताल बताएँ, "
+                    "या मैं स्पेशलिटी से ढूँढ सकती हूँ।")
+            out["message"] = msg
+            if out.get("clarify"):
+                out["clarify"]["question"] = msg
         return out
 
     def _availability(self, text, session_id, ask: DoctorAsk, st_in, ctx) -> dict:
@@ -1544,6 +1599,17 @@ class DoctorChat:
 
 
 # ---------------------------------------------------------------------------------------------- pure helpers
+# "similar name se search karo", "spelling galat hai", "milta julta naam", "naam thoda alag hai", "did you mean", "close names"
+_SIMILAR_CUE = re.compile(r"\b(similar|milta ?julta|milte ?julte|milti ?julti|milta|jaisa|jaise|aisa|spelling|spell|galat|"
+                          r"wrong|mistake|close|nearest|did you mean|alag|thoda)\b")
+_SIMILAR_WHAT = re.compile(r"\b(naam|name|names|spelling|spell|dr|doctor|doctors)\b")
+
+
+def _similar_name_ask(norm: str) -> bool:
+    """"similar name se search karo", "spelling galat hai", "milte julte naam dikhao": both a likeness word and a name word."""
+    return bool(_SIMILAR_CUE.search(norm) and _SIMILAR_WHAT.search(norm))
+
+
 def _wants_names(norm: str) -> bool:
     """Fetch the name index (cached 15 min) only when the message might name a doctor without 'dr': a meeting cue
     ("anita sen se milna hai"), or a short message that could be just a name ("neha sharma", "anita sen ji")."""

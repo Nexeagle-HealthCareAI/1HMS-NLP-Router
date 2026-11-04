@@ -19,7 +19,7 @@ import threading
 import time
 from typing import Any
 
-from .search_spelling import CityIndex, city_index, name_index
+from .search_spelling import CityIndex, city_index, name_index, similar_names
 
 log = logging.getLogger("hms_router.doctors")
 
@@ -369,6 +369,8 @@ class DoctorDirectory:
             data = self._call("list_doctor_names", {"city": city} if city else {})
             docs = list(data.get("doctors") or [])
             self._names[key] = (self._clock(), docs)
+            if not key:
+                self.stats["namesListed"] = len(docs)          # 0 here: name typos can't be corrected (admin telemetry)
             return [d.get("name") or "" for d in docs]
         except Exception as exc:
             self._failed("names", exc)
@@ -380,6 +382,14 @@ class DoctorDirectory:
             return query
         names = self.index()[0]
         return (name_index(tuple(names)).fix(query) or query) if names else query
+
+    def similar(self, query: str | None, *, threshold: float = 0.6, limit: int = 3) -> list[str]:
+        """Listed doctors whose names look or sound like `query` ("avinsahh" -> ["Dr. Avinash Kumar"]), for "did you
+        mean ...?" when a name search found nobody. [] when the name list is unavailable."""
+        if not query or not self.enabled:
+            return []
+        names = self.index()[0]
+        return similar_names(query, names, threshold=threshold, limit=limit) if names else []
 
     def index(self) -> tuple[list[str], CityIndex]:
         """Every listed doctor's name and the cities they work in, for spelling-tolerant search (cached with names())."""

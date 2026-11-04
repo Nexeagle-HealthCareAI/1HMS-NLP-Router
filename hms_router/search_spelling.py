@@ -110,6 +110,39 @@ class NameIndex:
         return " ".join(out)
 
 
+def _token_likeness(a: str, b: str) -> float:
+    """How alike two name words look and sound, 0..1: spelling (difflib), a typed short form ("bane" -> "banerjee"),
+    and the same sound skeleton ("avinsahh" / "avinash")."""
+    if a == b:
+        return 1.0
+    score = _ratio(a, b)
+    if len(a) >= 3 and b.startswith(a):
+        score = max(score, 0.85)
+    if len(a) >= 4 and a[0] == b[0] and phonetic_key(a) == phonetic_key(b):
+        score = max(score, 0.8)
+    return score
+
+
+def similar_names(query: str, names: Iterable[str], *, limit: int = 3, threshold: float = 0.6) -> list[str]:
+    """Listed names that look or sound like what was typed, best first: "avinsahh" -> ["Dr. Avinash Kumar"]. Looser
+    than NameIndex.fix (which changes a word only when it is clearly a typo); used for "did you mean ...?" after a name
+    search found nobody. Each typed word is matched to its best name word; a name's score is the average."""
+    q = name_tokens(query)
+    if not q:
+        return []
+    scored = []
+    for full in set(names):
+        toks = name_tokens(full)
+        if not toks:
+            continue
+        s = sum(max(_token_likeness(w, t) for t in toks) for w in q) / len(q)
+        if s >= threshold:
+            scored.append((s, full))
+    scored.sort(key=lambda x: (-x[0], x[1]))
+    best = scored[0][0] if scored else 0
+    return [n for sc, n in scored[:limit] if sc >= best - 0.08]          # near the best only, not every weak one
+
+
 @lru_cache(maxsize=16)
 def name_index(names: tuple[str, ...]) -> NameIndex:
     """NameIndex for a list of names, kept while the list is the same (DoctorDirectory caches it 15 min)."""
