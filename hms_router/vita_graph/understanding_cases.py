@@ -251,6 +251,21 @@ CASES = [
     C("lang-2", "general", T("english please", kind="follow_up", urgent=False)),
     C("lang-3", "general", T("english bolne wale doctor chahiye", wants=FIND, place=None, specialty=None)),
 
+    # ================================================================== the patient sets how Vita talks
+    C("style-1", "style", T("bukhar hai", wants=SYMPTOMS, complaint=["fever"]),
+      T("sawal mat poocho, bas doctor batao", kind={"recommendation", "doctor_list"}, complaint=["fever"])),
+    C("style-2", "style", T("short me batao, daant me dard hai", complaint=["tooth|teeth|dental"],
+                            kind={"recommendation", "follow_up"})),
+    C("style-3", "style", T("pet dard hai", wants=SYMPTOMS),
+      T("just show me the doctors", kind={"recommendation", "doctor_list"})),
+
+    # ================================================================== facts about Doctor Dekho and hospitals
+    C("kb-1", "knowledge", T("kya booking free hai?", wants="question", urgent=False)),
+    C("kb-2", "knowledge", T("ayushman card chalta hai", wants="question", urgent=False)),
+    C("kb-3", "knowledge", T("video call pe dikha sakte hain?", wants="question", urgent=False)),
+    C("kb-4", "knowledge", T("appointment cancel kaise karu", wants={"question", CHOOSE}, urgent=False)),
+    C("kb-5", "knowledge", T("skin doctor", wants=FIND), T("inki fees kitni hai", wants="question")),
+
     # ================================================================== a conversation that builds up
     C("build-1", "context",
       T("bukhar hai", wants=SYMPTOMS, complaint=["fever"]),

@@ -51,8 +51,19 @@ description 72, row id 200, buttons 1-3 with titles of 20.
 With booking switched on in the router, Vita books too: day, time, for whom, details, confirm, booked, all as
 buttons / lists / text in the same loop. Send `verified_mobile` (the sender's number) with a key that has the
 `verified_mobile` scope and Vita skips the WhatsApp code, since WhatsApp already verified the number. The reply
-`kind: "booked"` carries `booking.appointmentId`. Without booking switched on, `doctor_selected` hands over to
-the bot's own booking flow (map `doctor.doctorId`, `doctor.name`, fee and `doctor.hospital.*`).
+`kind: "booked"` carries `booking.appointmentId`. Without booking switched on, `doctor_selected` carries
+`handover: {"to": "booking", "doctorId": ...}` and says "let's book your appointment now" (never "tap Book a slot":
+WhatsApp has no such button). The bot sends Vita's message, then starts its own booking flow for that doctor
+(`checkin.start_doctor_booking`, the DRBOOK path without the welcome banner) in the language Vita was speaking, and
+keeps the next messages until that flow ends.
+
+## What the bot keeps for each number
+
+- Vita's session id and language, 30 minutes (Vita's own session length).
+- `verified_mobile` makes the patient known to Vita: a language they asked for ("hindi mein baat karo") and how they
+  like Vita to talk (short replies, no questions) carry over into their next conversation.
+- Vita's turns go into the bot's conversation log (`dbo.conversation_sessions`) under `vita:<session id>`, step
+  `vita:<kind>`, with a conversion when Vita books.
 
 ## If Vita is unavailable
 

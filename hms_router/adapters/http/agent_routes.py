@@ -91,6 +91,13 @@ class ExampleIn(BaseModel):
     note: str | None = Field(None, max_length=300)
 
 
+class KnowledgeIn(BaseModel):
+    title: str = Field(..., min_length=2, max_length=200)
+    text: str = Field(..., min_length=2, max_length=2000)
+    scope: str = Field("all", max_length=120, description="a hospital's name, or all")
+    tags: str = Field("", max_length=300, description="words patients use for this, comma-separated")
+
+
 class ControlIn(BaseModel):
     mode: Literal["agent", "planner", "off", "rules"] = Field(
         "agent", description='"agent": the LLM labels each message, code picks the next move; "planner": the LLM plans '
@@ -307,6 +314,23 @@ def build_router(guard, admin_guard=None, search_guard=None) -> APIRouter:
         def delete_example(request: Request, example_id: str = Path(..., max_length=32),
                            _client=Depends(admin_guard)) -> dict:
             return {"deleted": runtime(request).examples.remove(example_id)}
+
+        @router.get("/admin/knowledge", summary="What Vita may state about Doctor Dekho and each hospital")
+        def knowledge(request: Request, q: str | None = None, hospital: str | None = None,
+                      _client=Depends(admin_guard)) -> dict:
+            kb = runtime(request).knowledge
+            return {"entries": kb.entries(), "search": kb.search(q, hospital=hospital) if q else None}
+
+        @router.post("/admin/knowledge", summary="Add a fact Vita may state (scope: a hospital's name, or all)")
+        def add_knowledge(body: KnowledgeIn, request: Request, _client=Depends(admin_guard)) -> dict:
+            return runtime(request).knowledge.add(title=body.title, text=body.text, scope=body.scope, tags=body.tags,
+                                                  by=getattr(_client, "name", None))
+
+        @router.delete("/admin/knowledge/{entry_id}", summary="Remove a fact staff added (seed facts live in "
+                                                             "hms_router/data/knowledge)")
+        def delete_knowledge(request: Request, entry_id: str = Path(..., max_length=32),
+                             _client=Depends(admin_guard)) -> dict:
+            return {"deleted": runtime(request).knowledge.remove(entry_id)}
 
         @router.post("/admin/examples/promote", summary="Run the scenario suite with and without the drafts; "
                                                         "make them live only if the score is not worse")

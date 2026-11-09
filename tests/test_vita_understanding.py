@@ -39,7 +39,7 @@ def test_the_set_is_well_formed():
 def test_the_set_covers_how_patients_talk():
     cats = {c.category for c in CASES}
     assert {"code_mixing", "proxy", "multi_need", "reference", "correction", "vague", "denial", "urgency",
-            "self_harm", "emotion", "question", "context", "general"} <= cats
+            "self_harm", "emotion", "question", "context", "general", "style", "knowledge"} <= cats
     urgent = [t for c in CASES for t in c.turns if t.expect.get("urgent") is True]
     calm = [t for c in CASES for t in c.turns if t.expect.get("urgent") is False]
     assert len(urgent) >= 15 and len(calm) >= 30                     # both directions are tested

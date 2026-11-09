@@ -82,6 +82,9 @@ class TraceStore:
         return out
 
 
+from .meaning import concepts, similarity  # noqa: E402
+
+
 class ExampleStore:
     """Approved examples, in two sets: draft (staff approved or corrected) and active (in Vita's prompts)."""
 
@@ -143,9 +146,14 @@ class ExampleStore:
             else:
                 index = self._index
             _, items, vec, mat = index
-            sims = cosine_similarity(vec.transform([text]), mat)[0]
-            best = sorted(range(len(items)), key=lambda i: -sims[i])[:k]
-            return [dict(items[i], similarity=round(float(sims[i]), 3)) for i in best if sims[i] >= 0.25]
+            spelling = cosine_similarity(vec.transform([text]), mat)[0]
+            # meaning first ("pet me jalan" ~ "acidity hoti hai"), spelling second ("bukhar" ~ "bukhaar")
+            q = concepts(text)
+            meant = [similarity(q, concepts(e["patient"])) for e in items]
+            score = [0.65 * m + 0.35 * float(sp) if q else float(sp) for m, sp in zip(meant, spelling)]
+            best = sorted(range(len(items)), key=lambda i: -score[i])[:k]
+            return [dict(items[i], similarity=round(score[i], 3), meaning=round(meant[i], 3))
+                    for i in best if score[i] >= 0.25]
         except Exception:
             log.exception("example recall failed")
             return []

@@ -56,6 +56,13 @@ class Turn:
             steps.plain_search(self.text, self.session_id, self.ctx) or \
             steps.unavailable(self.text, self.session_id, self.ctx)
 
+    def language_pref(self) -> str | None:
+        """The language the patient asked Vita to use ("hindi mein baat karo"), if any."""
+        try:
+            return self.flow.pipeline.sessions.context(self.sid).get("language_pref") if self.sid else None
+        except Exception:
+            return None
+
     @property
     def sid(self) -> str | None:
         return self._ing.session_id if self._ing is not None else self.session_id
@@ -243,6 +250,26 @@ class Turn:
             return json.dumps({"error": "no booked visit found for this patient"})
         self.final = out
         return json.dumps({"answered": True})
+
+    def t_look_up(self, question: str | None = None) -> str:
+        """Facts about Doctor Dekho and the hospital in this conversation (fees policy, free booking, timings, online,
+        insurance, cancel, OTP...). Answer only from these; nothing found means "I'll check with our team"."""
+        self.tools_used.append("look_up")
+        found = self.knowledge(question or self.text)
+        return json.dumps({"facts": found} if found else
+                          {"facts": [], "note": "not in Vita's knowledge: do not guess; offer to check with the team "
+                                                "(talk_to_person) or the hospital"}, ensure_ascii=False)
+
+    def knowledge(self, question: str) -> list[dict]:
+        kb = getattr(self.rt, "knowledge", None)
+        if kb is None:
+            return []
+        hospital = (self.flow.facts(self.sid) or {}).get("hospital") if self.sid else None
+        try:
+            return [{"title": f["title"], "text": f["text"]} for f in kb.search(question, hospital=hospital)]
+        except Exception:
+            log.exception("knowledge lookup failed")
+            return []
 
     def t_talk_to_person(self, reason: str = "asked") -> str:
         self.tools_used.append("handoff")
