@@ -1,70 +1,91 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# EASYHMS NLP ROUTER — Retrain pipeline
+# RETRAIN — rebuild the /route-symptom model with CMS-approved examples
 # ═══════════════════════════════════════════════════════════════════════════════
 #
-# Runs data_pipeline/retrain_pipeline.py: fetches the current CMS-editable training set +
-# production feedback from CMSAPI, retrains a candidate model, evaluates it against the
-# frozen data_pipeline/validation_set.csv, and only commits+pushes (i.e. "promotes") if the
-# candidate doesn't regress vs. the currently-promoted model's recorded metrics. A push to
-# `develop` here re-triggers deploy-nlp.yml, so promotion = a normal redeploy, nothing extra
-# to build.
+# Triggered by:
+#   - the CMS Symptom Router page's "Retrain now" button (NexeagleCMSAPI SymptomRouterService.TriggerRetrainAsync
+#     sends workflow_dispatch for retrain.yml on ref develop with no inputs -> target "both");
+#   - nightly at 03:00 IST;
+#   - by hand from the Actions tab (choose dev, prod or both).
 #
-# Two triggers, one identical job: nightly cron (automatic) and workflow_dispatch (CMS's
-# "Retrain now" button, via CMSAPI calling this workflow through GitHub's REST API).
+# It does not train in GitHub. It asks each running router to run its own learning-loop rebuild
+# (POST /admin/rebuild, hms_router/application/retraining.py): pull CMS-approved examples, retrain, score on the
+# held-out validation set, and promote ONLY if the new model is not worse - then waits for the verdict
+# (GET /admin/rebuild). The CMS "AI Agents" tab's Rebuild button calls the same endpoint directly.
 #
-# ─────────────────────────────────────────────────────────────────────────────
-# SECRETS (Settings → Secrets → Actions):
-#   CMSAPI_BASE_URL      e.g. http://151.185.45.77:5002 (dev) — repo VARIABLE, not secret
-#   CMSAPI_SERVICE_KEY   shared service-auth key CMSAPI expects on these read endpoints
-# ═══════════════════════════════════════════════════════════════════════════════
+# It reaches each router over SSH (the same secrets deploy-router.yml uses) and runs scripts/rebuild_and_wait.py
+# inside the container, so the router's port does not have to be open to GitHub.
+#
+# Secrets:
+#   NLP_ROUTER_ADMIN_KEY    raw router API key with the admin scope (the same value as NexeagleCMSAPI's
+#                           NLP_ROUTER_API_KEY; its hash must be in HMS_API_KEYS). Unset works only where auth is off.
+#   DEV_SSH_HOST / DEV_SSH_USER / DEV_SSH_PASSWORD    Dev VM
+#   PROD_SSH_HOST / PROD_SSH_USER / PROD_SSH_KEY_B64  Prod VM
+# The CMS side needs GitHub:RetrainWorkflowToken (a PAT with actions:write on this repo).
 
-name: EasyHMS NLP Router — Retrain
+name: Retrain route model
 
 on:
-  schedule:
-    - cron: '0 20 * * *'  # ~01:30 IST, low-traffic window
   workflow_dispatch:
-
-concurrency:
-  group: easyhms-nlp-retrain
-  cancel-in-progress: false
+    inputs:
+      target:
+        description: Which router to rebuild
+        type: choice
+        options: [both, dev, prod]
+        default: both
+  schedule:
+    - cron: "30 21 * * *"          # 21:30 UTC = 03:00 IST
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: retrain-route-model
+  cancel-in-progress: false
 
 jobs:
-  retrain:
-    name: "Fetch, retrain, evaluate, promote-if-safe"
+  dev:
+    name: Rebuild on Dev
+    if: github.event_name == 'schedule' || inputs.target == '' || inputs.target == 'both' || inputs.target == 'dev'
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: develop
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-          cache: 'pip'
-
-      - run: pip install -r requirements.txt
-
-      - name: Run retrain pipeline
-        working-directory: data_pipeline
+      - name: Rebuild inside nlp-router-dev and wait
         env:
-          CMSAPI_BASE_URL: ${{ vars.CMSAPI_BASE_URL }}
-          CMSAPI_SERVICE_KEY: ${{ secrets.CMSAPI_SERVICE_KEY }}
+          SSHPASS: ${{ secrets.DEV_SSH_PASSWORD }}
+          KEY: ${{ secrets.NLP_ROUTER_ADMIN_KEY }}
+          HOST: ${{ secrets.DEV_SSH_HOST }}
+          USER_: ${{ secrets.DEV_SSH_USER }}
         run: |
-          python retrain_pipeline.py --cmsapi-url "$CMSAPI_BASE_URL" --service-key "$CMSAPI_SERVICE_KEY"
+          sudo apt-get install -y -qq sshpass >/dev/null
+          { printf '%s\n' "$KEY"; cat scripts/rebuild_and_wait.py; } | \
+            sshpass -e ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$USER_@$HOST" \
+            'docker exec -i nlp-router-dev python -u -c "import sys; KEY=sys.stdin.readline().strip(); exec(sys.stdin.read())"' \
+            | tee rebuild.log
+          echo '### Dev rebuild' >> "$GITHUB_STEP_SUMMARY"
+          grep '^RESULT:' rebuild.log >> "$GITHUB_STEP_SUMMARY" || true
 
-      - name: Commit + push if promoted
+  prod:
+    name: Rebuild on Prod
+    if: github.event_name == 'schedule' || inputs.target == '' || inputs.target == 'both' || inputs.target == 'prod'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rebuild inside nlp-router-prod and wait
+        env:
+          KEY: ${{ secrets.NLP_ROUTER_ADMIN_KEY }}
+          HOST: ${{ secrets.PROD_SSH_HOST }}
+          USER_: ${{ secrets.PROD_SSH_USER }}
+          KEY_B64: ${{ secrets.PROD_SSH_KEY_B64 }}
         run: |
-          git config user.name "easyhms-nlp-retrain-bot"
-          git config user.email "actions@github.com"
-          if git diff --quiet -- Hinglish_Symptoms_V28.csv model_meta.json symptom_specialist_classifier.joblib; then
-            echo "No promotion this run — nothing to commit."
-          else
-            git add Hinglish_Symptoms_V28.csv model_meta.json symptom_specialist_classifier.joblib
-            git commit -m "Auto-retrain: promote new model $(date -u +%Y-%m-%d)"
-            git push origin HEAD:develop
-            echo "Promoted and pushed — deploy-nlp.yml will redeploy dev automatically."
-          fi
+          umask 077
+          echo "$KEY_B64" | base64 -d > /tmp/deploy_key
+          { printf '%s\n' "$KEY"; cat scripts/rebuild_and_wait.py; } | \
+            ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "$USER_@$HOST" \
+            'docker exec -i nlp-router-prod python -u -c "import sys; KEY=sys.stdin.readline().strip(); exec(sys.stdin.read())"' \
+            | tee rebuild.log
+          rm -f /tmp/deploy_key
+          echo '### Prod rebuild' >> "$GITHUB_STEP_SUMMARY"
+          grep '^RESULT:' rebuild.log >> "$GITHUB_STEP_SUMMARY" || true

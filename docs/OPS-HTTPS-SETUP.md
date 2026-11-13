@@ -1,8 +1,13 @@
 # Mapping nlp-api.nexeagle.com to the Prod VM (HTTPS)
 
+> **Status (2026-10-30): done and live.** `https://nlp-api.nexeagle.com` serves the router; Doctor Dekho's prod
+> container calls it as `NLP_ROUTER_BASE_URL` (its dev container uses `http://host.docker.internal:5003`).
+> Kept as the runbook for rebuilding the Caddy block. The router still listens on host port **5003** on both VMs
+> (`HMS_PORT=5003` in `.github/workflows/deploy-router.yml`; 5005 is only the image's local default).
+
 Scope: prod only. The prod app VM (`151.185.45.67`) already runs the NLP Router
-container on host port 5003 (see `.github/workflows/deploy-nlp.yml`'s `deploy-prod`
-job). This maps `https://nlp-api.nexeagle.com` to that same container via the
+container on host port 5003 (see `.github/workflows/deploy-router.yml`'s `deploy-prod`
+job, container `nlp-router-prod`). This maps `https://nlp-api.nexeagle.com` to that same container via the
 reverse proxy that already handles TLS for `www.nexeagle.com` — the app itself
 doesn't change, and this is the SAME Caddy instance, not a new one.
 
@@ -80,16 +85,19 @@ almost always either the NLP Router container not actually running on :5003 yet
 on the VM itself), or port 80/443 blocked upstream of the VM (unlikely — the
 website's HTTPS already proves those are open).
 
-## 3. Redeploy NexEagleWebsite's prod container
+## 3. Redeploy the callers (history)
+
+*Done in August 2026. Patient search has since moved from NexEagleWebsite to DoctorDekhoWeb, whose prod deploy
+sets `NLP_ROUTER_BASE_URL='https://nlp-api.nexeagle.com'`. The text below is the original note.*
 
 The currently-running `nexeagle-website` prod container predates the
 `NLP_ROUTER_BASE_URL` env var (last successful prod deploy: 2026-07-20; the var
 was added 2026-07-21; the one deploy attempt since, 2026-07-24, failed before
 reaching `docker run` — a `docker pull` layer-commit error on the VM, unrelated
 to this change). So the running container doesn't have the var set at all yet —
-a fresh successful deploy of `main` is needed to pick it up. Re-run
-`deploy-nlp.yml`... er, `deploy.yml`'s `deploy-prod` job (workflow_dispatch, or
-push to `main`) once steps 1–2 above are confirmed working. Worth confirming
+a fresh successful deploy of `main` is needed to pick it up. Re-run the website's
+`deploy.yml` `deploy-prod` job (workflow_dispatch, or push to `main`) once steps 1–2
+above are confirmed working. Worth confirming
 Docker/containerd on the VM is healthy first, given the prior failure mode
 (`df -h`, `docker system df`, maybe `docker system prune` if disk pressure is
 the cause) — that failure had nothing to do with the NLP router, but it'll bite
@@ -98,7 +106,7 @@ this redeploy too if it's still unresolved.
 ## Notes
 
 - This Caddyfile edit is a one-time, manually-managed change — it isn't part of
-  `deploy-nlp.yml`'s per-push pipeline, and doesn't need to be. The `caddy`
+  `deploy-router.yml`'s per-push pipeline, and doesn't need to be. The `caddy`
   container keeps running (`--restart unless-stopped`) across NLP Router
   redeploys underneath it; nothing about the existing deploy pipeline changes.
 - Caddy auto-renews both certs indefinitely; no further action needed after

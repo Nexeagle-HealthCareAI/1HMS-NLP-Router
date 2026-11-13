@@ -418,10 +418,13 @@ Not part of the deployed API image, not one of the three runtime layers —
 this is offline/batch tooling that produces the artifacts `api/` and
 `nlp_brain/` consume at runtime.
 
-### 6.1 `retrain_pipeline.py` — the active pipeline
+### 6.1 `retrain_pipeline.py` — the older offline pipeline
 
-Runs nightly via `.github/workflows/retrain.yml` (and on-demand via CMS's
-"Retrain now" button / `workflow_dispatch`):
+> **Changed 2026-10-30:** `.github/workflows/retrain.yml` now asks each running router to rebuild itself
+> (`POST /admin/rebuild`, promoted only if not worse) — see `docs/data_pipeline.md`. The flow below is the older
+> offline pipeline, no longer run by the workflow.
+
+What used to run nightly via `retrain.yml`:
 
 ```
 1. Fetch current CMS-editable training set + production feedback
@@ -435,7 +438,7 @@ Runs nightly via `.github/workflows/retrain.yml` (and on-demand via CMS's
         accuracy or wrong-rate → PROMOTE:
         overwrite Hinglish_Symptoms_V28.csv + model_meta.json +
         symptom_specialist_classifier.joblib, push to develop
-        → triggers deploy-nlp.yml automatically
+        → triggers deploy-router.yml automatically
 6b. Otherwise → REJECT: nothing is written, nothing is deployed
 ```
 
@@ -450,7 +453,7 @@ training data, which inflates its absolute accuracy numbers. It's still
 useful as a **regression** gate (candidate vs. baseline on the same biased
 yardstick is apples-to-apples) but not as an absolute quality measure.
 
-### 6.2 Current operational issue (as of this document)
+### 6.2 Former operational issue (resolved by the new retrain.yml)
 
 The nightly retrain workflow has been failing: `cms-api.nexeagle.com`'s
 training-examples endpoint returns HTTP 404 (the base domain itself
@@ -518,7 +521,7 @@ component. **`location_API/` is never in this image either** — it's a
 completely separate, independently-deployed service (own Dockerfile, own
 CI/CD, own port). See §10.
 
-### 8.2 CI/CD pipeline (`.github/workflows/deploy-nlp.yml`)
+### 8.2 CI/CD pipeline (`.github/workflows/deploy-router.yml`)
 
 *(Diagram opportunity: 4-stage horizontal pipeline.)*
 
@@ -610,7 +613,7 @@ in this list has been deployed to Prod yet. A PR/merge from `develop` →
 - ⚠️ The nightly retrain pipeline has been failing due to an external CMSAPI 404 (§6.2) — unrelated to any of the above, but also still open.
 
 **To promote everything to Prod:** merge `develop` → `main` (this repo's
-`main` branch triggers Stage 4 of both `deploy-nlp.yml` and
+`main` branch triggers Stage 4 of both `deploy-router.yml` and
 `deploy-location-api.yml`). After that, location_API would be live on Prod
 at `http://151.185.45.67:5004` but **without** an HTTPS domain until someone
 explicitly sets one up on Prod's Caddy (a much simpler version of §10's Dev

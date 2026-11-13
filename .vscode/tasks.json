@@ -1,0 +1,15 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run interactive HMS router demo",
+			"type": "shell",
+			"command": "D:/Users/ASUS/python.exe",
+			"args": [
+				"demo.py"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}

@@ -2,7 +2,7 @@
 
 Tests are **mandatory after any code change** — enforced two ways:
 
-1. **CI gate** (`.github/workflows/deploy-nlp.yml`, Stage 1 — Build): every
+1. **CI gate** (`.github/workflows/deploy-router.yml`, Stage 1 — Build): every
    push/PR runs the full test suite. If it fails, the pipeline stops there
    — Docker build, GHCR push, and deploy to Dev/Prod never happen. This is
    the guarantee that actually matters (it can't be skipped or forgotten).

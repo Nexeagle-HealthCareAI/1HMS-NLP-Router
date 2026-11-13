@@ -1,0 +1,8 @@
+# LLM judge connection (step 5). Any OpenAI-compatible /chat/completions endpoint works:
+# local servers (Ollama, llama.cpp llama-server, LM Studio) or a hosted API.
+base_url: ${JUDGE_BASE_URL:-http://localhost:11434/v1}
+api_key: ${JUDGE_API_KEY:-none}
+model: ${JUDGE_MODEL:-qwen3.7-plus}   # use the exact model name your server reports
+temperature: 0
+timeout_s: 120
+extra_body: {}   # extra request fields your server needs, e.g. to switch thinking off

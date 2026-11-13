@@ -1,0 +1,12 @@
+type: http
+http:
+  url: https://doctordekho-dev.nexeagle.com/api/search/parse
+  method: POST
+  headers:
+    accept: application/json
+    content-type: application/json
+  request_template:
+    query: "{{input}}"
+    variables: {}
+  response_map:
+    text: specialtyId
