@@ -23,7 +23,8 @@
 #                           (doctordekho:route:...). Unset on dev = auth off. Required on prod.
 #   HMS_CMS_SERVICE_KEY     = NexeagleCMSAPI's SYMPTOM_ROUTER_SERVICE_KEY. Unset = no AI Agents telemetry and no
 #                           training on CMS-approved examples (the router still serves).
-#   REDIS_URL               sessions + rate limits. Required on prod; dev falls back to in-memory without it.
+#   REDIS_URL               sessions + rate limits. Optional: without it Prod gets its own Redis on the VM (Stage 4);
+#                           dev falls back to in-memory.
 #   HMS_TELEMETRY_HASH_KEY  optional; defaults to HMS_CMS_SERVICE_KEY
 #   DEV_HMS_DOCTORS_MCP_KEY  this router's key in 1HMSAPI's DEV_MCP_SERVICE_KEYS  (dev router)
 #   PROD_HMS_DOCTORS_MCP_KEY this router's key in 1HMSAPI's PROD_MCP_SERVICE_KEYS (prod router)
@@ -233,6 +234,7 @@ jobs:
           HMS_TELEMETRY_HASH_KEY: ${{ secrets.HMS_TELEMETRY_HASH_KEY }}
           HMS_DOCTORS_MCP_URL: ${{ vars.PROD_DOCTORS_MCP_URL || 'https://1hms-api.nexeagle.com/mcp' }}
           HMS_DOCTORS_MCP_KEY: ${{ secrets.PROD_HMS_DOCTORS_MCP_KEY }}
+          # Optional: an existing Redis. Without it the deploy runs the router's own Redis on the Prod VM (next step).
           REDIS_URL: ${{ secrets.REDIS_URL }}
           # Vita's LangGraph agent stays OFF on Prod until Vita TestAgent has scored it on Dev; set the repository
           # variable PROD_VITA_LLM_PROVIDER=groq to turn it on.
@@ -242,7 +244,6 @@ jobs:
         run: |
           # The app refuses to start in production without these; stop before touching the running container.
           : "${HMS_API_KEYS:?HMS_API_KEYS is empty}"
-          : "${REDIS_URL:?REDIS_URL is empty}"
           umask 077
           {
             printf 'HMS_ENV=%s\n'                'production'
@@ -253,7 +254,7 @@ jobs:
             printf 'HMS_TELEMETRY_HASH_KEY=%s\n' "${HMS_TELEMETRY_HASH_KEY:-}"
             printf 'HMS_DOCTORS_MCP_URL=%s\n'    "${HMS_DOCTORS_MCP_URL:-}"
             printf 'HMS_DOCTORS_MCP_KEY=%s\n'    "${HMS_DOCTORS_MCP_KEY:-}"
-            printf 'REDIS_URL=%s\n'              "$REDIS_URL"
+            if [ -n "${REDIS_URL:-}" ]; then printf 'REDIS_URL=%s\n' "$REDIS_URL"; fi
             if [ -n "${GROQ_API_KEY:-}" ] && [ "${VITA_LLM_PROVIDER:-off}" != "off" ]; then
               printf 'VITA_LLM_PROVIDER=%s\n'    "$VITA_LLM_PROVIDER"
               printf 'VITA_LLM_MODEL=%s\n'       "${VITA_LLM_MODEL:-}"
@@ -277,12 +278,37 @@ jobs:
           IMAGE: "${{ env.IMAGE_NAME }}:${{ needs.docker.outputs.image_tag }}"
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           ACTOR: ${{ github.actor }}
+          REDIS_PORT: ${{ vars.PROD_ROUTER_REDIS_PORT || '6390' }}
         run: |
           IMAGE_LC=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')
           cat > /tmp/deploy.sh <<'EOF'
           set -e
           NAME=nlp-router-prod
           ENVFILE=/opt/nlp-router/prod.env
+
+          # Production needs Redis (sessions, rate limits). Unless the REDIS_URL secret points at one, the router gets
+          # its own: container nlp-router-redis on 127.0.0.1 only, data on a volume, and a password made once on this
+          # VM (/opt/nlp-router/redis.pass, root only) so it never passes through GitHub.
+          if ! grep -q '^REDIS_URL=' "$ENVFILE"; then
+            PASSFILE=/opt/nlp-router/redis.pass
+            [ -s "$PASSFILE" ] || (umask 077; head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$PASSFILE")
+            RPW=$(cat "$PASSFILE")
+            if ! docker ps --format '{{.Names}}' | grep -qx nlp-router-redis; then
+              docker rm -f nlp-router-redis 2>/dev/null || true
+              docker run -d --name nlp-router-redis --restart unless-stopped \
+                -p "127.0.0.1:${REDIS_PORT}:6379" -v nlp-router-redis:/data \
+                redis:7-alpine redis-server --appendonly yes --requirepass "$RPW"
+            fi
+            for i in $(seq 1 10); do
+              if docker exec nlp-router-redis redis-cli --no-auth-warning -a "$RPW" ping 2>/dev/null | grep -q PONG; then
+                echo "✅ Router Redis is up on 127.0.0.1:${REDIS_PORT}"; break
+              fi
+              [ "$i" = 10 ] && { echo "❌ Router Redis did not answer" >&2; docker logs --tail 30 nlp-router-redis >&2 || true; exit 1; }
+              sleep 2
+            done
+            printf 'REDIS_URL=redis://:%s@127.0.0.1:%s/0\n' "$RPW" "$REDIS_PORT" >> "$ENVFILE"
+          fi
+
           echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
           PULLED=0
           for i in 1 2 3; do
@@ -317,7 +343,7 @@ jobs:
           EOF
           ssh -i /tmp/deploy_key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
               ${{ secrets.PROD_SSH_USER }}@${{ secrets.PROD_SSH_HOST }} \
-              "GHCR_TOKEN='$GHCR_TOKEN' ACTOR='$ACTOR' IMAGE_LC='$IMAGE_LC' HMS_PORT='$HMS_PORT' bash -s" < /tmp/deploy.sh
+              "GHCR_TOKEN='$GHCR_TOKEN' ACTOR='$ACTOR' IMAGE_LC='$IMAGE_LC' HMS_PORT='$HMS_PORT' REDIS_PORT='$REDIS_PORT' bash -s" < /tmp/deploy.sh
 
       - name: Write summary
         if: always()
