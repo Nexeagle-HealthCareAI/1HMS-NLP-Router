@@ -325,6 +325,7 @@ def build_vita_graph(checkpointer=None):
                                   language_pref=turn.language_pref())
         turn.rt.traces.record(out.get("session_id") or turn.session_id, {
             "patient": said, "kind": out.get("kind"), "engine": out.get("engine"), "language": out.get("language"),
+            "channel": turn.kw.get("channel") or "web", "degraded": out.get("degraded") or [],
             "route": state.get("route"), "why": state.get("why"), "decision": state.get("decision"),
             "understanding": {k: v for k, v in (state.get("understanding") or {}).items() if k != "failed"},
             "need": state.get("need") or {}, "style": state.get("style") or {},
